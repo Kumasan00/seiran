@@ -13,7 +13,7 @@ mod page;
 mod table_box;
 
 pub(super) use align::Align;
-pub(super) use block::{Block, MathRowNumber, PENALTY_FORBID_BREAK, PENALTY_FORCE_BREAK, usable_width};
+pub(super) use block::{Block, MathRowNumber, usable_width};
 pub(crate) use hitem::HBoxContent;
 pub(super) use hitem::{HBox, HItem, IndexTerm, MeasuredFootnote, PlacedHBox};
 pub(super) use line::{Line, LineLink};

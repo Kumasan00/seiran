@@ -53,7 +53,7 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PENALTY_FORBID_BREAK, PlacedHBox},
+    boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
     breaking::LineBreaker,
     error::ElementOverflow,
     font::FontSystem,
@@ -261,13 +261,11 @@ impl BlockBuilder<'_> {
           blocks.push(math);
         },
         LayoutNode::PageBreak => {
-          blocks.push(Block::force_break());
+          blocks.push(Block::PageBreak);
         },
         // keep-with-next（見出し直後の分割禁止）: 直前ブロックと直後ブロックの間の改ページを禁止する
         LayoutNode::KeepWithNext => {
-          blocks.push(Block::Penalty {
-            value: PENALTY_FORBID_BREAK,
-          });
+          blocks.push(Block::KeepWithNext);
         },
       }
     }

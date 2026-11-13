@@ -23,9 +23,8 @@ use crate::{
   project::ProjectPath,
   typeset::{
     boxes::{
-      self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK,
-      PENALTY_FORCE_BREAK, Page, PlacedBlock, PlacedMathNumber, PlacedTableRule, TableBoundary, TableBox,
-      TableRowFragment,
+      self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedMathNumber,
+      PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
     breaking::break_lines::LineBreaker,
     error::ElementOverflow,
@@ -225,7 +224,7 @@ impl PageComposer {
     return self.start_new_page();
   }
 
-  /// 強制改ページ（[`PENALTY_FORCE_BREAK`]）。新ページを開始し、繰越脚注を詰める。
+  /// 強制改ページ（[`Block::PageBreak`]）。新ページを開始し、繰越脚注を詰める。
   fn force_new_page(&mut self) -> Result<(), ElementOverflow> {
     self.start_new_page().map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
     return self.seed_carry();
@@ -423,7 +422,7 @@ pub(in crate::typeset) fn break_pages(
   let block_count = blocks.len();
   let mut blocks = blocks;
 
-  // FORBID penalty で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
+  // 分割禁止（Block::KeepWithNext）で連結された keep グループの先頭で一度だけ、末尾ブロックの先頭が見出しと同じ
   // リージョンに乗るかを判定し、収まらなければグループごと次リージョンへ送る
   let mut i = 0;
   let mut gated_end: Option<usize> = None;
@@ -469,15 +468,9 @@ pub(in crate::typeset) fn break_pages(
         composer.draft.pass_stretch(stretch).map_err(page_level)?;
         composer.cursor.y = composer.cursor.y.try_add(natural).map_err(page_level)?;
       },
+      Block::PageBreak => composer.force_new_page()?,
       // 分割禁止は keep グループの連結マーカーで、ゲート（keep_group_*）が処理済み
-      Block::Penalty { value } => match value {
-        PENALTY_FORCE_BREAK => composer.force_new_page()?,
-        PENALTY_FORBID_BREAK => {},
-        _ => unreachable!(
-          "有限値の penalty はどの構築元も作らない（boxing の PageBreak / KeepWithNext と pagination::index は \
-           強制改ページか分割禁止だけを積む）"
-        ),
-      },
+      Block::KeepWithNext => {},
       Block::Image {
         origin,
         path,
@@ -590,7 +583,7 @@ fn is_content_block(block: &Block) -> bool {
     | Block::Image { .. }
     | Block::ComposedLine { .. }
     | Block::Math { .. } => true,
-    Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => false,
+    Block::Glue { .. } | Block::PageBreak | Block::KeepWithNext | Block::Anchor(_) => false,
   };
 }
 
@@ -607,13 +600,17 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
     let mut j = end + 1;
     while j < blocks.len() {
       match &blocks[j] {
-        Block::Penalty { value } if *value == PENALTY_FORBID_BREAK => saw_forbid = true,
-        Block::Penalty { value } if *value == PENALTY_FORCE_BREAK => break,
-        b if is_content_block(b) => {
+        Block::KeepWithNext => saw_forbid = true,
+        Block::PageBreak => break,
+        Block::Paragraph { .. }
+        | Block::Table { .. }
+        | Block::Image { .. }
+        | Block::ComposedLine { .. }
+        | Block::Math { .. } => {
           next_content = Some(j);
           break;
         },
-        _ => {},
+        Block::Glue { .. } | Block::Anchor(_) => {},
       }
       j += 1;
     }
@@ -625,13 +622,13 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
   return if end > start { Some(end) } else { None };
 }
 
-/// ブロックの溢れを帰属させる要素。`Glue` / `Penalty` / `Anchor` は要素に帰属しない
+/// ブロックの溢れを帰属させる要素。`Glue` / `PageBreak` / `KeepWithNext` / `Anchor` は要素に帰属しない
 fn block_origin(block: &Block) -> Option<NodeId> {
   return match block {
     Block::Paragraph { origin, .. } | Block::ComposedLine { origin, .. } => *origin,
     Block::Image { origin, .. } | Block::Math { origin, .. } => Some(*origin),
     Block::Table { table, .. } => Some(table.origin),
-    Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => None,
+    Block::Glue { .. } | Block::PageBreak | Block::KeepWithNext | Block::Anchor(_) => None,
   };
 }
 
@@ -715,7 +712,7 @@ fn plan_atomic(
       });
     },
     Block::Paragraph { .. } => unreachable!("段落は keep_group_orphaned が plan_paragraph_lines で扱う"),
-    Block::Glue { .. } | Block::Penalty { .. } | Block::Anchor(_) => {
+    Block::Glue { .. } | Block::PageBreak | Block::KeepWithNext | Block::Anchor(_) => {
       unreachable!("内容ブロック以外は呼び出し側の is_content_block ガードが弾く")
     },
   }
@@ -1453,8 +1450,8 @@ mod tests {
     typeset::{
       boxes::{
         Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-        MathRowNumber, MeasuredFootnote, PENALTY_FORBID_BREAK, Page, PlacedBlock, PlacedFootnote, PlacedHBox,
-        PlacedLink, PlacedTableRow, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+        MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow,
+        PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
       },
       breaking::break_lines::{GreedyBreaker, LineBreaker},
     },
@@ -1477,13 +1474,6 @@ mod tests {
 
   /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
-
-  /// keep-with-next マーカー（分割禁止 penalty）を作るテストヘルパ
-  fn forbid_break() -> Block {
-    return Block::Penalty {
-      value: PENALTY_FORBID_BREAK,
-    };
-  }
 
   /// ページごとの本文行数を採取するヘルパ
   fn line_counts(pages: &[Page]) -> Vec<usize> {
@@ -2954,8 +2944,8 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![
       paragraph_of_lines(1),
-      Block::force_break(),
-      Block::force_break(),
+      Block::PageBreak,
+      Block::PageBreak,
       paragraph_of_lines(1),
     ];
 
@@ -2969,7 +2959,7 @@ mod tests {
   #[test]
   fn trailing_page_break_does_not_create_blank_page() {
     let geom = test_geometry();
-    let blocks = vec![paragraph_of_lines(1), Block::force_break()];
+    let blocks = vec![paragraph_of_lines(1), Block::PageBreak];
 
     let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
 
@@ -2980,7 +2970,7 @@ mod tests {
   #[test]
   fn page_break_only_input_returns_single_empty_page() {
     let geom = test_geometry();
-    let blocks = vec![Block::force_break()];
+    let blocks = vec![Block::PageBreak];
 
     let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
 
@@ -3857,8 +3847,8 @@ mod tests {
     assert!(is_content_block(&paragraph_of_lines(1)));
     assert!(is_content_block(&fixed_block(1.0)));
     assert!(!is_content_block(&Block::fixed_space(pt(5.0))));
-    assert!(!is_content_block(&forbid_break()));
-    assert!(!is_content_block(&Block::force_break()));
+    assert!(!is_content_block(&Block::KeepWithNext));
+    assert!(!is_content_block(&Block::PageBreak));
   }
 
   /// 位置 `y`・脚注予約 `reserved` のカーソル
@@ -3997,7 +3987,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2),
     ];
 
@@ -4020,10 +4010,10 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2),
     ];
 
@@ -4035,11 +4025,36 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1),
       Block::fixed_space(pt(3.0)),
-      Block::force_break(),
+      Block::PageBreak,
       paragraph_of_lines(2),
     ];
 
     assert_eq!(keep_group_end(&blocks, 0), None);
+  }
+
+  #[test]
+  fn keep_group_end_forbid_then_forced_break_ends_group() {
+    // 見出しの直後に \pagebreak が来る列: 分割禁止があっても強制改ページで keep グループは切れる
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::KeepWithNext,
+      Block::PageBreak,
+      paragraph_of_lines(2),
+    ];
+
+    assert_eq!(keep_group_end(&blocks, 0), None);
+  }
+
+  #[test]
+  fn keep_group_end_skips_anchor() {
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::KeepWithNext,
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      paragraph_of_lines(2),
+    ];
+
+    assert_eq!(keep_group_end(&blocks, 0), Some(3));
   }
 
   #[test]
@@ -4049,7 +4064,7 @@ mod tests {
       paragraph_of_lines(3), // filler
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2), // 本文
     ];
 
@@ -4080,10 +4095,10 @@ mod tests {
       paragraph_of_lines(3),
       paragraph_of_lines(1), // 見出し 1
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(1), // 見出し 2
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2), // 本文
     ];
 
@@ -4099,7 +4114,7 @@ mod tests {
       paragraph_of_lines(1), // filler → y=22
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2), // 本文
     ];
 
@@ -4115,7 +4130,7 @@ mod tests {
       paragraph_of_lines(3),
       paragraph_of_lines(1),
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
@@ -4132,7 +4147,7 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1), // 見出し（ページ先頭）
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2), // 本文
     ];
 
@@ -4150,7 +4165,7 @@ mod tests {
       single_line_paragraph(vec![footnote_of_lines(1, 2)]),
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(2), // 本文
     ];
 
@@ -4168,7 +4183,7 @@ mod tests {
       paragraph_of_lines(2), // filler
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       single_line_paragraph(vec![footnote_of_lines(1, 1)]), // 本文
     ];
 
@@ -4186,7 +4201,7 @@ mod tests {
       single_line_paragraph(vec![footnote_of_lines(1, 2)]),
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       fixed_block(10.0),
     ];
 
@@ -4204,7 +4219,7 @@ mod tests {
       paragraph_of_lines(1), // filler
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(3), // 本文
     ];
 
@@ -4221,7 +4236,7 @@ mod tests {
       single_line_paragraph(vec![footnote_of_lines(1, 1)]),
       paragraph_of_lines(1), // 見出し
       Block::fixed_space(pt(0.0)),
-      forbid_break(),
+      Block::KeepWithNext,
       paragraph_of_lines(1), // 本文
     ];
 
@@ -4324,7 +4339,7 @@ mod tests {
       fixed_block(10.0),
       Block::stretchable_space(pt(4.0), pt(4.0)),
       fixed_block(10.0),
-      Block::force_break(), // このページは強制改ページで終わる → 揃えない
+      Block::PageBreak, // このページは強制改ページで終わる → 揃えない
       fixed_block(10.0),
     ];
 
@@ -4536,8 +4551,8 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1),
       Block::Anchor(AnchorId::Label(LabelId::new("x"))),
-      Block::force_break(),
-      Block::force_break(),
+      Block::PageBreak,
+      Block::PageBreak,
       paragraph_of_lines(1),
     ];
 
@@ -5314,7 +5329,7 @@ mod tests {
     let blocks = vec![
       single_line_paragraph(Vec::new()),
       single_line_paragraph(Vec::new()),
-      forbid_break(),
+      Block::KeepWithNext,
       table_block(vec![with_footnote(table_row("A"), one_line_footnote(1))]),
     ];
 
@@ -5604,7 +5619,7 @@ mod tests {
     let blocks = vec![
       single_line_paragraph(Vec::new()),
       single_line_paragraph(Vec::new()),
-      forbid_break(),
+      Block::KeepWithNext,
       table_block(vec![table_fragment(table_text_box("T"), 60.0, 10.0)]),
     ];
 
