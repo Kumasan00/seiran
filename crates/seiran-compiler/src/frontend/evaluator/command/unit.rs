@@ -11,8 +11,8 @@ use std::mem;
 use crate::{
   document::UnitFactor,
   frontend::{
-    evaluator::{self, EvalError, arity, command, math, opt_args},
-    syntax::{CstElement, CstNode, SyntaxKind, token::TokenKind, view::CommandView},
+    evaluator::{self, EvalError, command, math, signature::Signature},
+    syntax::{ArgMode, CstElement, CstNode, SyntaxKind, token::TokenKind, view::CommandView},
   },
   source::Span,
 };
@@ -20,16 +20,8 @@ use crate::{
 /// 構文から外れた要素の既定の label
 const OUTSIDE_GRAMMAR: &str = "ここで単位の書き方から外れています";
 
-/// `\unit` の引数を単位の文法で読み、語彙で検証した因子の列（空でない、ソース順）を返す
-///
-/// # Errors
-///
-/// 任意引数・引数の個数の誤りと、[`unit_factors_arg`] のエラーを返す。
-pub(in crate::frontend::evaluator) fn unit_factors(view: &CommandView<'_>) -> Result<Vec<UnitFactor>, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let arg = arity::exactly_one_arg(view, "1 個（単位）")?;
-  return unit_factors_arg(view.source(), arg);
-}
+/// `\unit` の署名（引数は外側によらず数式として読む。本文の機能コマンドと数式の語彙が共有する）
+pub(in crate::frontend::evaluator) const SIGNATURE: Signature<1> = Signature::new([ArgMode::Math], "1 個（単位）", &[]);
 
 /// 引数ノード `arg` を単位の文法で読み、語彙で検証した因子の列（空でない、ソース順）を返す
 ///

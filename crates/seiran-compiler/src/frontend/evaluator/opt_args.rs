@@ -216,7 +216,7 @@ impl FromOptValue for Color {
 }
 
 /// 収集・型変換済みの任意引数
-#[derive(Debug)]
+#[derive(Debug, Default)]
 pub(super) struct OptArgs {
   /// キー名と変換済みの値の対（ソース上の出現順）
   pairs: Vec<(String, OptValue)>,
@@ -296,7 +296,7 @@ pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), 
 /// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
 /// [`EvalError::UnknownOptArgKey`]、同じキーの重複時に [`EvalError::DuplicateOptArgKey`]、値の型変換失敗時に
 /// [`EvalError::InvalidOptArgValue`] を返します。
-fn collect_opt_args(
+pub(super) fn collect_opt_args(
   source: &str,
   name: &str,
   opt_arg: Option<&CstNode<'_>>,

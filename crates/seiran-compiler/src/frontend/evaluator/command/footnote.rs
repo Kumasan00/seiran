@@ -4,13 +4,16 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       inline::{IndexPolicy, evaluate_inline_children},
-      opt_args,
+      signature::Signature,
     },
-    syntax::view::CommandView,
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
+
+/// `\footnote` の署名
+pub(super) const SIGNATURE: Signature<1> = Signature::new([ArgMode::Inherit], "脚注本体", &[]);
 
 /// `\footnote{...}` を `HirInlineKind::Footnote` に変換する
 ///
@@ -21,17 +24,15 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
+/// 本体の評価エラーを返します。
 pub(super) fn footnote(
   view: &CommandView<'_>,
+  arg: &CstNode<'_>,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "脚注本体")?;
-
   let id = ctx.alloc(view.span());
-  let body = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
+  let body = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Footnote { body }));
 }
 
@@ -52,7 +53,8 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result =
+      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, IndexPolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
@@ -68,7 +70,8 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result =
+      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, IndexPolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
@@ -79,41 +82,5 @@ mod tests {
     };
     assert_eq!(*font, Typeface::SerifBold);
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "x"));
-  }
-
-  #[test]
-  fn footnote_rejects_missing_argument() {
-    let arena = Bump::new();
-    let source = r"\footnote";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
-
-    assert!(matches!(result, Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "footnote"));
-  }
-
-  #[test]
-  fn footnote_rejects_extra_arguments() {
-    let arena = Bump::new();
-    let source = r"\footnote{a}{b}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
-
-    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { ref name, .. }) if name == "footnote"));
-  }
-
-  #[test]
-  fn footnote_rejects_opt_args() {
-    let arena = Bump::new();
-    let source = r"\footnote[k=v]{body}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return footnote(&view, ctx, IndexPolicy::Allow));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"));
   }
 }

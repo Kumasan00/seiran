@@ -11,6 +11,7 @@ mod error;
 mod inline;
 mod math;
 mod opt_args;
+mod signature;
 mod string_arg;
 
 pub(super) use context::EvalContext;

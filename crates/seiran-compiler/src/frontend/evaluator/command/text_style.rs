@@ -5,34 +5,39 @@ use crate::{
   document::{HirInline, HirInlineKind, Typeface},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       inline::{IndexPolicy, evaluate_inline_children},
-      opt_args::{self, OptKey, collect_command_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
-    syntax::view::CommandView,
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
 
 /// `\color[color=#rrggbb]`（文字色）
 const COLOR: OptKey<Color> = opt_args::color("color");
+/// `\color` が受け付けるキー
+const COLOR_KEYS: &[OptDecl] = &[COLOR.decl()];
+
+/// 書体コマンド（`\bold` 等）の署名
+pub(super) const STYLED: Signature<1> = Signature::new([ArgMode::Inherit], "テキスト", &[]);
+/// `\color` の署名
+pub(super) const COLORED: Signature<1> = Signature::new([ArgMode::Inherit], "テキスト", COLOR_KEYS);
 
 /// 引数 1 つを取り、子要素を `HirInline` リストに変換して `HirInlineKind::Styled` でラップする共通処理
 ///
 /// # Errors
 ///
-/// 任意引数があれば [`EvalError::UnknownOptArgKey`]、必須引数の不足で [`EvalError::MissingCommandArgument`]、
-/// 過剰で [`EvalError::ExtraCommandArgument`] を返します。引数内の評価エラーはそのまま伝播します。
+/// 引数内の評価エラーをそのまま伝播します。
 pub(super) fn styled_text(
   view: &CommandView<'_>,
+  arg: &CstNode<'_>,
   ctx: &EvalContext<'_>,
   font: Typeface,
   index_policy: IndexPolicy,
 ) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "テキスト")?;
-
   let id = ctx.alloc(view.span());
-  let children = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Styled { font, children }));
 }
 
@@ -40,16 +45,14 @@ pub(super) fn styled_text(
 ///
 /// # Errors
 ///
-/// 色の欠落・必須引数の不足で [`EvalError::MissingCommandArgument`]、引数過剰で
-/// [`EvalError::ExtraCommandArgument`]、色の 16 進表記が不正な場合に
-/// [`EvalError::InvalidOptArgValue`]、`color` 以外のキーで [`EvalError::UnknownOptArgKey`]、キーの重複で
-/// [`EvalError::DuplicateOptArgKey`] を返します。引数内の評価エラーはそのまま伝播します。
+/// 色の欠落で [`EvalError::MissingCommandArgument`] を返します。引数内の評価エラーはそのまま伝播します。
 pub(super) fn colored_text(
   view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  opts: &OptArgs,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirInline, EvalError> {
-  let opts = collect_command_opt_args(view, &[COLOR.decl()])?;
   let Some(color) = opts.get(COLOR) else {
     return Err(EvalError::MissingCommandArgument {
       name: view.name().to_string(),
@@ -57,10 +60,9 @@ pub(super) fn colored_text(
       span: view.span().into(),
     });
   };
-  let first_arg = arity::exactly_one_arg(view, "テキスト")?;
 
   let id = ctx.alloc(view.span());
-  let children = evaluate_inline_children(view.source(), ctx, first_arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Colored { color, children }));
 }
 
@@ -78,7 +80,11 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| {
+      let bound = STYLED.bind(&view)?;
+      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, IndexPolicy::Allow);
+    })
+    .unwrap();
 
     match &result.kind {
       HirInlineKind::Styled { font, children } => {
@@ -97,7 +103,11 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| {
+      let bound = STYLED.bind(&view)?;
+      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, IndexPolicy::Allow);
+    })
+    .unwrap();
 
     let HirInlineKind::Styled { font, children } = &result.kind else {
       panic!("Styled が期待されます");
@@ -113,51 +123,17 @@ mod tests {
   }
 
   #[test]
-  fn rejects_missing_argument() {
-    let arena = Bump::new();
-    let source = "\\bold";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(matches!(
-      run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)),
-      Err(EvalError::MissingCommandArgument { .. })
-    ));
-  }
-
-  #[test]
-  fn rejects_extra_arguments() {
-    let arena = Bump::new();
-    let source = "\\bold{a}{b}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(matches!(
-      run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow)),
-      Err(EvalError::ExtraCommandArgument { .. })
-    ));
-  }
-
-  #[test]
-  fn bold_rejects_unknown_opt_arg_key() {
-    let arena = Bump::new();
-    let source = r"\bold[heavy]{x}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    let result = run_handler(|ctx| return styled_text(&view, ctx, Typeface::SerifBold, IndexPolicy::Allow));
-
-    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "heavy"));
-  }
-
-  #[test]
   fn color_creates_colored_node() {
     let arena = Bump::new();
     let source = r"\color[color=#ff0000]{x}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| {
+      let bound = COLORED.bind(&view)?;
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+    })
+    .unwrap();
 
     let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");
@@ -175,7 +151,10 @@ mod tests {
     let view = CommandView::new(node, source);
 
     assert!(matches!(
-      run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
+      run_handler(|ctx| {
+        let bound = COLORED.bind(&view)?;
+        return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+      }),
       Err(EvalError::MissingCommandArgument { .. })
     ));
   }
@@ -187,22 +166,10 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    assert!(
-      matches!(run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color")
-    );
-  }
-
-  #[test]
-  fn color_rejects_extra_arguments() {
-    let arena = Bump::new();
-    let source = r"\color[color=#00ff00]{a}{b}";
-    let node = test_support::command_call_node(source, &arena);
-    let view = CommandView::new(node, source);
-
-    assert!(matches!(
-      run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)),
-      Err(EvalError::ExtraCommandArgument { .. })
-    ));
+    assert!(matches!(run_handler(|ctx| {
+      let bound = COLORED.bind(&view)?;
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+    }), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color"));
   }
 
   #[test]
@@ -212,7 +179,11 @@ mod tests {
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
-    let result = run_handler(|ctx| return colored_text(&view, ctx, IndexPolicy::Allow)).unwrap();
+    let result = run_handler(|ctx| {
+      let bound = COLORED.bind(&view)?;
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+    })
+    .unwrap();
 
     let HirInlineKind::Colored { color, children } = &result.kind else {
       panic!("Colored が期待されます: {result:?}");

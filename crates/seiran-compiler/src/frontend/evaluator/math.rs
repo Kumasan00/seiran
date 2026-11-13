@@ -619,15 +619,18 @@ fn evaluate_math_command(source: &str, ctx: &EvalContext<'_>, cmd_node: &CstNode
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Prose(text)));
     },
     MathCommandKind::Number => {
-      let numeral = command::number::numeral(&view)?;
+      let [arg] = command::number::SIGNATURE.bind(&view)?.args;
+      let numeral = command::number::numeral_arg(source, arg)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Number(numeral)));
     },
     MathCommandKind::Unit => {
-      let factors = command::unit::unit_factors(&view)?;
+      let [arg] = command::unit::SIGNATURE.bind(&view)?.args;
+      let factors = command::unit::unit_factors_arg(source, arg)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Unit(factors)));
     },
     MathCommandKind::Quantity => {
-      let (numeral, unit) = command::quantity::quantity(&view)?;
+      let args = command::quantity::SIGNATURE.bind(&view)?.args;
+      let (numeral, unit) = command::quantity::quantity(source, args)?;
       return Ok(ctx.leaf_math(view.span(), HirMathKind::Quantity { numeral, unit }));
     },
     // 伸縮括弧の直下の `\given` は `evaluate_fence_segments` が区切りとして取り除くので、ここへ来るのはそれ以外の位置

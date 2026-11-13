@@ -14,44 +14,47 @@ use crate::{
   document::{HirInline, HirInlineKind},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       inline::{IndexPolicy, evaluate_inline_children},
-      opt_args,
+      signature::Signature,
     },
-    syntax::view::{CommandView, verbatim_text},
+    syntax::{
+      ArgMode, CstNode,
+      view::{CommandView, verbatim_text},
+    },
   },
 };
 
-/// `\url{uri}` を `HirInlineKind::Link` に変換する（URI 自身を表示テキストにする）
-///
-/// # Errors
-///
-/// 必須引数が欠落 / 過剰、または任意引数が指定された場合にエラーを返します。
-pub(super) fn url(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "URI")?;
+/// `\url` の署名（リンク先は verbatim）
+pub(super) const URL: Signature<1> = Signature::new([ArgMode::Verbatim], "URI", &[]);
+/// `\href` の署名（第 1 引数のリンク先だけが verbatim）
+pub(super) const HREF: Signature<2> =
+  Signature::new([ArgMode::Verbatim, ArgMode::Inherit], "2 個（リンク先 URI と表示テキスト）", &[]);
 
-  let url = verbatim_text(view.source(), first_arg).trim().to_string();
+/// `\url{uri}` を `HirInlineKind::Link` に変換する（URI 自身を表示テキストにする）
+pub(super) fn url(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> HirInline {
+  let url = verbatim_text(view.source(), arg).trim().to_string();
   let id = ctx.alloc(view.span());
-  let text = ctx.leaf_inline(first_arg.span, HirInlineKind::Text(url.clone()));
-  return Ok(HirInline::new(
+  let text = ctx.leaf_inline(arg.span, HirInlineKind::Text(url.clone()));
+  return HirInline::new(
     id,
     HirInlineKind::Link {
       url,
       children: vec![text],
     },
-  ));
+  );
 }
 
 /// `\href{uri}{表示}` を `HirInlineKind::Link` に変換する（本文を表示テキストにする）
 ///
 /// # Errors
 ///
-/// 必須引数が 2 個でない場合、または任意引数が指定された場合にエラーを返します。
-pub(super) fn href(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<HirInline, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let (url_arg, display_arg) = arity::exactly_two_args(view, "2 個（リンク先 URI と表示テキスト）")?;
-
+/// 表示テキストの評価エラーを返します。
+pub(super) fn href(
+  view: &CommandView<'_>,
+  [url_arg, display_arg]: [&CstNode<'_>; 2],
+  ctx: &EvalContext<'_>,
+) -> Result<HirInline, EvalError> {
   let url = verbatim_text(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());
   let children = evaluate_inline_children(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
@@ -69,7 +72,7 @@ mod tests {
   fn url_link(source: &str) -> (String, String) {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    let result = run_handler(|ctx| return url(&view, ctx)).unwrap();
+    let result = run_handler(|ctx| return Ok(url(&view, URL.bind(&view)?.args[0], ctx))).unwrap();
     let HirInlineKind::Link { url, children } = &result.kind else {
       panic!("Link が期待されます: {result:?}");
     };
@@ -114,22 +117,11 @@ mod tests {
     assert_eq!(display, r"https:\/\/example.com");
   }
 
-  #[test]
-  fn url_rejects_missing_argument() {
-    let arena = Bump::new();
-    let source = r"\url";
-    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-
-    assert!(
-      matches!(run_handler(|ctx| return url(&view, ctx)), Err(EvalError::MissingCommandArgument { ref name, .. }) if name == "url")
-    );
-  }
-
   /// `\href{...}{...}` を評価してインラインノードを取り出す
   fn href_link(source: &str) -> HirInline {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_handler(|ctx| return href(&view, ctx)).unwrap();
+    return run_handler(|ctx| return href(&view, HREF.bind(&view)?.args, ctx)).unwrap();
   }
 
   /// `\href{...}{...}` を評価してリンク先だけを取り出す
@@ -145,7 +137,7 @@ mod tests {
   fn href_error(source: &str) -> EvalError {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
-    return run_handler(|ctx| return href(&view, ctx)).unwrap_err();
+    return run_handler(|ctx| return href(&view, HREF.bind(&view)?.args, ctx)).unwrap_err();
   }
 
   #[test]
@@ -210,20 +202,6 @@ mod tests {
     let error = href_error(r"\href[url=https:\/\/example.com]{ここ}");
 
     assert!(matches!(error, EvalError::UnknownOptArgKey { ref key, .. } if key == "url"), "{error:?}");
-  }
-
-  #[test]
-  fn href_rejects_a_single_argument() {
-    let error = href_error(r"\href{表示だけ}");
-
-    assert!(matches!(error, EvalError::MissingCommandArgument { ref name, .. } if name == "href"), "{error:?}");
-  }
-
-  #[test]
-  fn href_rejects_three_arguments() {
-    let error = href_error(r"\href{https://example.com}{ここ}{余分}");
-
-    assert!(matches!(error, EvalError::ExtraCommandArgument { ref name, .. } if name == "href"), "{error:?}");
   }
 
   #[test]

@@ -4,26 +4,28 @@ use crate::{
   document::{Numeral, UnitFactor},
   frontend::{
     evaluator::{
-      EvalError, arity,
+      EvalError,
       command::{number, unit},
-      opt_args,
+      signature::Signature,
     },
-    syntax::view::CommandView,
+    syntax::{ArgMode, CstNode},
   },
 };
+
+/// `\qty` の署名（2 引数とも外側によらず数式として読む。本文の機能コマンドと数式の語彙が共有する）
+pub(in crate::frontend::evaluator) const SIGNATURE: Signature<2> =
+  Signature::new([ArgMode::Math, ArgMode::Math], "2 個（数値と単位）", &[]);
 
 /// `\qty` の 2 引数を数値と単位の式として読む
 ///
 /// # Errors
 ///
-/// 任意引数・引数の個数の誤りと、第 1 引数の [`number::numeral_arg`]・第 2 引数の [`unit::unit_factors_arg`] のエラー
-/// （先に見つかった 1 件）を返す。
+/// 第 1 引数の [`number::numeral_arg`]・第 2 引数の [`unit::unit_factors_arg`] のエラー（先に見つかった 1 件）を返す。
 pub(in crate::frontend::evaluator) fn quantity(
-  view: &CommandView<'_>,
+  source: &str,
+  [numeral, unit]: [&CstNode<'_>; 2],
 ) -> Result<(Numeral, Vec<UnitFactor>), EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let (numeral, unit) = arity::exactly_two_args(view, "2 個（数値と単位）")?;
-  return Ok((number::numeral_arg(view.source(), numeral)?, unit::unit_factors_arg(view.source(), unit)?));
+  return Ok((number::numeral_arg(source, numeral)?, unit::unit_factors_arg(source, unit)?));
 }
 
 #[cfg(test)]
