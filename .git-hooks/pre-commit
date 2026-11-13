@@ -2,6 +2,6 @@
 set -eu
 
 cargo +nightly fmt --all -- --check
-cargo clippy --all-targets --all-features -- -D warnings
+CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --all-features -- -D warnings
 # CI と同じく、シェルに残った INSTA_UPDATE=always / INSTA_FORCE_PASS=1 で未承認のスナップショット差分を通さない
 INSTA_UPDATE=new INSTA_FORCE_PASS=0 cargo test --all-features

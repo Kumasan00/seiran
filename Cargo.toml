@@ -373,6 +373,21 @@ private_intra_doc_links = "allow"
 # doc 内の対にならない `` ` `` は描画が壊れる。
 unescaped_backticks = "warn"
 
+# 節見出しと置き場の規則は上の 3 テーブルと同じ。cargo lint は manifest を読む cargo 自身が出し、rustc に渡す
+# `-D warnings` では落ちないので、CI / pre-commit の clippy は `CARGO_BUILD_WARNINGS=deny` を付けて回す。
+# warn / deny 既定の 9 種（`unused_dependencies` 等）は採用判断ではないので table に書かず、その deny で効かせる。
+[workspace.lints.cargo]
+pedantic = { level = "warn", priority = -1 }
+
+# ---------------------------------------------------------------------------
+# 表記の固定 — G1 の書き側。同じ意味を 2 通りに書かない
+# ---------------------------------------------------------------------------
+
+# package 名は kebab-case に固定する（対の `non_snake_case_packages` は採らない。bin 名は pedantic の `non_kebab_case_bins`）。
+non_kebab_case_packages = "warn"
+# feature 名も package・bin と同じ kebab-case に固定する（対の `non_snake_case_features` は採らない）。
+non_kebab_case_features = "warn"
+
 [profile.release]
 opt-level = 3
 debug = false

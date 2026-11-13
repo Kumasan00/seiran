@@ -39,9 +39,14 @@ jobs:
           components: clippy
       - uses: Swatinem/rust-cache@v2
       - name: Run clippy
+        # cargo lint（`[workspace.lints.cargo]`）は rustc の -D warnings で落ちないので cargo 側の warnings を deny にする
+        env:
+          CARGO_BUILD_WARNINGS: deny
         run: cargo clippy --all-targets --all-features -- -D warnings
       - name: Run clippy on the fuzz crate
         # seiran-fuzz は default-members 外なので上の clippy に入らない。lint だけを PR で回す（fuzz の実行は fuzz.yml）
+        env:
+          CARGO_BUILD_WARNINGS: deny
         run: cargo clippy -p seiran-fuzz --all-targets -- -D warnings
       - name: Run tests
         # 未承認のスナップショット差分・欠落は失敗させ、候補を .snap.new に書く（自動承認・force-pass にしない）
