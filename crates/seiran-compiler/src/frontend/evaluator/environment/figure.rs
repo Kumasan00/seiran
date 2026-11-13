@@ -6,12 +6,16 @@ use crate::{
   document::{CaptionPosition, HirFigure, HirInline, HirNode, HirNodeKind, ImageFormat},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
-      environment::{body_scan, caption::evaluate_caption},
-      opt_args::{self, OptKey, collect_command_opt_args, collect_environment_opt_args},
+      EvalContext, EvalError,
+      environment::{body_scan, caption},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::{Bound, Signature},
       string_arg,
     },
-    syntax::view::{CommandView, EnvironmentView},
+    syntax::{
+      ArgMode, CstNode,
+      view::{CommandView, EnvironmentView},
+    },
   },
   length::Length,
 };
@@ -28,6 +32,21 @@ const DPI: OptKey<u32> = opt_args::positive_int("dpi");
 const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 /// `\image[page=N]`（PDF のページ。小数と 1 未満は収集時に拒否される）
 const PAGE: OptKey<u32> = opt_args::positive_int("page");
+/// `figure` 環境が受け付けるキー
+const FIGURE_KEYS: &[OptDecl] = &[LABEL.decl()];
+/// `\image` が受け付けるキー
+const IMAGE_KEYS: &[OptDecl] = &[
+  WIDTH.decl(),
+  HEIGHT.decl(),
+  DPI.decl(),
+  DOWNSAMPLE.decl(),
+  PAGE.decl(),
+];
+
+/// `figure` 環境の署名
+pub(super) const SIGNATURE: Signature<0> = Signature::keys_only(FIGURE_KEYS);
+/// `\image` の署名
+const IMAGE: Signature<1> = Signature::new([ArgMode::Inherit], "画像ファイルのパス", IMAGE_KEYS);
 
 /// `figure` 環境の本体に書けるコマンド
 #[derive(Debug, Clone, Copy)]
@@ -38,22 +57,19 @@ enum FigureCommand {
   Caption,
 }
 
-/// `figure` 環境の本体で許可するコマンドと種別
-const FIGURE_COMMANDS: &[(&str, FigureCommand)] = &[
-  ("image", FigureCommand::Image),
-  ("caption", FigureCommand::Caption),
+/// `figure` 環境の本体で許可するコマンドと種別と署名
+const FIGURE_COMMANDS: &[(&str, FigureCommand, Signature<1>)] = &[
+  ("image", FigureCommand::Image, IMAGE),
+  ("caption", FigureCommand::Caption, caption::SIGNATURE),
 ];
 
 /// `figure` 環境を評価する
 ///
 /// # Errors
 ///
-/// 未知の任意引数キー、`\image` の必須パラメータ不足などが発生した場合にエラーを返します。
-pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  let opts = collect_environment_opt_args(view, &[LABEL.decl()])?;
+/// 本体の許可外コンテンツ、`\image` の欠落などが発生した場合にエラーを返します。
+pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &OptArgs) -> Result<HirNode, EvalError> {
   let label = opts.get(LABEL);
-
-  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let source = view.source();
@@ -70,7 +86,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for (command, cmd_view) in
+    for (command, cmd_view, Bound { args: [arg], opts }) in
       body_scan::collect_allowed_commands(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
     {
       match command {
@@ -82,7 +98,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
               span: cmd_view.span().into(),
             });
           }
-          let extracted = extract_image(&cmd_view)?;
+          let extracted = extract_image(&cmd_view, arg, &opts)?;
           image_site = Some(ctx.alloc(cmd_view.span()));
           image_path = Some(extracted.path);
           image_format = Some(extracted.format);
@@ -103,7 +119,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Resul
           if image_path.is_none() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(evaluate_caption(&cmd_view, ctx)?);
+          caption = Some(caption::evaluate_caption(&cmd_view, arg, ctx)?);
         },
       }
     }
@@ -154,26 +170,14 @@ struct ImageArgs {
 }
 
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false, page=N]{path}` から各引数を抽出する
-fn extract_image(view: &CommandView<'_>) -> Result<ImageArgs, EvalError> {
-  let opts = collect_command_opt_args(
-    view,
-    &[
-      WIDTH.decl(),
-      HEIGHT.decl(),
-      DPI.decl(),
-      DOWNSAMPLE.decl(),
-      PAGE.decl(),
-    ],
-  )?;
+fn extract_image(view: &CommandView<'_>, path_arg: &CstNode<'_>, opts: &OptArgs) -> Result<ImageArgs, EvalError> {
   let width = opts.get(WIDTH);
   let height = opts.get(HEIGHT);
   let dpi = opts.get(DPI);
   let downsample = opts.get(DOWNSAMPLE);
   let page = opts.get(PAGE);
 
-  let first_arg = arity::exactly_one_arg(view, "画像ファイルのパス")?;
-
-  let path = string_arg::text(view, first_arg)?.trim().to_string();
+  let path = string_arg::text(view, path_arg)?.trim().to_string();
   if path.is_empty() {
     return Err(EvalError::InvalidCommandArgument {
       name: "image".to_string(),

@@ -3,7 +3,6 @@
 //! ノードの ID は親を子より先に確保する（`HirBuilder` の規約）。段落は蓄積した
 //! インラインを後からまとめる構造なので、子を評価する前に ID を予約しておく。
 
-mod arity;
 mod command;
 mod context;
 mod environment;

@@ -120,7 +120,6 @@ impl Signature<0> {
   ///
   /// 任意引数の検査（[`opt_args::collect_opt_args`]）のエラーと、必須引数がある場合に
   /// [`EvalError::ExtraEnvironmentArgument`] を返します。
-  #[cfg_attr(not(test), expect(dead_code, reason = "TEMP(#1145): 環境の移行 が使い始める"))]
   pub(super) fn bind_environment(&self, view: &EnvironmentView<'_>) -> Result<OptArgs, EvalError> {
     let opts = match self.options {
       Options::Keys(keys) => opt_args::collect_opt_args(view.source(), view.name(), view.opt_arg(), keys)?,

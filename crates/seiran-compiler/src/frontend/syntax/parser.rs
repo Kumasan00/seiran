@@ -409,7 +409,7 @@ impl<'a> Parser<'a> {
         self.parse_single_opt_arg(&mut begin_children)?;
 
         // テキスト本体では裸の `{` を書けない（P4）ので、後ろに続く `{...}` は引数以外に読めない。
-        // 個数は評価器（`arity::no_environment_args`）が環境名つきの診断で検査する。
+        // 個数は評価器（環境の署名の検査）が環境名つきの診断で検査する。
         while let Some(TokenKind::LBrace) = self.peek_kind() {
           let arg = self.parse_mandatory_arg(ParseMode::Text)?;
           begin_children.push(CstElement::Node(arg));

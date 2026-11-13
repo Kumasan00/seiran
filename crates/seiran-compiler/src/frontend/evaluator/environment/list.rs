@@ -4,11 +4,12 @@ use crate::{
   document::{HirList, HirListItem, HirNode, HirNodeKind},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError, arity,
+      self, EvalContext, EvalError,
       environment::body_scan,
-      opt_args::{self, OptDecl, OptKey, collect_command_opt_args, collect_environment_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::{Bound, Signature},
     },
-    syntax::view::EnvironmentView,
+    syntax::{ArgMode, view::EnvironmentView},
   },
   length::Length,
 };
@@ -23,6 +24,19 @@ const MARKER: OptKey<String> = opt_args::string("marker");
 const ORDERED_SCHEMA: &[OptDecl] = &[START.decl(), ITEM_GAP.decl()];
 /// 順序なしリストのスキーマ
 const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
+/// `\item` が受け付けるキー
+const ITEM_KEYS: &[OptDecl] = &[MARKER.decl(), ITEM_GAP.decl()];
+/// `\item` の署名
+const ITEM: Signature<1> = Signature::new([ArgMode::Inherit], "項目の内容", ITEM_KEYS);
+
+/// リスト環境の署名（`start` を受け付けるのは番号付きだけ）
+pub(super) fn signature(ordered: bool) -> Signature<0> {
+  return if ordered {
+    Signature::keys_only(ORDERED_SCHEMA)
+  } else {
+    Signature::keys_only(UNORDERED_SCHEMA)
+  };
+}
 
 /// リスト環境（`itemize` / `enumerate`）を評価する
 ///
@@ -30,32 +44,35 @@ const UNORDERED_SCHEMA: &[OptDecl] = &[ITEM_GAP.decl()];
 ///
 /// # Errors
 ///
-/// 余分な引数、body 直下の許可外コンテンツ、`\item` の引数不足・過剰の場合にエラーを返します
-pub(super) fn list(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, ordered: bool) -> Result<HirNode, EvalError> {
-  let schema = if ordered {
-    ORDERED_SCHEMA
-  } else {
-    UNORDERED_SCHEMA
-  };
-  let opts = collect_environment_opt_args(view, schema)?;
+/// body 直下の許可外コンテンツ、`\item` の署名の検査のエラーの場合にエラーを返します
+pub(super) fn list(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+  opts: &OptArgs,
+  ordered: bool,
+) -> Result<HirNode, EvalError> {
   let item_gap = opts.get(ITEM_GAP);
   let start = opts.get(START);
-  arity::no_environment_args(view)?;
 
   let id = ctx.alloc(view.span());
   let mut items = Vec::new();
   let source = view.source();
 
   if let Some(body) = view.body() {
-    for ((), cmd_view) in
-      body_scan::collect_allowed_commands(source, body.children, view.name(), &[("item", ())], "\\item{...}")?
+    for (
+      (),
+      cmd_view,
+      Bound {
+        args: [arg],
+        opts: item_opts,
+      },
+    ) in
+      body_scan::collect_allowed_commands(source, body.children, view.name(), &[("item", (), ITEM)], "\\item{...}")?
     {
-      let item_opts = collect_command_opt_args(&cmd_view, &[MARKER.decl(), ITEM_GAP.decl()])?;
       let marker = item_opts.get(MARKER);
       let item_gap = item_opts.get(ITEM_GAP);
-      let first_arg = arity::exactly_one_arg(&cmd_view, "項目の内容")?;
       let item_id = ctx.alloc(cmd_view.span());
-      let item_body = evaluator::evaluate_children(source, ctx, first_arg)?;
+      let item_body = evaluator::evaluate_children(source, ctx, arg)?;
       items.push(HirListItem {
         id: item_id,
         body: item_body,

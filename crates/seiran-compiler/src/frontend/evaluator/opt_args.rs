@@ -15,10 +15,7 @@ use crate::{
   color::Color,
   frontend::{
     evaluator::{EvalError, string_arg},
-    syntax::{
-      CstNode,
-      view::{CommandView, EnvironmentView},
-    },
+    syntax::CstNode,
   },
   length::{Length, ParseLengthError},
 };
@@ -243,49 +240,6 @@ impl OptArgs {
   }
 }
 
-/// `CommandView` 用の薄いラッパ
-///
-/// # Errors
-///
-/// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
-/// [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
-pub(super) fn collect_command_opt_args(view: &CommandView<'_>, schema: &[OptDecl]) -> Result<OptArgs, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
-}
-
-/// `EnvironmentView` 用の薄いラッパ
-///
-/// # Errors
-///
-/// キー・値に字以外の要素がある場合に [`EvalError::UnsupportedInString`]、不明キー検出時に
-/// [`EvalError::UnknownOptArgKey`]、値の型変換失敗時に [`EvalError::InvalidOptArgValue`] を返します。
-pub(super) fn collect_environment_opt_args(
-  view: &EnvironmentView<'_>,
-  schema: &[OptDecl],
-) -> Result<OptArgs, EvalError> {
-  return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
-}
-
-/// 任意引数 `[...]` を受け付けないコマンドであることを検査する
-///
-/// # Errors
-///
-/// 任意引数にキーが 1 つでも書かれている場合に [`EvalError::UnknownOptArgKey`] を返します。
-pub(super) fn no_command_opt_args(view: &CommandView<'_>) -> Result<(), EvalError> {
-  collect_command_opt_args(view, &[])?;
-  return Ok(());
-}
-
-/// 任意引数 `[...]` を受け付けない環境であることを検査する
-///
-/// # Errors
-///
-/// 任意引数にキーが 1 つでも書かれている場合に [`EvalError::UnknownOptArgKey`] を返します。
-pub(super) fn no_environment_opt_args(view: &EnvironmentView<'_>) -> Result<(), EvalError> {
-  collect_environment_opt_args(view, &[])?;
-  return Ok(());
-}
-
 /// 任意引数 `[...]` を型変換してスキーマで検証する低レベル関数
 ///
 /// 任意引数はコマンド名／環境名の直後の高々 1 組（P3。2 組目は parser が構文エラーにする）なので、
@@ -438,8 +392,13 @@ mod tests {
   use super::*;
   use crate::frontend::{
     evaluator::test_support,
-    syntax::{CstElement, SyntaxKind},
+    syntax::{CstElement, SyntaxKind, view::CommandView},
   };
+
+  /// コマンド呼び出しの任意引数を `schema` で収集する
+  fn collect(view: &CommandView<'_>, schema: &[OptDecl]) -> Result<OptArgs, EvalError> {
+    return collect_opt_args(view.source(), view.name(), view.opt_arg(), schema);
+  }
 
   /// CST のルートから最初の `CommandCall` を取り出す
   fn first_command_node<'a>(root: &'a CstNode<'a>) -> &'a CstNode<'a> {
@@ -461,7 +420,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[]).unwrap();
+    let opts = collect(&view, &[]).unwrap();
 
     assert_eq!(opts.get(LABEL), None);
   }
@@ -474,7 +433,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[TITLE.decl()]).unwrap();
+    let opts = collect(&view, &[TITLE.decl()]).unwrap();
 
     assert_eq!(opts.get(TITLE), Some("\"x\"".to_string()));
   }
@@ -487,7 +446,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[TITLE.decl()]);
+    let result = collect(&view, &[TITLE.decl()]);
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "b\""));
   }
@@ -499,7 +458,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[]);
+    let result = collect(&view, &[]);
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "unknown"));
   }
@@ -511,7 +470,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[]);
+    let result = collect(&view, &[]);
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "draft"));
   }
@@ -524,7 +483,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[LABEL.decl()]);
+    let result = collect(&view, &[LABEL.decl()]);
 
     assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "label"));
   }
@@ -538,7 +497,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
+    let result = collect(&view, &[DRAFT.decl()]);
 
     assert!(matches!(result, Err(EvalError::DuplicateOptArgKey { ref key, .. }) if key == "draft"));
   }
@@ -551,7 +510,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
+    let result = collect(&view, &[WIDTH.decl()]);
 
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
@@ -564,7 +523,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[WIDTH.decl()]).unwrap();
+    let opts = collect(&view, &[WIDTH.decl()]).unwrap();
 
     assert_eq!(opts.get(WIDTH), Some(Length::pt(10.0)));
   }
@@ -577,7 +536,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
+    let opts = collect(&view, &[DRAFT.decl()]).unwrap();
 
     assert_eq!(opts.get(DRAFT), Some(true));
   }
@@ -590,7 +549,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
+    let opts = collect(&view, &[DRAFT.decl()]).unwrap();
 
     assert_eq!(opts.get(DRAFT), Some(false));
   }
@@ -603,7 +562,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[DRAFT.decl()]).unwrap();
+    let opts = collect(&view, &[DRAFT.decl()]).unwrap();
 
     assert_eq!(opts.get(DRAFT), Some(true));
   }
@@ -617,7 +576,7 @@ mod tests {
       let cst = test_support::parse_cst(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
-      let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
+      let result = collect(&view, &[DRAFT.decl()]);
 
       assert!(
         matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "draft"),
@@ -635,7 +594,7 @@ mod tests {
     let view = CommandView::new(first_command_node(cst), source);
 
     // bare key は `"true"` になるので整数としては読めない
-    let result = collect_command_opt_args(&view, &[DRAFT.decl()]);
+    let result = collect(&view, &[DRAFT.decl()]);
 
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "draft"));
   }
@@ -661,7 +620,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
+    let result = collect(&view, &[WIDTH.decl()]);
 
     assert!(
       matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive length (pt/mm/cm)"),
@@ -677,7 +636,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let result = collect_command_opt_args(&view, &[WIDTH.decl()]);
+    let result = collect(&view, &[WIDTH.decl()]);
 
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "width"));
   }
@@ -690,7 +649,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[START.decl()]).unwrap();
+    let opts = collect(&view, &[START.decl()]).unwrap();
 
     assert_eq!(opts.get(START), Some(5));
   }
@@ -713,7 +672,7 @@ mod tests {
       let cst = test_support::parse_cst(&source, &arena).unwrap();
       let view = CommandView::new(first_command_node(cst), &source);
 
-      let result = collect_command_opt_args(&view, &[START.decl()]);
+      let result = collect(&view, &[START.decl()]);
 
       assert!(
         matches!(result, Err(EvalError::InvalidOptArgValue { ref expected, .. }) if expected == "positive integer"),
@@ -747,7 +706,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[LABEL.decl(), WIDTH.decl()]).unwrap();
+    let opts = collect(&view, &[LABEL.decl(), WIDTH.decl()]).unwrap();
 
     assert_eq!(opts.get(LABEL), Some("foo".to_string()));
     assert_eq!(opts.get(WIDTH), Some(Length::cm(5.0)));
@@ -762,7 +721,7 @@ mod tests {
     let cst = test_support::parse_cst(source, &arena).unwrap();
     let view = CommandView::new(first_command_node(cst), source);
 
-    let opts = collect_command_opt_args(&view, &[LABEL.decl(), NUMBERED.decl()]).unwrap();
+    let opts = collect(&view, &[LABEL.decl(), NUMBERED.decl()]).unwrap();
 
     assert_eq!(opts.get(NUMBERED), None, "ソースに書かれていないキーは None");
   }

@@ -6,28 +6,23 @@
 use crate::{
   document::{HirNode, HirNodeKind},
   frontend::{
-    evaluator::{EvalContext, EvalError, opt_args},
+    evaluator::EvalContext,
     syntax::view::{EnvironmentView, verbatim_text},
   },
 };
 
 /// `code` 環境を評価して [`HirNodeKind::CodeBlock`] を生成する
 ///
-/// 必須引数の検査は無い — verbatim 環境の `\begin{code}` 直後は本体のバイト列が始まるので、
-/// パーサが必須引数を読むこと自体が構造上起こらない（任意引数だけが隣接 1 組読まれる）。
-///
-/// # Errors
-///
-/// 任意引数が指定された場合にエラーを返します。
-pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<HirNode, EvalError> {
-  opt_args::no_environment_opt_args(view)?;
+/// verbatim 環境の `\begin{code}` 直後は本体のバイト列が始まるので、パーサが必須引数を読むこと自体が構造上起こらない
+/// （任意引数だけが隣接 1 組読まれ、署名の検査が拒否する）。
+pub(super) fn code(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> HirNode {
   let text = match view.body() {
     Some(body) => trim_edge_newlines(verbatim_text(view.source(), body)).to_string(),
     None => String::new(),
   };
 
   let id = ctx.alloc(view.span());
-  return Ok(HirNode::new(id, HirNodeKind::CodeBlock(text)));
+  return HirNode::new(id, HirNodeKind::CodeBlock(text));
 }
 
 /// 本体先頭・末尾の改行を 1 個ずつ落とす
@@ -46,7 +41,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, test_support};
+  use crate::frontend::evaluator::{EvalError, evaluate_children_to_hir, test_support};
 
   /// `.sei` ソースを評価して最初の [`HirNodeKind::CodeBlock`] の本文を取り出す
   fn code_text(source: &str) -> String {

@@ -5,7 +5,8 @@ use crate::{
   frontend::{
     evaluator::{
       EvalError,
-      opt_args::{self, OptKey, collect_environment_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
     syntax::view::EnvironmentView,
   },
@@ -20,6 +21,16 @@ const WIDTHS: OptKey<String> = opt_args::string("widths");
 const LABEL: OptKey<String> = opt_args::string("label");
 /// `table[breakable=...]`（改ページによる分割を許可するか。既定 `true`）
 const BREAKABLE: OptKey<bool> = opt_args::boolean("breakable");
+/// `table` 環境が受け付けるキー
+const KEYS: &[OptDecl] = &[
+  COLUMNS.decl(),
+  WIDTHS.decl(),
+  LABEL.decl(),
+  BREAKABLE.decl(),
+];
+
+/// `table` 環境の署名
+pub(in crate::frontend::evaluator::environment) const SIGNATURE: Signature<0> = Signature::keys_only(KEYS);
 
 /// `table` 環境の任意引数を集約した構造体
 pub(super) struct TableOptArgs {
@@ -33,24 +44,14 @@ pub(super) struct TableOptArgs {
   pub(super) breakable: bool,
 }
 
-/// `table` の任意引数（`columns` / `widths` / `label` / `breakable`）を収集してスカラー化する
-pub(super) fn collect_table_opt_args(view: &EnvironmentView<'_>) -> Result<TableOptArgs, EvalError> {
-  let opts = collect_environment_opt_args(
-    view,
-    &[
-      COLUMNS.decl(),
-      WIDTHS.decl(),
-      LABEL.decl(),
-      BREAKABLE.decl(),
-    ],
-  )?;
-
-  return Ok(TableOptArgs {
+/// 署名で検査済みの `table` の任意引数（`columns` / `widths` / `label` / `breakable`）をスカラー化する
+pub(super) fn table_opt_args(opts: &OptArgs) -> TableOptArgs {
+  return TableOptArgs {
     columns_spec: opts.get(COLUMNS),
     widths_spec: opts.get(WIDTHS),
     label: opts.get(LABEL),
     breakable: opts.get(BREAKABLE).unwrap_or(true),
-  });
+  };
 }
 
 /// `columns=left center right` の値を [`ColumnAlign`] の列に変換する

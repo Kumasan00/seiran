@@ -6,9 +6,8 @@ use crate::{
   document::{HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, MathBlockKind, NodeId},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       environment::math::grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
-      opt_args,
     },
     syntax::view::EnvironmentView,
   },
@@ -18,7 +17,7 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 任意引数・位置引数の指定、本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
+/// 本体のセル評価失敗、3 列以上の行が現れた場合にエラーを返します
 pub(in crate::frontend::evaluator::environment) fn cases(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
@@ -57,9 +56,6 @@ pub(in crate::frontend::evaluator::environment) fn embedded_cases(
 ///
 /// 環境の ID はセルより先に確保する。行は非採番で、行末マーカーは受け付けない。
 fn evaluate_cases(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>) -> Result<(NodeId, Vec<HirMathRow>), EvalError> {
-  opt_args::no_environment_opt_args(view)?;
-  arity::no_environment_args(view)?;
-
   let source = view.source();
   let id = ctx.alloc(view.span());
   let grid = match view.body() {

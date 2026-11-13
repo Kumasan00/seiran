@@ -4,12 +4,13 @@ use crate::{
   document::{HirInline, HirInlineKind, HirTableCell},
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       environment::table::grid::Coverage,
       inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
-      opt_args::{self, OptKey, collect_command_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::{Bound, Signature},
     },
-    syntax::{CstElement, SyntaxKind, token::TokenKind, view::CommandView},
+    syntax::{ArgMode, CstElement, CstNode, SyntaxKind, token::TokenKind, view::CommandView},
   },
   source::Span,
 };
@@ -20,6 +21,10 @@ const SPAN: OptKey<u32> = opt_args::positive_int("span");
 const ROW_SPAN: OptKey<u32> = opt_args::positive_int("rowspan");
 /// `\cell[rule_below]`（跨ぐ列の範囲の下に部分罫を引く）
 const RULE_BELOW: OptKey<bool> = opt_args::boolean("rule_below");
+/// `\cell` が受け付けるキー
+const KEYS: &[OptDecl] = &[SPAN.decl(), ROW_SPAN.decl(), RULE_BELOW.decl()];
+/// `\cell` の署名（`\cell` は本体走査の許可リストを通らず、[`build_cell`] が名前で拾ってこの署名で検査する）
+const SIGNATURE: Signature<1> = Signature::new([ArgMode::Inherit], "セル内容", KEYS);
 
 /// `&` 分割後の 1 区画を [`HirTableCell`] に変換する
 ///
@@ -69,7 +74,8 @@ pub(super) fn build_cell(
         span: cell_cmd.span().into(),
       });
     }
-    let cell = evaluate_cell_command(&cell_cmd, ctx, index_policy)?;
+    let Bound { args: [arg], opts } = SIGNATURE.bind(&cell_cmd)?;
+    let cell = evaluate_cell_command(&cell_cmd, arg, &opts, ctx, index_policy)?;
     if let Some(owner) = coverage.owner(column..column + cell.column_span as usize) {
       return Err(EvalError::TableCoveredSlotNotEmpty {
         span: cell_cmd.span().into(),
@@ -102,15 +108,14 @@ pub(super) fn build_cell(
 /// `\cell[span=N, rowspan=N, rule_below]{...}` を属性付きセルに変換する
 fn evaluate_cell_command(
   view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  opts: &OptArgs,
   ctx: &EvalContext<'_>,
   index_policy: IndexPolicy,
 ) -> Result<HirTableCell, EvalError> {
-  let opts = collect_command_opt_args(view, &[SPAN.decl(), ROW_SPAN.decl(), RULE_BELOW.decl()])?;
   let column_span = opts.get(SPAN).unwrap_or(1);
   let row_span = opts.get(ROW_SPAN).unwrap_or(1);
   let rule_below = opts.get(RULE_BELOW).unwrap_or(false);
-
-  let arg = arity::exactly_one_arg(view, "セル内容")?;
 
   let id = ctx.alloc(view.span());
   let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, index_policy)?);

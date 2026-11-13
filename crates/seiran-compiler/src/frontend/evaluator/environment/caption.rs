@@ -4,13 +4,16 @@ use crate::{
   document::HirInline,
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       inline::{IndexPolicy, evaluate_inline_children},
-      opt_args,
+      signature::Signature,
     },
-    syntax::view::CommandView,
+    syntax::{ArgMode, CstNode, view::CommandView},
   },
 };
+
+/// `\caption` の署名（図と表が共有する）
+pub(super) const SIGNATURE: Signature<1> = Signature::new([ArgMode::Inherit], "キャプション本文", &[]);
 
 /// `\caption{...}` の引数をインライン要素列に変換する
 ///
@@ -18,9 +21,11 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 引数の不足・過剰、未許可の任意引数がある場合にエラーを返します。
-pub(super) fn evaluate_caption(view: &CommandView<'_>, ctx: &EvalContext<'_>) -> Result<Vec<HirInline>, EvalError> {
-  opt_args::no_command_opt_args(view)?;
-  let first_arg = arity::exactly_one_arg(view, "キャプション本文")?;
-  return evaluate_inline_children(view.source(), ctx, first_arg, IndexPolicy::Allow);
+/// 本文の評価エラーを返します。
+pub(super) fn evaluate_caption(
+  view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<Vec<HirInline>, EvalError> {
+  return evaluate_inline_children(view.source(), ctx, arg, IndexPolicy::Allow);
 }

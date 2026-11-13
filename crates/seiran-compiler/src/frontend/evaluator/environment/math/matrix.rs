@@ -8,9 +8,10 @@ use crate::{
   },
   frontend::{
     evaluator::{
-      EvalContext, EvalError, arity,
+      EvalContext, EvalError,
       environment::math::grid::{GridSpec, evaluate_grid, into_unnumbered_rows},
-      opt_args::{self, OptKey, collect_environment_opt_args},
+      opt_args::{self, OptArgs, OptDecl, OptKey},
+      signature::Signature,
     },
     syntax::view::EnvironmentView,
   },
@@ -18,17 +19,23 @@ use crate::{
 
 /// `matrix[delimiter=...]`（両端の区切り記号）
 const DELIMITER: OptKey<String> = opt_args::string("delimiter");
+/// `matrix` 環境が受け付けるキー
+const KEYS: &[OptDecl] = &[DELIMITER.decl()];
+
+/// `matrix` 環境の署名（表示数式ブロックと数式の中の行列で共有する）
+pub(in crate::frontend::evaluator::environment) const SIGNATURE: Signature<0> = Signature::keys_only(KEYS);
 
 /// `matrix` 環境を表示数式ブロックとして評価する
 ///
 /// # Errors
 ///
-/// 未知の任意引数キー・`delimiter` の不正値・位置引数の指定、本体のセル評価失敗時にエラーを返します
+/// `delimiter` の不正値、本体のセル評価失敗時にエラーを返します
 pub(in crate::frontend::evaluator::environment) fn matrix(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
+  opts: &OptArgs,
 ) -> Result<HirNode, EvalError> {
-  let (id, delimiter, rows) = evaluate_matrix(view, ctx)?;
+  let (id, delimiter, rows) = evaluate_matrix(view, ctx, opts)?;
   return Ok(HirNode::new(
     id,
     HirNodeKind::MathBlock(HirMathBlock {
@@ -48,8 +55,9 @@ pub(in crate::frontend::evaluator::environment) fn matrix(
 pub(in crate::frontend::evaluator::environment) fn embedded_matrix(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
+  opts: &OptArgs,
 ) -> Result<HirMath, EvalError> {
-  let (id, delimiter, rows) = evaluate_matrix(view, ctx)?;
+  let (id, delimiter, rows) = evaluate_matrix(view, ctx, opts)?;
   return Ok(HirMath::new(
     id,
     HirMathKind::Matrix {
@@ -65,8 +73,8 @@ pub(in crate::frontend::evaluator::environment) fn embedded_matrix(
 fn evaluate_matrix(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
+  opts: &OptArgs,
 ) -> Result<(NodeId, MathDelimiter, Vec<HirMathRow>), EvalError> {
-  let opts = collect_environment_opt_args(view, &[DELIMITER.decl()])?;
   let delimiter = match opts.get(DELIMITER) {
     Some(value) => {
       let Ok(delimiter) = value.parse::<MathDelimiter>() else {
@@ -81,7 +89,6 @@ fn evaluate_matrix(
     },
     None => MathDelimiter::None,
   };
-  arity::no_environment_args(view)?;
 
   let source = view.source();
   let id = ctx.alloc(view.span());
