@@ -22,9 +22,12 @@ description: >-
 
 ## 1. 実装順序（データフロー順）
 
-1. **frontend**: phf レジストリへ登録 — コマンドは `frontend/evaluator/command.rs`、環境は
-   `frontend/evaluator/environment.rs`、数式記号は `frontend/evaluator/command/symbol.rs`。
-   未知の拒否（P6）はレジストリ方式が保証する
+1. **frontend**: phf レジストリへ登録 — コマンドは `frontend/evaluator/command.rs`、数式の語彙は
+   `frontend/evaluator/math.rs` の `MATH_COMMANDS`、環境は `frontend/evaluator/environment.rs`、数式記号は
+   `frontend/evaluator/command/symbol.rs`。コマンドは必須引数の個数で分けた内側 enum（`Leaf` / `Unary` / `Binary`）へ
+   variant を足し、その `signature()` に読み取り方・不足時の説明・受け付けるキーを宣言する（環境は
+   `EnvironmentKind::signature()`、環境内コマンドは許可リストの組の署名）。個数と未知キーの検査は dispatch が署名から
+   行うので、ハンドラは検査を呼ばない。未知の拒否（P6）はレジストリ方式と署名が保証する
 2. **document**: HIR 語彙型の追加（`HirDocument` に値として載る型は document が所有）
 3. **semantics**: 採番・ラベル・`\ref` 解決・引用に関与するなら `analyze` の 1 走査と
    `SemanticFacts` へ確定を足す（文書木への書き戻しはどの段もしない）
