@@ -1,4 +1,5 @@
-//! 画像バイト列から自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を検証して持つ。
+//! 画像の自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height、PDF はページの表示寸法 pt）を検証して持ち、
+//! ラスタの寸法をバイト列から読む。
 
 use std::io::Cursor;
 
@@ -8,13 +9,13 @@ use crate::typeset::error::TypesetError;
 
 /// 検証済みの自然寸法（幅・高さとも有限かつ正）。
 ///
-/// デコーダ（`image` / `usvg`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定は
+/// デコーダ（`image` / `usvg` / `hayro`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定は
 /// 縦横比を必ず算出でき、失敗しない。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct NaturalSize {
-  /// 自然幅（ラスタはピクセル、SVG は usvg が報告した width）
+  /// 自然幅（ラスタはピクセル、SVG は usvg が報告した width、PDF は pt）
   width: f32,
-  /// 自然高さ（ラスタはピクセル、SVG は usvg が報告した height）
+  /// 自然高さ（ラスタはピクセル、SVG は usvg が報告した height、PDF は pt）
   height: f32,
 }
 
@@ -43,7 +44,7 @@ impl NaturalSize {
   clippy::cast_precision_loss,
   reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）は縦横比と表示寸法に見える差を生まない"
 )]
-pub(super) fn natural_image_size(
+pub(super) fn raster_natural_size(
   path: &str,
   format: image::ImageFormat,
   bytes: &[u8],
@@ -66,13 +67,13 @@ pub(super) fn natural_image_size(
 
 #[cfg(test)]
 mod tests {
-  use super::{NaturalSize, natural_image_size};
+  use super::{NaturalSize, raster_natural_size};
   use crate::typeset::error::TypesetError;
 
   #[test]
-  fn natural_image_size_reports_broken_raster_as_decode_error() {
+  fn raster_natural_size_reports_broken_bytes_as_decode_error() {
     let bytes = b"not a png";
-    let result = natural_image_size("broken.png", image::ImageFormat::Png, bytes);
+    let result = raster_natural_size("broken.png", image::ImageFormat::Png, bytes);
     assert!(matches!(result, Err(TypesetError::DecodeImage { path, .. }) if path == "broken.png"));
   }
 

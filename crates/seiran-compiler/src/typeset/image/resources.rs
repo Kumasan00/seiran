@@ -145,7 +145,7 @@ pub(crate) fn load_image_resources(
           continue;
         },
       },
-      ImageFormat::Png => match natural_size::natural_image_size(&path_string, image::ImageFormat::Png, &bytes) {
+      ImageFormat::Png => match natural_size::raster_natural_size(&path_string, image::ImageFormat::Png, &bytes) {
         Ok(size) => {
           natural_sizes.insert((request.path.clone(), None), size);
         },
@@ -154,7 +154,7 @@ pub(crate) fn load_image_resources(
           continue;
         },
       },
-      ImageFormat::Jpeg => match natural_size::natural_image_size(&path_string, image::ImageFormat::Jpeg, &bytes) {
+      ImageFormat::Jpeg => match natural_size::raster_natural_size(&path_string, image::ImageFormat::Jpeg, &bytes) {
         Ok(size) => {
           natural_sizes.insert((request.path.clone(), None), size);
         },
