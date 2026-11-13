@@ -1538,6 +1538,17 @@ mod tests {
   }
 
   #[test]
+  fn evaluate_math_frac_empty_arg_is_empty_group() {
+    let math = inline_math_nodes(r"$\frac{}{b}$");
+
+    let HirMathKind::Frac { numer, denom } = &math[0].kind else {
+      panic!("Frac が期待されます: {math:?}");
+    };
+    assert!(matches!(&numer.kind, HirMathKind::Group(children) if children.is_empty()), "{numer:?}");
+    assert!(matches!(&denom.kind, HirMathKind::Text(t) if t == "b"), "{denom:?}");
+  }
+
+  #[test]
   fn evaluate_math_frac_arg_structures_superscript() {
     let result = evaluate_source(r"$\frac{x^{2}}{y}$");
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
