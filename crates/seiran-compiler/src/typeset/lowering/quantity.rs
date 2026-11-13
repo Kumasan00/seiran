@@ -180,12 +180,17 @@ fn push_text(pieces: &mut Vec<QuantityPiece>, text: &str) {
 /// 数字列 `digits` を 3 桁ごとに区切って積む（`from_right` なら整数部として右から、偽なら小数部として左から）
 fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool, style: &QuantityStyle) {
   let len = digits.len();
-  let grouped = style.digit_group_separator != DigitGroupSeparator::None
-    && (len > UNGROUPED_DIGITS + 1 || (len == UNGROUPED_DIGITS + 1 && style.group_four_digits));
-  if !grouped {
+  let long_enough = len > UNGROUPED_DIGITS + 1 || (len == UNGROUPED_DIGITS + 1 && style.group_four_digits);
+  let separator: Option<fn(&mut Vec<QuantityPiece>)> = match style.digit_group_separator {
+    DigitGroupSeparator::None => None,
+    DigitGroupSeparator::Thin => Some(|pieces| pieces.push(QuantityPiece::Space(MathSpace::Thin))),
+    DigitGroupSeparator::Comma => Some(|pieces| push_text(pieces, ",")),
+    DigitGroupSeparator::Period => Some(|pieces| push_text(pieces, ".")),
+  };
+  let Some(push_separator) = separator.filter(|_| return long_enough) else {
     push_text(pieces, digits);
     return;
-  }
+  };
   // 数字列は ASCII なので、バイト位置で切ってよい
   let head = if from_right {
     match len % UNGROUPED_DIGITS {
@@ -199,12 +204,7 @@ fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool,
   let mut end = head;
   while start < len {
     if start > 0 {
-      match style.digit_group_separator {
-        DigitGroupSeparator::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
-        DigitGroupSeparator::Comma => push_text(pieces, ","),
-        DigitGroupSeparator::Period => push_text(pieces, "."),
-        DigitGroupSeparator::None => unreachable!("区切りが none なら grouped は偽で、ここへは来ない"),
-      }
+      push_separator(pieces);
     }
     push_text(pieces, &digits[start..end]);
     start = end;
@@ -290,6 +290,16 @@ mod tests {
 
     assert_eq!(number_pieces(&value, &european), [text("12.345,678")]);
     assert_eq!(number_pieces(&value, &ungrouped), [text("12345.678")]);
+  }
+
+  #[test]
+  fn comma_separator_joins_the_digit_text() {
+    let style = QuantityStyle {
+      digit_group_separator: DigitGroupSeparator::Comma,
+      ..QuantityStyle::default()
+    };
+
+    assert_eq!(number_pieces(&int("1234567"), &style), [text("1,234,567")]);
   }
 
   #[test]
