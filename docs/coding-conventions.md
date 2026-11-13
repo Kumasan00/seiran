@@ -406,10 +406,10 @@ Unicode の文字名）。doc はこれに何をするか 1 行を足す。ど�
 ### 役割分担
 
 **lint の採用根拠の正典は root `Cargo.toml`** — `[workspace.lints.clippy]` / `[workspace.lints.rust]` /
-`[workspace.lints.rustdoc]`（各クレートは `lints.workspace = true` で 3 テーブルとも継承）に 1 lint = 1 行の
-根拠コメントが付いていて、節見出しが下の目的に対応する。rustdoc テーブルだけは `cargo doc` を回して初めて
-効くので、CI がその形を持つ（「運用」節）。lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の
-理由は `Cargo.toml` のコメントに書き、1 行で言い切れない lint の**書き方**は本書の規約各節に置く（1 行で
+`[workspace.lints.rustdoc]` / `[workspace.lints.cargo]`（各クレートは `lints.workspace = true` で 4 テーブルとも
+継承）に 1 lint = 1 行の根拠コメントが付いていて、節見出しが下の目的に対応する。rustdoc テーブルは `cargo doc` を
+回して初めて効き、cargo テーブルは rustc の `-D warnings` で落ちないので、CI がそれぞれの形を持つ（「運用」節）。
+lint の増減と根拠の更新が同じ diff に閉じるように、個々の lint の理由は `Cargo.toml` のコメントに書き、1 行で言い切れない lint の**書き方**は本書の規約各節に置く（1 行で
 足りる lint は根拠コメントが書き方を兼ねる）。`CLAUDE.md` の Clippy 節は運用（CI の形・抑制の作法）だけを持つ。
 
 **lint 側の設定値は root `clippy.toml`** — 置くのは**既定と違う値だけ**で、既定どおり維持するノブは書かない
@@ -488,11 +488,14 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
 ### 運用
 
 - CI と pre-commit フック（tracked の `.git-hooks/pre-commit`。`git config core.hooksPath .git-hooks` で有効化）は
-  `cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの
-  指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する。
+  `CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --all-features -- -D warnings` で走る。warn レベルの
+  指摘もそこでビルド失敗になるため、素の `cargo clippy` ではなくこの形で確認する。cargo lint
+  （`[workspace.lints.cargo]`）は manifest を読む cargo 自身が出すので rustc に渡す `-D warnings` では落ちず、
+  `CARGO_BUILD_WARNINGS=deny`（`build.warnings`）が落とす。`.cargo/config.toml` に置かないのは、手元の
+  `cargo build` / `run` まで作業途中の warning で止めないため。
 - root の `cargo clippy` / `test` / `doc` は `default-members`（製品 3 crate）だけを対象にし、fuzz crate
   `seiran-fuzz` を含まない。その lint は CI が `cargo clippy -p seiran-fuzz --all-targets -- -D warnings` で別に
-  回す（pre-commit には入れていない。libFuzzer の C++ ビルドが毎コミットに乗るため）。
+  回す（同じく `CARGO_BUILD_WARNINGS=deny` 付き。pre-commit には入れていない。libFuzzer の C++ ビルドが毎コミットに乗るため）。
 - テストは CI・pre-commit とも `cargo test --all-features` で走る。`--all-targets` を付けると cargo の仕様で
   **doctest が外れる**（benches / examples は存在しないので、外した差分は doctest が加わることだけ）。
 - **rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く**。CI は
@@ -513,7 +516,8 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
 - **新しい lint の 0 件は lint 単位で実測する**。
   `cargo clippy --all-targets --all-features --message-format=json -- -W clippy::<name>` を回し、診断コード
   （`message.code.code`）で数える。短縮フォーマットの grep は出力に lint 名を含まないため全件 0 に見える
-  （この偽陰性で 14 件が隠れた実例がある）。
+  （この偽陰性で 14 件が隠れた実例がある）。cargo lint は `-W` で渡せないので、table に足して
+  `cargo check --workspace --all-targets --all-features` を回す（各発火に `cargo::<name>` の note が付くので、その行を数える）。
 
 ## テスト
 

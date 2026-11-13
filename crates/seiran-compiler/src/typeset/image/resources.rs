@@ -114,28 +114,29 @@ pub(crate) fn load_image_resources(
         continue;
       },
     };
-    if request.format == ImageFormat::Pdf {
-      let file = match pdf::open(&path_string, &bytes) {
-        Ok(file) => file,
-        Err(error) => {
-          errors.push(error);
-          continue;
-        },
-      };
-      for &page in &request.pages {
-        match file.page(&path_string, page) {
-          Ok(selected) => {
-            let page_index = pdf_page_index(request.format, page);
-            natural_sizes.insert((request.path.clone(), page_index), selected.natural_size);
-            if selected.has_annotations {
-              annotated_pages.insert((request.path.clone(), page.unwrap_or(1)));
-            }
+    match request.format {
+      ImageFormat::Pdf => {
+        let file = match pdf::open(&path_string, &bytes) {
+          Ok(file) => file,
+          Err(error) => {
+            errors.push(error);
+            continue;
           },
-          Err(error) => errors.push(error),
+        };
+        for &page in &request.pages {
+          match file.page(&path_string, page) {
+            Ok(selected) => {
+              let page_index = pdf_page_index(request.format, page);
+              natural_sizes.insert((request.path.clone(), page_index), selected.natural_size);
+              if selected.has_annotations {
+                annotated_pages.insert((request.path.clone(), page.unwrap_or(1)));
+              }
+            },
+            Err(error) => errors.push(error),
+          }
         }
-      }
-    } else if request.format == ImageFormat::Svg {
-      match svg::inspect(&path_string, &bytes, svg) {
+      },
+      ImageFormat::Svg => match svg::inspect(&path_string, &bytes, svg) {
         Ok(size) => {
           natural_sizes.insert((request.path.clone(), None), size);
         },
@@ -143,9 +144,8 @@ pub(crate) fn load_image_resources(
           errors.extend(found);
           continue;
         },
-      }
-    } else {
-      match natural_size::natural_image_size(&path_string, request.format, &bytes) {
+      },
+      ImageFormat::Png => match natural_size::raster_natural_size(&path_string, image::ImageFormat::Png, &bytes) {
         Ok(size) => {
           natural_sizes.insert((request.path.clone(), None), size);
         },
@@ -153,7 +153,16 @@ pub(crate) fn load_image_resources(
           errors.push(error);
           continue;
         },
-      }
+      },
+      ImageFormat::Jpeg => match natural_size::raster_natural_size(&path_string, image::ImageFormat::Jpeg, &bytes) {
+        Ok(size) => {
+          natural_sizes.insert((request.path.clone(), None), size);
+        },
+        Err(error) => {
+          errors.push(error);
+          continue;
+        },
+      },
     }
     assets.insert(
       request.path.clone(),
@@ -335,6 +344,27 @@ mod tests {
     assert_eq!(*page_index, None);
     assert_eq!(asset.format, ImageFormat::Png);
     assert_eq!(asset.bytes.len(), expected_len, "読み込んだバイト数は登録した fixture のバイト数と一致するはず");
+  }
+
+  #[test]
+  fn load_image_resources_reads_each_format_by_its_own_reader() {
+    let source = MemoryProjectSource::new()
+      .with_bytes("/project/a.png", read_image_fixture("testimage5.png"))
+      .with_bytes("/project/b.jpg", read_image_fixture("testimage1.jpg"))
+      .with_bytes("/project/c.svg", read_image_fixture("testimage6.svg"));
+    let requests = vec![
+      request("/project/a.png", ImageFormat::Png),
+      request("/project/b.jpg", ImageFormat::Jpeg),
+      request("/project/c.svg", ImageFormat::Svg),
+    ];
+
+    let (resources, _) = load_image_resources(&source, &requests, &svg_parser()).expect("3 形式とも読めるはず");
+
+    assert_eq!(resources.natural_size(&ProjectPath::new("/project/a.png"), None), NaturalSize::new(756.0, 1008.0));
+    assert_eq!(resources.natural_size(&ProjectPath::new("/project/b.jpg"), None), NaturalSize::new(1252.0, 830.0));
+    assert_eq!(resources.natural_size(&ProjectPath::new("/project/c.svg"), None), NaturalSize::new(200.0, 120.0));
+    let formats: Vec<_> = resources.into_drawables().into_iter().map(|(_, _, asset)| return asset.format).collect();
+    assert_eq!(formats, [ImageFormat::Png, ImageFormat::Jpeg, ImageFormat::Svg]);
   }
 
   #[test]

@@ -1,20 +1,21 @@
-//! 画像バイト列から自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height）を検証して持つ。
+//! 画像の自然寸法（ラスタはピクセル、SVG は usvg が報告した width / height、PDF はページの表示寸法 pt）を検証して持ち、
+//! ラスタの寸法をバイト列から読む。
 
 use std::io::Cursor;
 
 use image::ImageReader;
 
-use crate::{document::ImageFormat, typeset::error::TypesetError};
+use crate::typeset::error::TypesetError;
 
 /// 検証済みの自然寸法（幅・高さとも有限かつ正）。
 ///
-/// デコーダ（`image` / `usvg`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定は
+/// デコーダ（`image` / `usvg` / `hayro`）が報告した値をこの型へ通す時点で検証するので、表示寸法の確定は
 /// 縦横比を必ず算出でき、失敗しない。
 #[derive(Debug, Clone, Copy, PartialEq)]
 pub(super) struct NaturalSize {
-  /// 自然幅（ラスタはピクセル、SVG は usvg が報告した width）
+  /// 自然幅（ラスタはピクセル、SVG は usvg が報告した width、PDF は pt）
   width: f32,
-  /// 自然高さ（ラスタはピクセル、SVG は usvg が報告した height）
+  /// 自然高さ（ラスタはピクセル、SVG は usvg が報告した height、PDF は pt）
   height: f32,
 }
 
@@ -31,26 +32,30 @@ impl NaturalSize {
   pub(super) fn aspect_ratio(self) -> f32 { return self.height / self.width; }
 }
 
-/// ラスタ画像のバイト列から寸法ヘッダを読み、検証済みの自然寸法を返す。
+/// ラスタ画像の寸法ヘッダ（PNG は `IHDR`、JPEG は `SOF`）からピクセル寸法を読み、検証済みの自然寸法を返す。
 ///
-/// `path` はエラーメッセージにのみ使う。
+/// `path` はエラーメッセージにのみ使う。EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値を
+/// そのまま使うため、適用すると組版時の自然寸法と描画時の解釈がずれる。
 ///
 /// # Errors
 ///
 /// デコードに失敗した場合と、報告された寸法が有限かつ正でない場合に [`TypesetError`] を返す。
-pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) -> Result<NaturalSize, TypesetError> {
-  let (width, height) = match format {
-    ImageFormat::Png => raster_size(path, bytes, image::ImageFormat::Png),
-    ImageFormat::Jpeg => raster_size(path, bytes, image::ImageFormat::Jpeg),
-    ImageFormat::Svg => {
-      unreachable!(
-        "SVG の自然寸法は文字の検査と合わせて typeset::image::svg が求め、資源の読込は SVG をここへ渡さない: {path}"
-      )
-    },
-    ImageFormat::Pdf => {
-      unreachable!("PDF の自然寸法はページ単位で typeset::image::pdf が求め、資源の読込は PDF をここへ渡さない: {path}")
-    },
-  }?;
+#[expect(
+  clippy::cast_precision_loss,
+  reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）は縦横比と表示寸法に見える差を生まない"
+)]
+pub(super) fn raster_natural_size(
+  path: &str,
+  format: image::ImageFormat,
+  bytes: &[u8],
+) -> Result<NaturalSize, TypesetError> {
+  let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().map_err(|source| {
+    return TypesetError::DecodeImage {
+      path: path.to_string(),
+      source,
+    };
+  })?;
+  let (width, height) = (width as f32, height as f32);
   return NaturalSize::new(width, height).ok_or_else(|| {
     return TypesetError::InvalidImageNaturalSize {
       path: path.to_string(),
@@ -60,33 +65,15 @@ pub(super) fn natural_image_size(path: &str, format: ImageFormat, bytes: &[u8]) 
   });
 }
 
-/// ラスタ画像のピクセル寸法を寸法ヘッダ（PNG は `IHDR`、JPEG は `SOF`）から読む。
-///
-/// EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値をそのまま使うため、
-/// 適用すると組版時の自然寸法と描画時の解釈がずれる。
-#[expect(
-  clippy::cast_precision_loss,
-  reason = "f32 で正確なのは 2^24 px までで、それを超える寸法の丸め（相対 2^-24 以下）は縦横比と表示寸法に見える差を生まない"
-)]
-fn raster_size(path: &str, bytes: &[u8], format: image::ImageFormat) -> Result<(f32, f32), TypesetError> {
-  let (width, height) = ImageReader::with_format(Cursor::new(bytes), format).into_dimensions().map_err(|source| {
-    return TypesetError::DecodeImage {
-      path: path.to_string(),
-      source,
-    };
-  })?;
-  return Ok((width as f32, height as f32));
-}
-
 #[cfg(test)]
 mod tests {
-  use super::{NaturalSize, natural_image_size};
-  use crate::{document::ImageFormat, typeset::error::TypesetError};
+  use super::{NaturalSize, raster_natural_size};
+  use crate::typeset::error::TypesetError;
 
   #[test]
-  fn natural_image_size_reports_broken_raster_as_decode_error() {
+  fn raster_natural_size_reports_broken_bytes_as_decode_error() {
     let bytes = b"not a png";
-    let result = natural_image_size("broken.png", ImageFormat::Png, bytes);
+    let result = raster_natural_size("broken.png", image::ImageFormat::Png, bytes);
     assert!(matches!(result, Err(TypesetError::DecodeImage { path, .. }) if path == "broken.png"));
   }
 

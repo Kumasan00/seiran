@@ -232,13 +232,10 @@ fn evaluate_math_script_content(
 
 /// ノード列を単一ノードへ畳む（1 個ならそのまま、それ以外は予約済み ID のグループにする）
 fn collapse_single(group_id: NodeId, nodes: Vec<HirMath>) -> HirMath {
-  if nodes.len() == 1 {
-    let Some(single) = nodes.into_iter().next() else {
-      unreachable!("長さ 1 を確認した直後なので必ず要素がある")
-    };
-    return single;
-  }
-  return HirMath::new(group_id, HirMathKind::Group(nodes));
+  return match <[HirMath; 1]>::try_from(nodes) {
+    Ok([single]) => single,
+    Err(nodes) => HirMath::new(group_id, HirMathKind::Group(nodes)),
+  };
 }
 
 /// 数式内コマンドの種類

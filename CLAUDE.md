@@ -60,7 +60,7 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 cargo run -- build [-c <config_path>]                      # 設定ファイルの sources から PDF を生成
 #   -v|-vv|-vvv（工程 / 内部詳細 / 最大）・-q（端末抑止。-v と直交）・--log-file <path> は全サブコマンド共通。意味は README「使い方」
 cargo +nightly fmt                                         # フォーマット（nightly 必須）
-cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pre-commit と同じ形）
+CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pre-commit と同じ形）
 cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
 RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features   # doc ビルド（CI と同じ形）
 git config core.hooksPath .git-hooks                      # pre-commit（fmt / clippy / test）を有効化。clone 後に 1 回
@@ -227,9 +227,9 @@ seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler �
 
 ### Clippy 運用
 
-lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc 3 テーブルとも同じ規則）、節見出しは有効化の目的で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
+lint の採用根拠は root `Cargo.toml` の 1 行コメント（`[workspace.lints]` の clippy / rust / rustdoc / cargo 4 テーブルとも同じ規則）、節見出しは有効化の目的で、置き場の規則と採用条件は `docs/coding-conventions.md` の Clippy 節。`clippy::all` が deny、`pedantic` が warn。
 
-- 確認は CI / pre-commit と同じ `cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる）
+- 確認は CI / pre-commit と同じ `CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --all-features -- -D warnings`（warn もビルド失敗になる。cargo lint（`[workspace.lints.cargo]`）は cargo 自身が出すので `-D warnings` では落ちず、環境変数側が落とす）
 - rustdoc lint（`[workspace.lints.rustdoc]`）は `cargo doc` を回して初めて効く。CI と同じ形は
   `RUSTDOCFLAGS="-D warnings" cargo doc --no-deps --document-private-items --all-features`
 - **抑制は `#[expect(...)]` + `reason = "..."` だけ**（`allow_attributes*`）。`reason` は「なぜ許してよいか」＝上流のどの保証・設計判断が根拠かで、lint 名の言い換えは不可。根拠が言えないなら直す（`dead_code` は削除）
