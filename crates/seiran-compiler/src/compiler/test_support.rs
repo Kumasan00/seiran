@@ -423,11 +423,9 @@ fn string_field(table: &toml::value::Table, key: &str) -> Option<String> {
 
 /// テーブル直下の文字列配列フィールドを取り出す。
 fn string_array_field(table: &toml::value::Table, key: &str) -> Vec<String> {
-  return table
-    .get(key)
-    .and_then(|value| return value.as_array())
-    .map(|values| return values.iter().filter_map(|value| return value.as_str()).map(str::to_string).collect())
-    .unwrap_or_default();
+  return table.get(key).and_then(|value| return value.as_array()).map_or_default(|values| {
+    return values.iter().filter_map(|value| return value.as_str()).map(str::to_string).collect();
+  });
 }
 
 /// 検証対象の機能に必要な style 差分を fixture 名ごとに適用する。

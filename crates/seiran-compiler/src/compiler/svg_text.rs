@@ -34,8 +34,8 @@ fn diagnostics(failure: &CompileFailure) -> Vec<(String, String, String)> {
   return failure
     .diagnostics()
     .map(|diagnostic| {
-      let code = diagnostic.code().map(|code| return code.to_string()).unwrap_or_default();
-      let help = diagnostic.help().map(|help| return help.to_string()).unwrap_or_default();
+      let code = diagnostic.code().map_or_default(|code| return code.to_string());
+      let help = diagnostic.help().map_or_default(|help| return help.to_string());
       return (code, diagnostic.to_string(), help);
     })
     .collect();

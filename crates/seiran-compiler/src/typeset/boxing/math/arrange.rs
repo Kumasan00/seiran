@@ -839,7 +839,7 @@ mod tests {
 
   /// 指数・被根号の順に `Text` を（テキスト, スタイル）で返す
   fn radical_texts(radical: &MathRadical) -> Vec<(String, TextStyle)> {
-    let mut out = radical.degree.as_deref().map(atom_texts).unwrap_or_default();
+    let mut out = radical.degree.as_deref().map_or_default(atom_texts);
     out.extend(atom_texts(&radical.radicand));
     return out;
   }

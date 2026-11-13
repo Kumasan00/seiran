@@ -101,9 +101,7 @@ fn build_heading(
 
   // 副作用のない生成なので、遅延させても結果は変わらない。
   let make_title = || {
-    return Ok::<_, Infallible>(
-      title.map(|t| return vec![InlineNode::Text(t.to_string(), base_style)]).unwrap_or_default(),
-    );
+    return Ok::<_, Infallible>(title.map_or_default(|t| return vec![InlineNode::Text(t.to_string(), base_style)]));
   };
   let of_display = of.map(|target| return state.ref_display(ctx.style, target));
 

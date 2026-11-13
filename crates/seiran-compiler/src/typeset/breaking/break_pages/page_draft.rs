@@ -552,24 +552,20 @@ mod tests {
       boxes: Vec::new(),
       height: pt(8.0),
       depth: pt(2.0),
-      links: link
-        .map(|target| {
-          return vec![LineLink {
-            target,
-            x0: Length::ZERO,
-            x1: pt(20.0),
-          }];
-        })
-        .unwrap_or_default(),
+      links: link.map_or_default(|target| {
+        return vec![LineLink {
+          target,
+          x0: Length::ZERO,
+          x1: pt(20.0),
+        }];
+      }),
       footnotes: Vec::new(),
-      index_marks: index_word
-        .map(|word| {
-          return vec![IndexTerm {
-            word: word.to_string(),
-            reading: None,
-          }];
-        })
-        .unwrap_or_default(),
+      index_marks: index_word.map_or_default(|word| {
+        return vec![IndexTerm {
+          word: word.to_string(),
+          reading: None,
+        }];
+      }),
     };
   }
 

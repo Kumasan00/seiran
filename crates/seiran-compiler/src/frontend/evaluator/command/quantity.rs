@@ -117,7 +117,7 @@ mod tests {
       "\\qty{5}{m^{1}}",
       "\\qty{5}{m/s}",
     ] {
-      let help = eval_error(source).help().map(|help| return help.to_string()).unwrap_or_default();
+      let help = eval_error(source).help().map_or_default(|help| return help.to_string());
 
       assert!(!help.contains("\\num") && !help.contains("\\unit"), "{source}: {help}");
     }
