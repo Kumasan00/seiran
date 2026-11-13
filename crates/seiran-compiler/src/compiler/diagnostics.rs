@@ -130,6 +130,33 @@ fn diagnostic_unknown_command() {
 }
 
 #[test]
+fn diagnostic_extra_command_argument() {
+  // P2: 必須引数の個数は固定なので、余分な必須引数はコマンド名つきで拒否する
+  let failure = compile_err(&["tests/text/diagnostics/extra_command_argument.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::extra_command_argument".to_string()]);
+  assert_matches_golden("extra_command_argument", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_extra_environment_argument() {
+  // P2: 必須引数を取らない環境の `\begin{name}` に続く `{...}` は環境名つきで拒否する
+  let failure = compile_err(&["tests/text/diagnostics/extra_environment_argument.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::extra_environment_argument".to_string()]);
+  assert_matches_golden("extra_environment_argument", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_unknown_opt_arg_key() {
+  // P6: 環境内コマンドの宣言に無いキーは、受け付けるキーの一覧つきで拒否する
+  let failure = compile_err(&["tests/text/diagnostics/unknown_opt_arg_key.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unknown_opt_arg_key".to_string()]);
+  assert_matches_golden("unknown_opt_arg_key", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_table_separator_on_frame_boundary() {
   // G1: 枠罫の持ち場（ヘッダ直後）への separator は同じ境界への 2 通りの書き方になるので拒否する
   let failure = compile_err(&["tests/text/diagnostics/table_separator_on_frame_boundary.sei"]);
