@@ -16,7 +16,7 @@ use crate::{
   length::{Length, LengthOverflow},
   style::Style,
   typeset::{
-    boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, PENALTY_FORBID_BREAK, Page, PlacedAnchor},
+    boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
     error::ElementOverflow,
     glyph_issues::{Generated, GlyphOrigin},
@@ -274,7 +274,7 @@ fn push_entry_line(
 
 /// 区分見出しのブロック（上余白・見出し行・分割禁止・下余白）を積む
 ///
-/// 見出し行の直後に [`PENALTY_FORBID_BREAK`] を置くことで、`break_pages` の keep-with-next 機構
+/// 見出し行の直後に [`Block::KeepWithNext`] を置くことで、`break_pages` の keep-with-next 機構
 /// （`keep_group_end`）が見出し行と直後の 1 エントリを 1 グループとして扱い、見出しが段末・ページ末に
 /// 孤立しなくなる。間に挟まる下余白（`Block::Glue`）は内容ブロックではないので走査を妨げない。
 fn push_group_heading(
@@ -300,9 +300,7 @@ fn push_group_heading(
     line,
     leading: spec.group_style.font_size.try_scale(f64::from(spec.line_height_factor)).map_err(generated)?,
   });
-  blocks.push(Block::Penalty {
-    value: PENALTY_FORBID_BREAK,
-  });
+  blocks.push(Block::KeepWithNext);
   if spec.group_bottom_margin.is_positive() {
     blocks.push(Block::fixed_space(spec.group_bottom_margin));
   }

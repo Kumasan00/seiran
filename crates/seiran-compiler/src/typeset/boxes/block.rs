@@ -13,12 +13,6 @@ use crate::{
   },
 };
 
-/// 強制改ページの分割コスト（−∞）。この penalty を持つ [`Block::Penalty`] は必ずそこで改ページする。
-pub(in crate::typeset) const PENALTY_FORCE_BREAK: i32 = i32::MIN;
-
-/// 分割禁止の分割コスト（+∞）
-pub(in crate::typeset) const PENALTY_FORBID_BREAK: i32 = i32::MAX;
-
 /// 文書の縦リスト要素
 #[derive(Debug, Clone)]
 pub(in crate::typeset) enum Block {
@@ -120,15 +114,10 @@ pub(in crate::typeset) enum Block {
     /// 伸長能力
     stretch: Length,
   },
-  /// 分割コスト（penalty）
-  ///
-  /// `value` はそのブロック境界で改ページする際のコスト。[`PENALTY_FORCE_BREAK`]（−∞）は強制改ページ、
-  /// [`PENALTY_FORBID_BREAK`]（+∞）は分割禁止。有限値（「避けたいが可能」）はどの構築元も作らず、
-  /// `break_pages` は到達不能として扱う。
-  Penalty {
-    /// 分割コスト（小さいほど切りやすい。−∞=強制 / +∞=禁止）
-    value: i32,
-  },
+  /// 強制改ページ。内容を挟まずに続く強制改ページは `break_pages` が 1 つのページ境界に畳む
+  PageBreak,
+  /// 分割禁止（keep-with-next）。直前の内容ブロックと直後の内容ブロックの間で改ページしない
+  KeepWithNext,
   /// リンク行き先のアンカー（機構 A・ゼロサイズ）
   ///
   /// 次に配置される実ブロックの確定座標に解決される。それ自身は縦方向のアキを生まない。
@@ -153,14 +142,6 @@ impl Block {
     return Block::Glue {
       natural: pt,
       stretch,
-    };
-  }
-
-  /// 強制改ページを作る。
-  #[must_use]
-  pub(in crate::typeset) fn force_break() -> Block {
-    return Block::Penalty {
-      value: PENALTY_FORCE_BREAK,
     };
   }
 }

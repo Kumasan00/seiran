@@ -933,7 +933,7 @@ context が持つ字の問題の収集器を `paginate` の後で読む。`glyph
   ページ番号列は既定で 1 ページ 1 リンク、範囲畳み有効時は連続 3 ページ以上を en dash で畳んで範囲全体に
   先頭ページへのリンクを 1 本張る（連番判定はラベル文字列ではなく本文内ページ index の差分で行う —
   ローマ数字等でも成立する）。索引語は座標を持たないため、リンク先は語の位置ではなく出現ページの先頭。
-  見出し行の直後に置く分割禁止 penalty が `break_pages` の keep-with-next 機構に乗って段末の孤立を防ぐ
+  見出し行の直後に置く分割禁止（`Block::KeepWithNext`）が `break_pages` の keep-with-next 機構に乗って段末の孤立を防ぐ
 
 #### 脚注のページ単位採番（`pagination::footnote_numbering`）
 
@@ -1355,13 +1355,13 @@ style は届かない。
   索引語の重複除去は表エンジンが済ませている）。断片の脚注は台帳へ渡さず、`break_pages` が行の収まり判定と同時に
   脚注エリアへ置く（脚注本体の行は以後 `Line` の経路で帰属が決まる）
 
-**改ページ制御は glue / penalty モデル**で、widow / orphan・keep-with-next・下端揃え（`flush_bottom`）を扱う。
+**改ページ制御は glue と 2 つの制御**（強制改ページ `Block::PageBreak`・分割禁止 `Block::KeepWithNext`）で、widow / orphan・keep-with-next・下端揃え（`flush_bottom`）を扱う。
 下端揃えは満杯リージョン（段）確定時に不足高さを、台帳の各 entry が持つ「先行 stretch 累積量」に比例して
 配分する。分母は最後の本文 block の先行累積量。同じ entry の block / アンカー / リンクは同じ量だけ動き、
 脚注 entry は動かない（末尾ページ・強制改ページ直前・伸縮アキ 0 のリージョンは対象外）。
 
-**強制改ページは冪等**: `PENALTY_FORCE_BREAK`（見出しの `page_break_before` / `page_break_after`・
-`\pagebreak`・タイトルページ末尾のどれが発行しても同じ 1 定数）は、内容（本文ブロック
+**強制改ページは冪等**: `Block::PageBreak`（見出しの `page_break_before` / `page_break_after`・
+`\pagebreak`・タイトルページ末尾のどれが発行しても同じ 1 variant）は、内容（本文ブロック
 または確定脚注）を挟まない限りページ境界が 1 つに
 畳まれ、文書先頭・連続・末尾のいずれでも白紙ページを作らない（帰属データだけではページを作らず、未解決
 アンカーは次ページへ持ち越す）。
