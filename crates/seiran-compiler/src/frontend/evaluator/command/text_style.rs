@@ -6,7 +6,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
     },
@@ -34,10 +34,10 @@ pub(super) fn styled_text(
   arg: &CstNode<'_>,
   ctx: &EvalContext<'_>,
   font: Typeface,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<HirInline, EvalError> {
   let id = ctx.alloc(view.span());
-  let children = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, arg, inline_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Styled { font, children }));
 }
 
@@ -51,7 +51,7 @@ pub(super) fn colored_text(
   arg: &CstNode<'_>,
   opts: &OptArgs,
   ctx: &EvalContext<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<HirInline, EvalError> {
   let Some(color) = opts.get(COLOR) else {
     return Err(EvalError::MissingCommandArgument {
@@ -62,7 +62,7 @@ pub(super) fn colored_text(
   };
 
   let id = ctx.alloc(view.span());
-  let children = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
+  let children = evaluate_inline_children(view.source(), ctx, arg, inline_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Colored { color, children }));
 }
 
@@ -82,7 +82,7 @@ mod tests {
 
     let result = run_handler(|ctx| {
       let bound = STYLED.bind(&view)?;
-      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, IndexPolicy::Allow);
+      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, InlinePolicy::Allow);
     })
     .unwrap();
 
@@ -105,7 +105,7 @@ mod tests {
 
     let result = run_handler(|ctx| {
       let bound = STYLED.bind(&view)?;
-      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, IndexPolicy::Allow);
+      return styled_text(&view, bound.args[0], ctx, Typeface::SerifBold, InlinePolicy::Allow);
     })
     .unwrap();
 
@@ -131,7 +131,7 @@ mod tests {
 
     let result = run_handler(|ctx| {
       let bound = COLORED.bind(&view)?;
-      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, InlinePolicy::Allow);
     })
     .unwrap();
 
@@ -153,7 +153,7 @@ mod tests {
     assert!(matches!(
       run_handler(|ctx| {
         let bound = COLORED.bind(&view)?;
-        return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+        return colored_text(&view, bound.args[0], &bound.opts, ctx, InlinePolicy::Allow);
       }),
       Err(EvalError::MissingCommandArgument { .. })
     ));
@@ -168,7 +168,7 @@ mod tests {
 
     assert!(matches!(run_handler(|ctx| {
       let bound = COLORED.bind(&view)?;
-      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, InlinePolicy::Allow);
     }), Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "color"));
   }
 
@@ -181,7 +181,7 @@ mod tests {
 
     let result = run_handler(|ctx| {
       let bound = COLORED.bind(&view)?;
-      return colored_text(&view, bound.args[0], &bound.opts, ctx, IndexPolicy::Allow);
+      return colored_text(&view, bound.args[0], &bound.opts, ctx, InlinePolicy::Allow);
     })
     .unwrap();
 

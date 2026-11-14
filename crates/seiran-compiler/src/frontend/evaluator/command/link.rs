@@ -11,11 +11,11 @@
 //! verbatim 内では `\` も不活性なので、`\/` は URL に literal `\/` として残る。
 
 use crate::{
-  document::{HirInline, HirInlineKind},
+  document::{HirInline, HirInlineKind, HirMathKind},
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       signature::Signature,
     },
     syntax::{
@@ -49,7 +49,7 @@ pub(super) fn url(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'
 ///
 /// # Errors
 ///
-/// 表示テキストの評価エラーを返します。
+/// 表示テキストの評価エラーと、表示テキストが空のときのエラー（[`link_display`]）を返します。
 pub(super) fn href(
   view: &CommandView<'_>,
   [url_arg, display_arg]: [&CstNode<'_>; 2],
@@ -57,8 +57,57 @@ pub(super) fn href(
 ) -> Result<HirInline, EvalError> {
   let url = verbatim_text(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());
-  let children = evaluate_inline_children(view.source(), ctx, display_arg, IndexPolicy::Reject)?;
+  let children = link_display(view, display_arg, ctx)?;
   return Ok(HirInline::new(id, HirInlineKind::Link { url, children }));
+}
+
+/// リンクの表示内容（第 2 引数）を評価する
+///
+/// 中の `\index` とリンクを作るコマンドは [`InlinePolicy::RejectIndexAndLinks`] で拒否する。
+///
+/// # Errors
+///
+/// 表示内容の評価エラーと、表示内容が字・数式・記号・数値を 1 つも含まないときの
+/// [`EvalError::EmptyLinkDisplay`] を返します。
+fn link_display(
+  view: &CommandView<'_>,
+  display_arg: &CstNode<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<Vec<HirInline>, EvalError> {
+  let children = evaluate_inline_children(view.source(), ctx, display_arg, InlinePolicy::RejectIndexAndLinks)?;
+  if !has_visible_content(&children) {
+    return Err(EvalError::EmptyLinkDisplay {
+      what: format!("\\{}", view.name()),
+      span: view.span().into(),
+    });
+  }
+  return Ok(children);
+}
+
+/// インライン列が字・数式・記号・数値を 1 つでも含むか
+///
+/// 組版結果の幅ではなく内容で決める（空白・改行・空の装飾・空の数式は含まない扱い）。
+fn has_visible_content(inlines: &[HirInline]) -> bool {
+  return inlines.iter().any(|inline| {
+    return match &inline.kind {
+      HirInlineKind::Text(text) | HirInlineKind::Code(text) => !text.trim().is_empty(),
+      HirInlineKind::Styled { children, .. } | HirInlineKind::Colored { children, .. } => has_visible_content(children),
+      // 数式のソース空白は組版に出ない（#86）ので、空白だけの数式は空
+      HirInlineKind::Math(nodes) => nodes
+        .iter()
+        .any(|node| return !matches!(&node.kind, HirMathKind::Text(text) if text.trim().is_empty())),
+      // 表示内容の中のリンクは方針が先に拒否するが、表示を持つ要素なので含む扱いにする
+      HirInlineKind::Symbol(_)
+      | HirInlineKind::Number(_)
+      | HirInlineKind::Unit(_)
+      | HirInlineKind::Quantity { .. }
+      | HirInlineKind::Ref { .. }
+      | HirInlineKind::Link { .. }
+      | HirInlineKind::Cite { .. }
+      | HirInlineKind::Footnote { .. } => true,
+      HirInlineKind::LineBreak | HirInlineKind::NoIndent | HirInlineKind::Index { .. } => false,
+    };
+  });
 }
 
 #[cfg(test)]
@@ -66,7 +115,10 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support};
+  use crate::{
+    document::HirNode,
+    frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support},
+  };
 
   /// `\url{...}` を評価して（リンク先, 表示テキスト）を取り出す
   fn url_link(source: &str) -> (String, String) {
@@ -215,6 +267,92 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
+  }
+
+  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
+  )]
+  fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let cst = test_support::parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
+    return evaluate_children_to_hir(source, cst);
+  }
+
+  #[test]
+  fn href_rejects_link_producers_in_display() {
+    let cases = [
+      (r"\href{u}{\ref{x}}", r"\ref"),
+      (r"\href{u}{\url{v}}", r"\url"),
+      (r"\href{u}{\href{v}{w}}", r"\href"),
+      (r"\href{u}{\cite{k}}", r"\cite"),
+      (r"\href{u}{a\footnote{b}}", r"\footnote"),
+    ];
+
+    for (source, expected) in cases {
+      let result = evaluate_document(source);
+
+      assert!(
+        matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
+        "{source}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn href_rejects_link_producers_through_decorations() {
+    // 書体・色指定は外側の方針を引き継ぐので、装飾の中のリンクも拒否される
+    let cases = [
+      (r"\href{u}{\bold{\ref{x}}}", r"\ref"),
+      (r"\href{u}{\color[color=#ff0000]{\cite{k}}}", r"\cite"),
+    ];
+
+    for (source, expected) in cases {
+      let result = evaluate_document(source);
+
+      assert!(
+        matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
+        "{source}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn href_rejects_blank_display() {
+    // 子があっても字・数式・記号・数値を 1 つも含まなければ空
+    let cases = [
+      r"\href{u}{}",
+      r"\href{u}{ }",
+      r"\href{u}{\bold{ }}",
+      r"\href{u}{\\}",
+      r"\href{u}{$ $}",
+    ];
+
+    for source in cases {
+      let result = evaluate_document(source);
+
+      assert!(
+        matches!(result, Err(EvalError::EmptyLinkDisplay { ref what, .. }) if what == r"\href"),
+        "{source}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn href_accepts_visible_display() {
+    let cases = [
+      r"\href{u}{\bold{a}}",
+      r"\href{u}{$x$}",
+      r"\href{u}{\alpha}",
+      r"\href{u}{\num{1}}",
+    ];
+
+    for source in cases {
+      let result = evaluate_document(source);
+
+      assert!(result.is_ok(), "{source}: {result:?}");
+    }
   }
 
   #[test]

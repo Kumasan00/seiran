@@ -233,6 +233,36 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// リンクの表示内容（`\href` の第 2 引数）の中にリンクを作るコマンドが出現した場合
+  ///
+  /// 矩形が重なるとどちらへ飛ぶかが閲覧ソフト次第になり、字面から行き先が決まらない。
+  #[error("リンクの表示内容の中にリンクは置けません")]
+  #[diagnostic(
+    code(frontend::eval::link_in_link_display),
+    help(
+      "\\ref・\\url・\\href・\\hyperref・\\cite・\\footnote はそれぞれリンクを作ります。\
+       入れ子のリンクはどちらへ飛ぶかが決まらないので、表示内容の外に書いてください"
+    )
+  )]
+  LinkInLinkDisplay {
+    /// リンクを作るコマンドの名前（例: `\ref`）
+    what: String,
+    /// コマンド呼び出しのソース位置
+    #[label("この {what} はリンクを作るので、リンクの表示内容の中では使用できません")]
+    span: SourceSpan,
+  },
+
+  /// リンクの表示内容が字・数式・記号・数値を 1 つも含まない場合
+  #[error("リンクの表示内容が空です")]
+  #[diagnostic(code(frontend::eval::empty_link_display), help("第 2 引数に表示する文章・数式を書いてください"))]
+  EmptyLinkDisplay {
+    /// リンクを作ったコマンドの名前（例: `\href`）
+    what: String,
+    /// コマンド呼び出しのソース位置
+    #[label("この {what} にはクリックできる表示がありません")]
+    span: SourceSpan,
+  },
+
   /// コマンドの引数内に空行（段落区切り）が出現した場合
   #[error("コマンドの引数内に空行（段落区切り）を含めることはできません")]
   #[diagnostic(code(frontend::eval::paragraph_break_in_argument), help("引数内の文章は 1 段落に収めてください"))]

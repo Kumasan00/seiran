@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       signature::Signature,
     },
     syntax::{ArgMode, CstNode, view::CommandView},
@@ -18,7 +18,7 @@ pub(super) const SIGNATURE: Signature<1> = Signature::new([ArgMode::Inherit], "�
 /// `\footnote{...}` を `HirInlineKind::Footnote` に変換する
 ///
 /// 本体は太字・数式等を含む任意のインライン内容として再帰評価される。`\index` の可否は
-/// `index_policy` をそのまま引き継ぐ — 脚注本体は 1 箇所にしか置かれないが、複製される文脈
+/// `inline_policy` をそのまま引き継ぐ — 脚注本体は 1 箇所にしか置かれないが、複製される文脈
 /// （表の `\head` セル）や本文の流れに出ない文脈（見出しタイトル）の中の脚注まで許すと、
 /// その文脈を拒否している意味が失われるため。
 ///
@@ -29,10 +29,10 @@ pub(super) fn footnote(
   view: &CommandView<'_>,
   arg: &CstNode<'_>,
   ctx: &EvalContext<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<HirInline, EvalError> {
   let id = ctx.alloc(view.span());
-  let body = evaluate_inline_children(view.source(), ctx, arg, index_policy)?;
+  let body = evaluate_inline_children(view.source(), ctx, arg, inline_policy)?;
   return Ok(HirInline::new(id, HirInlineKind::Footnote { body }));
 }
 
@@ -54,7 +54,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     let result =
-      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, IndexPolicy::Allow)).unwrap();
+      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, InlinePolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");
@@ -71,7 +71,7 @@ mod tests {
     let view = CommandView::new(node, source);
 
     let result =
-      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, IndexPolicy::Allow)).unwrap();
+      run_handler(|ctx| return footnote(&view, SIGNATURE.bind(&view)?.args[0], ctx, InlinePolicy::Allow)).unwrap();
 
     let HirInlineKind::Footnote { body } = &result.kind else {
       panic!("Footnote が期待されます");

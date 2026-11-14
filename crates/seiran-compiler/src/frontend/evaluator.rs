@@ -254,10 +254,10 @@ mod test_support {
   pub(crate) fn evaluate_inline_children_to_hir(
     source: &str,
     node: &CstNode<'_>,
-    index_policy: inline::IndexPolicy,
+    inline_policy: inline::InlinePolicy,
   ) -> Result<Vec<HirInline>, EvalError> {
     let ctx = eval_context_for_test();
-    return inline::evaluate_inline_children(source, &ctx, node, index_policy);
+    return inline::evaluate_inline_children(source, &ctx, node, inline_policy);
   }
 
   /// ハンドラを直接呼ぶテスト向けに、評価結果をそのまま返す

@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       signature::Signature,
     },
     syntax::{ArgMode, CstNode, view::CommandView},
@@ -27,5 +27,5 @@ pub(super) fn evaluate_caption(
   arg: &CstNode<'_>,
   ctx: &EvalContext<'_>,
 ) -> Result<Vec<HirInline>, EvalError> {
-  return evaluate_inline_children(view.source(), ctx, arg, IndexPolicy::Allow);
+  return evaluate_inline_children(view.source(), ctx, arg, InlinePolicy::Allow);
 }

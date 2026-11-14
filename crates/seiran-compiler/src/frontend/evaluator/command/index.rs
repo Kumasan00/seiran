@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
     },
@@ -34,7 +34,7 @@ pub(super) fn index(
 ) -> Result<HirInline, EvalError> {
   let reading = opts.get(READING);
 
-  let nodes = evaluate_inline_children(view.source(), ctx, arg, IndexPolicy::Reject)?;
+  let nodes = evaluate_inline_children(view.source(), ctx, arg, InlinePolicy::RejectIndex)?;
   let mut word = String::new();
   for node in &nodes {
     let HirInlineKind::Text(text) = &node.kind else {
