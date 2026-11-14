@@ -42,7 +42,7 @@ pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
 
 /// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
 ///
-/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\url` は表示だけを組んでリンクとリンク色を付けず、
+/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んでリンクとリンク色を付けず、
 /// 脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を進めない。
 fn toc_title(
   ctx: &LoweringContext<'_>,

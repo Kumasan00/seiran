@@ -16,7 +16,7 @@
 //! 名前空間を持つ。第 2 引数は `\href` の第 2 引数と同じ表示内容の規則に従う（[`link_display`]）。
 
 use crate::{
-  document::{HirInline, HirInlineKind, HirMathKind, LinkDestination},
+  document::{HirInline, HirInlineKind, HirMath, HirMathKind, LinkDestination},
   frontend::{
     evaluator::{
       EvalContext, EvalError,
@@ -129,20 +129,51 @@ fn has_visible_content(inlines: &[HirInline]) -> bool {
     return match &inline.kind {
       HirInlineKind::Text(text) | HirInlineKind::Code(text) => !text.trim().is_empty(),
       HirInlineKind::Styled { children, .. } | HirInlineKind::Colored { children, .. } => has_visible_content(children),
-      // 数式のソース空白は組版に出ない（#86）ので、空白だけの数式は空
-      HirInlineKind::Math(nodes) => nodes
-        .iter()
-        .any(|node| return !matches!(&node.kind, HirMathKind::Text(text) if text.trim().is_empty())),
-      // 表示内容の中のリンクは方針が先に拒否するが、表示を持つ要素なので含む扱いにする
-      HirInlineKind::Symbol(_)
-      | HirInlineKind::Number(_)
-      | HirInlineKind::Unit(_)
-      | HirInlineKind::Quantity { .. }
-      | HirInlineKind::Ref { .. }
+      HirInlineKind::Math(nodes) => math_has_content(nodes),
+      HirInlineKind::Symbol(_) | HirInlineKind::Number(_) | HirInlineKind::Unit(_) | HirInlineKind::Quantity { .. } => {
+        true
+      },
+      HirInlineKind::LineBreak => false,
+      HirInlineKind::Ref { .. }
       | HirInlineKind::Link { .. }
       | HirInlineKind::Cite { .. }
-      | HirInlineKind::Footnote { .. } => true,
-      HirInlineKind::LineBreak | HirInlineKind::NoIndent | HirInlineKind::Index { .. } => false,
+      | HirInlineKind::Footnote { .. }
+      | HirInlineKind::Index { .. } => unreachable!(
+        "表示内容は InlinePolicy::RejectIndexAndLinks で評価しており、リンクを作るコマンドと \\index は \
+         Placement::accept_link / accept_index が実行入口で拒否済み"
+      ),
+      HirInlineKind::NoIndent => unreachable!(
+        "\\noindent は Placement::accept_block を通らないと結果を作れず、インライン文脈の表示内容では拒否済み"
+      ),
+    };
+  });
+}
+
+/// 数式の要素列が字・記号・構造を 1 つでも含むか
+///
+/// ソースの空白・明示アキ・空のグループ・空白だけの数式内の文章は字を持たないので含まない扱い。
+fn math_has_content(nodes: &[HirMath]) -> bool {
+  return nodes.iter().any(|node| {
+    return match &node.kind {
+      HirMathKind::Text(text) | HirMathKind::Prose(text) => !text.trim().is_empty(),
+      HirMathKind::Group(children) => math_has_content(children),
+      HirMathKind::Space(_) => false,
+      HirMathKind::Symbol { .. }
+      | HirMathKind::OperatorName { .. }
+      | HirMathKind::Number(_)
+      | HirMathKind::Unit(_)
+      | HirMathKind::Quantity { .. }
+      | HirMathKind::Superscript(_)
+      | HirMathKind::Subscript(_)
+      | HirMathKind::Frac { .. }
+      | HirMathKind::Binom { .. }
+      | HirMathKind::Sqrt { .. }
+      | HirMathKind::Accent { .. }
+      | HirMathKind::Fenced { .. }
+      | HirMathKind::Bar { .. }
+      | HirMathKind::Styled { .. }
+      | HirMathKind::Matrix { .. }
+      | HirMathKind::Cases { .. } => true,
     };
   });
 }
@@ -376,6 +407,11 @@ mod tests {
       r"\href{u}{\bold{ }}",
       r"\href{u}{\\}",
       r"\href{u}{$ $}",
+      r"\href{u}{${}$}",
+      r"\href{u}{${ }$}",
+      r"\href{u}{$\text{}$}",
+      r"\href{u}{$\text{ }$}",
+      r"\href{u}{$\thinspace$}",
     ];
 
     for source in cases {
