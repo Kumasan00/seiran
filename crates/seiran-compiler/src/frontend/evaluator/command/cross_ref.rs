@@ -136,7 +136,7 @@ mod tests {
 
   #[test]
   fn refs_rejects_empty_item() {
-    for source in [r"\refs{a,,b}", r"\refs{a, b,}"] {
+    for source in [r"\refs{a,,b}", r"\refs{a, b,}", r"\refs{}"] {
       let (name, reason) = rejection(eval_refs(source));
 
       assert_eq!(name, "refs", "{source}");

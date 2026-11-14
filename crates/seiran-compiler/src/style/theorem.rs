@@ -610,10 +610,11 @@ typeface = \"sans_serif_bold\"
 
   #[test]
   fn full_override_replaces_every_field() {
-    // 6 キーとネスト `presentation` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
+    // 7 キーとネスト `presentation` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
     let toml = "
 [theorems.theorem]
 display_name = \"定理\"
+display_name_plural = \"定理群\"
 counter = \"main\"
 reset_by = \"chapter\"
 number_format = \"{chapter}.{n}\"
@@ -635,6 +636,7 @@ bottom_margin = \"8pt\"
     let theorem = wrapper.theorems.theorem;
 
     assert_eq!(theorem.display_name, "定理");
+    assert_eq!(theorem.display_name_plural, "定理群");
     assert_eq!(theorem.counter, "main");
     assert_eq!(theorem.reset_by, TheoremReset::Chapter);
     assert_eq!(theorem.number_format.as_str(), "{chapter}.{n}");

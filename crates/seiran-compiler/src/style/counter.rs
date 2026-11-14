@@ -520,18 +520,22 @@ display_name = \"図\"
     let toml = "
 [figure]
 display_name = \"Fig.\"
+display_name_plural = \"Figs.\"
 number_format = \"{section}.{n}\"
 number_style = \"roman_lower\"
 ref_format = \"{display_name}{number}\"
+ref_number_format = \"[{number}]\"
 resets = [\"equation\"]
 ";
 
     let counters: CounterStyles = toml::from_str(toml).unwrap();
 
     assert_eq!(counters.figure.display_name, "Fig.");
+    assert_eq!(counters.figure.display_name_plural, "Figs.");
     assert_eq!(counters.figure.number_format.as_str(), "{section}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::RomanLower);
     assert_eq!(counters.figure.ref_format.as_str(), "{display_name}{number}");
+    assert_eq!(counters.figure.ref_number_format.as_str(), "[{number}]");
     assert_eq!(counters.figure.resets, vec![CounterName::Equation]);
   }
 
