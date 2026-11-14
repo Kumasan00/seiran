@@ -2,7 +2,7 @@
 
 use crate::{
   color::Color,
-  document::{HirInline, HirInlineKind, Typeface},
+  document::{HirInline, HirInlineKind, LinkDestination, Typeface},
   length::{Length, LengthOverflow},
   style::FootnoteStyle,
   typeset::{
@@ -102,11 +102,17 @@ pub(super) fn lower_inline(
         )],
       }]);
     },
-    HirInlineKind::Link { url, children } => {
-      let style = with_link_color(parent_style, ctx.style.hyperref.url_color);
-      let inner = lower_inlines(ctx, children, style, state)?;
+    HirInlineKind::Link { target, children } => {
+      let (target, link_color) = match target {
+        LinkDestination::Uri(url) => (LinkTarget::External(url.clone()), ctx.style.hyperref.url_color),
+        LinkDestination::Label(_) => (
+          LinkTarget::Internal(AnchorId::Label(state.ref_target(inline.id).clone())),
+          ctx.style.hyperref.link_color,
+        ),
+      };
+      let inner = lower_inlines(ctx, children, with_link_color(parent_style, link_color), state)?;
       return Ok(vec![InlineNode::Link {
-        target: LinkTarget::External(url.clone()),
+        target,
         children: inner,
       }]);
     },
@@ -498,6 +504,58 @@ mod tests {
     );
 
     assert_eq!(ref_text_style(&nodes).color, Some(red));
+  }
+
+  /// ラベル付き見出しとそれを指す `\hyperref` を含むソース（表示内容は `body`）
+  fn hyperref_source(body: &str) -> String {
+    return format!("\\chapter{{C}}\n\n\\section[label=sec:intro]{{S}}\n\n{body}\n");
+  }
+
+  #[test]
+  fn lower_hyperref_links_display_to_label() {
+    let nodes = lower_source(&ReadStyle::default(), &hyperref_source(r"\hyperref{sec:intro}{この節}"));
+
+    let (target, children) = first_link(&nodes);
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("sec:intro"))));
+    assert!(matches!(children, [InlineNode::Text(t, _)] if t == "この節"), "{children:?}");
+  }
+
+  #[test]
+  fn lower_hyperref_applies_link_color_not_url_color() {
+    let blue = Color::new(0x00, 0x00, 0xff);
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(blue);
+    style.hyperref.url_color = Some(Color::new(0xff, 0x00, 0x00));
+
+    let nodes = lower_source(&style, &hyperref_source(r"\hyperref{sec:intro}{この節}"));
+
+    assert_eq!(ref_text_style(&nodes).color, Some(blue));
+  }
+
+  #[test]
+  fn lower_outer_color_overrides_hyperref_link_color() {
+    let red = Color::new(0xff, 0x00, 0x00);
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(Color::new(0x00, 0x00, 0xff));
+
+    let nodes = lower_source(&style, &hyperref_source(r"\color[color=#ff0000]{\hyperref{sec:intro}{a}}"));
+
+    assert_eq!(ref_text_style(&nodes).color, Some(red));
+  }
+
+  #[test]
+  fn lower_inner_color_inside_hyperref_wins() {
+    let green = Color::new(0x00, 0xff, 0x00);
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(Color::new(0x00, 0x00, 0xff));
+
+    let nodes = lower_source(&style, &hyperref_source(r"\hyperref{sec:intro}{\color[color=#00ff00]{a}}"));
+
+    let (_, children) = first_link(&nodes);
+    let InlineNode::Text(_, text_style) = &children[0] else {
+      panic!("Text が期待されます: {children:?}");
+    };
+    assert_eq!(text_style.color, Some(green));
   }
 
   #[test]

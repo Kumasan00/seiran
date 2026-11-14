@@ -483,13 +483,16 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   受け取り、収集した各コマンドに種別と検査済みの引数を添えて返すので、呼び出し側は種別で match するだけでよく、
   名前の再 match と許可リスト外を受ける `unreachable!` は無い
 - **コマンドの実行入口は 1 つ**（`evaluate_command`）。文脈は `Placement`（本文の流れ / インライン）が運び、
-  インライン文脈でブロックを生むコマンド（見出し・`\space` / `\noindent` / `\pagebreak`）と `Reject` 方針下の
-  `\index` は、**引数を評価する前に**この入口が拒否する。本文の流れは内容が 1 箇所にしか置かれないので
-  `\index` は常に許可（`Placement::Block` が `IndexPolicy::Allow` を意味する）
-- 方針は実行入口が `Placement` で受け取り、引数の再帰評価へは `IndexPolicy` として渡す — 拒否は実行入口
-  1 箇所に閉じる。文脈を決めるのは呼び出し元で、見出しタイトル・`\href` 表示テキスト・表の `\head` 行・
-  `\index` 自身の語が `Reject`、キャプション・表の本体行が `Allow`、書体 / 色指定と脚注本体は**外側の方針を継承**する
-  （固定 `Allow` にすると `\section{\bold{x\index{x}}}` が拒否をすり抜ける）
+  インライン文脈でブロックを生むコマンド（見出し・`\space` / `\noindent` / `\pagebreak`）、`\index` を拒否する方針下の
+  `\index`、リンクの表示内容の中のリンクを作るコマンドは、**引数を評価する前に**この入口が拒否する。どのコマンドが
+  リンクを作るかは `CommandKind::creates_link` の網羅 match が宣言する（脚注マーカーも内部リンクなので `\footnote` を含む）。
+  本文の流れは内容が 1 箇所にしか置かれずリンクの表示内容の中でもないので、どちらも常に許可
+  （`Placement::Block` が `InlinePolicy::Allow` を意味する）
+- 方針は実行入口が `Placement` で受け取り、引数の再帰評価へは `InlinePolicy` として渡す — 拒否は実行入口
+  1 箇所に閉じる。3 つの文脈は許す範囲が順に狭まり、文脈を決めるのは呼び出し元: キャプション・表の本体行が `Allow`、
+  見出しタイトル・表の `\head` 行・`\index` 自身の語が `RejectIndex`（`\index` だけ拒否）、`\href` / `\hyperref` の
+  表示内容が `RejectIndexAndLinks`（`\index` とリンクを拒否）。書体 / 色指定と脚注本体は**外側の方針を継承**する
+  （固定 `Allow` にすると `\section{\bold{x\index{x}}}` / `\href{u}{\bold{\ref{x}}}` が拒否をすり抜ける）
 - **トークンからインライン要素への変換も 1 実装**（`inline_from_token`）。`NodeId` を発行しない値を返し、
   段落 ID を子より先に予約する規約は呼び出し元（本文の流れ）が守る
 - どの引数・環境本体が verbatim かはレジストリ（`COMMANDS` / `ENVIRONMENTS`）の値が持つ種別だけで決まる。

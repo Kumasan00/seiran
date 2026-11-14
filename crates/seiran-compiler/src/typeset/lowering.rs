@@ -291,7 +291,7 @@ impl<'a> LoweringState<'a> {
     return self.document.declared_label(node);
   }
 
-  /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
+  /// 参照箇所（`\ref` / `\hyperref` / `[of=...]`）の参照先を引く
   pub(super) fn ref_target(&self, site: NodeId) -> &'a LabelId { return self.document.ref_target(site); }
 
   /// 見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を記録する

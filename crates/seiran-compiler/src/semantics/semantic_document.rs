@@ -55,7 +55,7 @@ impl SemanticDocument {
   #[must_use]
   pub(crate) fn declared_label(&self, node: NodeId) -> Option<&LabelId> { return self.facts.declared_label(node); }
 
-  /// 参照箇所（`\ref` / `[of=...]`）の参照先を引く
+  /// 参照箇所（`\ref` / `\hyperref` / `[of=...]`）の参照先を引く
   ///
   /// # Panics
   ///

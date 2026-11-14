@@ -217,19 +217,49 @@ pub(crate) enum EvalError {
   ///
   /// 出現ページは「マーカーを含む内容が実際に置かれたページ」なので、内容が複製される文脈
   /// （表の `\head` セル — 改ページのたび全ページへ再描画される）と、本文の流れに置かれない文脈
-  /// （見出しタイトル・`\href` の表示テキスト・`\index` 自身の語）では帰属先が定まらず拒否する。
+  /// （見出しタイトル・`\href` / `\hyperref` の表示内容・`\index` 自身の語）では帰属先が定まらず拒否する。
   #[error("この位置に \\index は置けません")]
   #[diagnostic(
     code(frontend::eval::index_not_allowed_here),
     help(
       "\\index は本文・箇条書き・定理環境・書体指定コマンドの引数・脚注本体・キャプション・\
        表の本体セル（\\row / \\cell）に置けます \
-       （見出しタイトル・\\href の表示テキスト・表の \\head セル内では使用できません）"
+       （見出しタイトル・\\href / \\hyperref の表示内容・表の \\head セル内では使用できません）"
     )
   )]
   IndexNotAllowedHere {
     /// `\index{...}` のソース位置
     #[label("この \\index はこの位置では使用できません")]
+    span: SourceSpan,
+  },
+
+  /// リンクの表示内容（`\href` / `\hyperref` の第 2 引数）の中にリンクを作るコマンドが出現した場合
+  ///
+  /// 矩形が重なるとどちらへ飛ぶかが閲覧ソフト次第になり、字面から行き先が決まらない。
+  #[error("リンクの表示内容の中にリンクは置けません")]
+  #[diagnostic(
+    code(frontend::eval::link_in_link_display),
+    help(
+      "\\ref・\\url・\\href・\\hyperref・\\cite・\\footnote はそれぞれリンクを作ります。\
+       入れ子のリンクはどちらへ飛ぶかが決まらないので、表示内容の外に書いてください"
+    )
+  )]
+  LinkInLinkDisplay {
+    /// リンクを作るコマンドの名前（例: `\ref`）
+    what: String,
+    /// コマンド呼び出しのソース位置
+    #[label("この {what} はリンクを作るので、リンクの表示内容の中では使用できません")]
+    span: SourceSpan,
+  },
+
+  /// リンクの表示内容が字・数式・記号・数値を 1 つも含まない場合
+  #[error("リンクの表示内容が空です")]
+  #[diagnostic(code(frontend::eval::empty_link_display), help("第 2 引数に表示する文章・数式を書いてください"))]
+  EmptyLinkDisplay {
+    /// リンクを作ったコマンドの名前（例: `\href`）
+    what: String,
+    /// コマンド呼び出しのソース位置
+    #[label("この {what} にはクリックできる表示がありません")]
     span: SourceSpan,
   },
 

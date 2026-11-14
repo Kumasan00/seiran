@@ -42,7 +42,7 @@ pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
 
 /// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
 ///
-/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\url` は表示だけを組んでリンクとリンク色を付けず、
+/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んでリンクとリンク色を付けず、
 /// 脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を進めない。
 fn toc_title(
   ctx: &LoweringContext<'_>,
@@ -634,6 +634,20 @@ mod tests {
       assert!(joined.contains(expected), "{expected} を含むはず: {joined}");
     }
     assert!(texts(label).iter().all(|(_, s)| return s.color.is_none()), "リンク色を付けない: {label:?}");
+  }
+
+  #[test]
+  fn hyperref_in_heading_is_plain_in_toc_and_bookmark() {
+    let headings = heading_records(
+      &ReadStyle::default(),
+      "\\section[label=sec:a]{A}\n\n\\section{\\hyperref{sec:a}{前の節}を受けて}\n",
+    );
+
+    let label = &headings[1].toc_label;
+    assert!(!flatten(label).iter().any(|n| matches!(n, InlineNode::Link { .. })), "{label:?}");
+    let joined: String = texts(label).iter().map(|(t, _)| return *t).collect();
+    assert!(joined.ends_with("前の節を受けて"), "{joined}");
+    assert_eq!(headings[1].title_plain, "前の節を受けて");
   }
 
   #[test]

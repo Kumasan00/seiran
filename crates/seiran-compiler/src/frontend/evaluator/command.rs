@@ -21,7 +21,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::IndexPolicy,
+      inline::InlinePolicy,
       math,
       opt_args::OptArgs,
       signature::{Bound, Signature},
@@ -55,14 +55,14 @@ pub(super) struct BlockPermit(());
 
 /// コマンドを実行する文脈
 ///
-/// 「ブロックを受け取れるか」と「引数の中の `\index` を許すか」の 2 つを 1 つの値で運ぶ。
-/// 本文の流れは内容が 1 箇所にしか置かれないので `\index` は常に許可でよい。
+/// 「ブロックを受け取れるか」と「`\index` とリンクを許すか」（[`InlinePolicy`]）を 1 つの値で運ぶ。
+/// 本文の流れは内容が 1 箇所にしか置かれず、リンクの表示内容の中でもないので、どちらも常に許可でよい。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum Placement {
   /// 本文の流れ — ブロックを受け取れる
   Block,
   /// インライン要素しか受け取れない文脈（引数の再帰評価・表のセル）
-  Inline(IndexPolicy),
+  Inline(InlinePolicy),
 }
 
 impl Placement {
@@ -82,21 +82,36 @@ impl Placement {
 
   /// `\index` をこの文脈で実行してよいか検査する
   fn accept_index(self, view: &CommandView<'_>) -> Result<(), EvalError> {
-    if matches!(self, Self::Inline(IndexPolicy::Reject)) {
-      return Err(EvalError::IndexNotAllowedHere {
-        span: view.span().into(),
-      });
-    }
-    return Ok(());
+    return match self {
+      Self::Block | Self::Inline(InlinePolicy::Allow) => Ok(()),
+      Self::Inline(InlinePolicy::RejectIndex | InlinePolicy::RejectIndexAndLinks) => {
+        Err(EvalError::IndexNotAllowedHere {
+          span: view.span().into(),
+        })
+      },
+    };
   }
 
-  /// 引数を再帰評価するコマンド（書体 / 色指定・脚注本体）へ渡す `\index` の方針
+  /// リンクを作るコマンドをこの文脈で実行してよいか検査する
+  ///
+  /// 拒否は引数の妥当性に依存しないので、引数を評価する前に呼んでよい。
+  fn accept_link(self, view: &CommandView<'_>) -> Result<(), EvalError> {
+    return match self {
+      Self::Block | Self::Inline(InlinePolicy::Allow | InlinePolicy::RejectIndex) => Ok(()),
+      Self::Inline(InlinePolicy::RejectIndexAndLinks) => Err(EvalError::LinkInLinkDisplay {
+        what: format!("\\{}", view.name()),
+        span: view.span().into(),
+      }),
+    };
+  }
+
+  /// 引数を再帰評価するコマンド（書体 / 色指定・脚注本体）へ渡す方針
   ///
   /// 外側の方針をそのまま引き継ぐ — 固定 `Allow` にすると
-  /// `\section{\bold{x\index{x}}}` が拒否をすり抜ける。
-  fn index_policy(self) -> IndexPolicy {
+  /// `\section{\bold{x\index{x}}}` / `\href{u}{\bold{\ref{x}}}` が拒否をすり抜ける。
+  fn inline_policy(self) -> InlinePolicy {
     return match self {
-      Self::Block => IndexPolicy::Allow,
+      Self::Block => InlinePolicy::Allow,
       Self::Inline(policy) => policy,
     };
   }
@@ -156,6 +171,8 @@ enum UnaryCommand {
 enum BinaryCommand {
   /// `\href{uri}{表示}` — 表示テキストと外部 URI を別に指定する外部リンク（第 1 引数は verbatim）
   Href,
+  /// `\hyperref{label}{表示}` — 表示を著者が書く内部リンクのスタブを生成する（解決はしない）
+  Hyperref,
   /// `\qty{数値}{単位}` — 量（必須引数 2 個とも外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Quantity,
 }
@@ -170,6 +187,9 @@ impl CommandKind {
     ctx: &EvalContext<'_>,
     placement: Placement,
   ) -> Result<CommandResult, EvalError> {
+    if self.creates_link() {
+      placement.accept_link(view)?;
+    }
     match self {
       Self::Leaf(command) => {
         command.signature().bind(view)?;
@@ -184,6 +204,26 @@ impl CommandKind {
         return command.execute(view, ctx, args);
       },
     }
+  }
+
+  /// リンクを作るコマンドか（本文中の脚注マーカーも脚注本体への内部リンクなので含む）
+  fn creates_link(self) -> bool {
+    return match self {
+      Self::Leaf(LeafCommand::NoIndent | LeafCommand::PageBreak)
+      | Self::Unary(
+        UnaryCommand::Space
+        | UnaryCommand::Heading(_)
+        | UnaryCommand::StyledText(_)
+        | UnaryCommand::ColoredText
+        | UnaryCommand::Index
+        | UnaryCommand::Code
+        | UnaryCommand::Number
+        | UnaryCommand::Unit,
+      )
+      | Self::Binary(BinaryCommand::Quantity) => false,
+      Self::Unary(UnaryCommand::Ref | UnaryCommand::Url | UnaryCommand::Cite | UnaryCommand::Footnote)
+      | Self::Binary(BinaryCommand::Href | BinaryCommand::Hyperref) => true,
+    };
   }
 
   /// 必須引数の位置 `index`（0 始まり）の読み取り方（宣言の範囲外は外側文脈の継承）
@@ -258,15 +298,15 @@ impl UnaryCommand {
         return heading::heading(view, arg, opts, ctx, level).map(|node| return CommandResult::Block(permit, node));
       },
       Self::StyledText(font) => {
-        return text_style::styled_text(view, arg, ctx, font, placement.index_policy()).map(CommandResult::Inline);
+        return text_style::styled_text(view, arg, ctx, font, placement.inline_policy()).map(CommandResult::Inline);
       },
       Self::ColoredText => {
-        return text_style::colored_text(view, arg, opts, ctx, placement.index_policy()).map(CommandResult::Inline);
+        return text_style::colored_text(view, arg, opts, ctx, placement.inline_policy()).map(CommandResult::Inline);
       },
       Self::Ref => return ref_(view, arg, ctx).map(CommandResult::Inline),
       Self::Cite => return cite::cite(view, arg, ctx).map(CommandResult::Inline),
       Self::Footnote => {
-        return footnote::footnote(view, arg, ctx, placement.index_policy()).map(CommandResult::Inline);
+        return footnote::footnote(view, arg, ctx, placement.inline_policy()).map(CommandResult::Inline);
       },
       Self::Index => {
         placement.accept_index(view)?;
@@ -291,6 +331,7 @@ impl BinaryCommand {
   fn signature(self) -> Signature<2> {
     return match self {
       Self::Href => link::HREF,
+      Self::Hyperref => link::HYPERREF,
       Self::Quantity => quantity::SIGNATURE,
     };
   }
@@ -304,6 +345,7 @@ impl BinaryCommand {
   ) -> Result<CommandResult, EvalError> {
     return match self {
       Self::Href => link::href(view, args, ctx).map(CommandResult::Inline),
+      Self::Hyperref => link::hyperref(view, args, ctx).map(CommandResult::Inline),
       Self::Quantity => quantity::quantity(view.source(), args).map(|(numeral, unit)| {
         return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
       }),
@@ -351,6 +393,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   "url" => CommandKind::Unary(UnaryCommand::Url),
   "href" => CommandKind::Binary(BinaryCommand::Href),
+  "hyperref" => CommandKind::Binary(BinaryCommand::Hyperref),
 
   "num" => CommandKind::Unary(UnaryCommand::Number),
   "unit" => CommandKind::Unary(UnaryCommand::Unit),
@@ -437,9 +480,9 @@ pub(super) fn evaluate_command(
 pub(super) fn evaluate_inline_command(
   view: &CommandView<'_>,
   ctx: &EvalContext<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<HirInline, EvalError> {
-  return match evaluate_command(view, ctx, Placement::Inline(index_policy))? {
+  return match evaluate_command(view, ctx, Placement::Inline(inline_policy))? {
     CommandResult::Inline(inline) => Ok(inline),
     CommandResult::Block(..) | CommandResult::NoIndent(_) => {
       unreachable!(
@@ -581,7 +624,7 @@ mod tests {
       let view = CommandView::new(node, source);
 
       let result = evaluator::run_handler(|ctx| {
-        return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
+        return evaluate_inline_command(&view, ctx, InlinePolicy::Allow);
       });
 
       assert!(
@@ -601,10 +644,20 @@ mod tests {
     let view = CommandView::new(node, source);
 
     let result = evaluator::run_handler(|ctx| {
-      return evaluate_inline_command(&view, ctx, IndexPolicy::Reject);
+      return evaluate_inline_command(&view, ctx, InlinePolicy::RejectIndex);
     });
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn link_producer_is_accepted_outside_link_display() {
+    // `\index` を拒否する文脈（見出しタイトル）でもリンクは拒否しない。脚注本体は外側の方針を引き継ぐ
+    for source in [r"\section{\ref{x}}", r"本文\footnote{\cite{k}}"] {
+      let result = evaluate_document(source, "");
+
+      assert!(result.is_ok(), "{source}: {result:?}");
+    }
   }
 
   #[test]
@@ -618,7 +671,7 @@ mod tests {
         let view = CommandView::new(node, &source);
 
         let result = evaluator::run_handler(|ctx| {
-          return evaluate_inline_command(&view, ctx, IndexPolicy::Allow);
+          return evaluate_inline_command(&view, ctx, InlinePolicy::Allow);
         });
 
         assert!(
@@ -853,7 +906,19 @@ mod tests {
   }
 
   /// 引数を再帰評価しない、どの文脈にも置ける呼び出し
+  ///
+  /// `\code` の中身は字で始める（空白だけの `\code` はリンクの表示内容として空になる）。
   fn leaf_call() -> impl Strategy<Value = Call> {
+    return prop_oneof![
+      "[a-zA-Z0-9][a-zA-Z0-9 ]{0,7}".prop_map(|code| return Call::new("code", vec![], vec![code])),
+      numeral().prop_map(|numeral| return Call::new("num", vec![], vec![numeral])),
+      unit_name().prop_map(|unit| return Call::new("unit", vec![], vec![unit])),
+      (numeral(), unit_name()).prop_map(|(numeral, unit)| return Call::new("qty", vec![], vec![numeral, unit])),
+    ];
+  }
+
+  /// リンクを作る、引数を再帰評価しない呼び出し（リンクの表示内容の外ならどの文脈にも置ける）
+  fn link_leaf_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
       identifier().prop_map(|label| return Call::new("ref", vec![], vec![label])),
       prop::collection::vec(identifier(), 1..=3).prop_map(|keys| return Call::new(
@@ -861,10 +926,6 @@ mod tests {
         vec![],
         vec![keys.join(", ")]
       )),
-      "[a-zA-Z0-9 ]{0,8}".prop_map(|code| return Call::new("code", vec![], vec![code])),
-      numeral().prop_map(|numeral| return Call::new("num", vec![], vec![numeral])),
-      unit_name().prop_map(|unit| return Call::new("unit", vec![], vec![unit])),
-      (numeral(), unit_name()).prop_map(|(numeral, unit)| return Call::new("qty", vec![], vec![numeral, unit])),
     ];
   }
 
@@ -876,8 +937,8 @@ mod tests {
 
   /// インライン引数の中身 — 要素 1〜3 個を空白で連結する（記号コマンドの直後に字が続いて名前に吸われないように）
   ///
-  /// 入れ子は書体・色指定だけで深さ 3 まで。`\index` は `policy` が許すときだけ葉に入れる。
-  fn inline_content(policy: IndexPolicy) -> impl Strategy<Value = String> {
+  /// 入れ子は書体・色指定だけで深さ 3 まで。`\index` とリンクを作る呼び出しは `policy` が許すときだけ葉に入れる。
+  fn inline_content(policy: InlinePolicy) -> impl Strategy<Value = String> {
     let common_leaf = prop_oneof![
       text(),
       prop::sample::select(&[r"\alpha", r"\degree"][..]).prop_map(str::to_string),
@@ -885,12 +946,18 @@ mod tests {
       leaf_call().prop_map(|call| return call.render()),
     ];
     let leaf = match policy {
-      IndexPolicy::Allow => prop_oneof![
+      InlinePolicy::Allow => prop_oneof![
         common_leaf,
+        link_leaf_call().prop_map(|call| return call.render()),
         index_call().prop_map(|call| return call.render())
       ]
       .boxed(),
-      IndexPolicy::Reject => common_leaf.boxed(),
+      InlinePolicy::RejectIndex => prop_oneof![
+        common_leaf,
+        link_leaf_call().prop_map(|call| return call.render())
+      ]
+      .boxed(),
+      InlinePolicy::RejectIndexAndLinks => common_leaf.boxed(),
     };
     let element = leaf.prop_recursive(3, 16, 3, |inner| {
       let content = prop::collection::vec(inner, 1..=3).prop_map(|elements| return elements.join(" "));
@@ -910,7 +977,7 @@ mod tests {
   /// ブロックを生む呼び出し（見出し・`\space`・`\pagebreak`・`\noindent`）
   fn block_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
-      (heading_name(), optional_opt("label", identifier()), inline_content(IndexPolicy::Reject))
+      (heading_name(), optional_opt("label", identifier()), inline_content(InlinePolicy::RejectIndex))
         .prop_map(|(name, opts, title)| return Call::new(name, opts, vec![title])),
       "[1-9][0-9]{0,2}(pt|mm|cm)".prop_map(|length| return Call::new("space", vec![], vec![length])),
       Just(Call::new("pagebreak", vec![], vec![])),
@@ -921,25 +988,30 @@ mod tests {
   /// 引数をインライン内容として再帰評価する呼び出し（書体・色指定・脚注）
   fn content_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
-      (styled_name(), inline_content(IndexPolicy::Allow)).prop_map(|(name, body)| return Call::new(
+      (styled_name(), inline_content(InlinePolicy::Allow)).prop_map(|(name, body)| return Call::new(
         name,
         vec![],
         vec![body]
       )),
-      (color(), inline_content(IndexPolicy::Allow)).prop_map(|(color, body)| return Call::new(
+      (color(), inline_content(InlinePolicy::Allow)).prop_map(|(color, body)| return Call::new(
         "color",
         vec![format!("color={color}")],
         vec![body]
       )),
-      inline_content(IndexPolicy::Allow).prop_map(|body| return Call::new("footnote", vec![], vec![body])),
+      inline_content(InlinePolicy::Allow).prop_map(|body| return Call::new("footnote", vec![], vec![body])),
     ];
   }
 
-  /// 外部リンクの呼び出し
+  /// 表示を持つリンクの呼び出し（`\url` / `\href` / `\hyperref`）
   fn link_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
+      (identifier(), inline_content(InlinePolicy::RejectIndexAndLinks)).prop_map(|(label, display)| return Call::new(
+        "hyperref",
+        vec![],
+        vec![label, display]
+      )),
       uri().prop_map(|uri| return Call::new("url", vec![], vec![uri])),
-      (uri(), inline_content(IndexPolicy::Reject)).prop_map(|(uri, display)| return Call::new(
+      (uri(), inline_content(InlinePolicy::RejectIndexAndLinks)).prop_map(|(uri, display)| return Call::new(
         "href",
         vec![],
         vec![uri, display]
@@ -954,7 +1026,8 @@ mod tests {
       content_call(),
       index_call(),
       link_call(),
-      leaf_call()
+      leaf_call(),
+      link_leaf_call()
     ];
   }
 
@@ -994,6 +1067,25 @@ mod tests {
       let result = evaluate_document(&source, &tail);
 
       prop_assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "`{source}`: {result:?}");
+    }
+
+    /// リンクの表示内容の中のリンクを作る呼び出しは、装飾の中にあっても拒否される
+    #[test]
+    fn link_producer_inside_link_display_is_rejected(
+      link in link_leaf_call(),
+      styled in styled_name(),
+      uri in uri(),
+      tail in text(),
+    ) {
+      let display = Call::new(styled, vec![], vec![link.render()]).render();
+      let source = Call::new("href", vec![], vec![uri, display]).render();
+
+      let result = evaluate_document(&source, &tail);
+
+      prop_assert!(
+        matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if *what == format!("\\{}", link.name)),
+        "`{source}`: {result:?}"
+      );
     }
   }
 

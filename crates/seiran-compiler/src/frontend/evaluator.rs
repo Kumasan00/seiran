@@ -254,10 +254,10 @@ mod test_support {
   pub(crate) fn evaluate_inline_children_to_hir(
     source: &str,
     node: &CstNode<'_>,
-    index_policy: inline::IndexPolicy,
+    inline_policy: inline::InlinePolicy,
   ) -> Result<Vec<HirInline>, EvalError> {
     let ctx = eval_context_for_test();
-    return inline::evaluate_inline_children(source, &ctx, node, index_policy);
+    return inline::evaluate_inline_children(source, &ctx, node, inline_policy);
   }
 
   /// ハンドラを直接呼ぶテスト向けに、評価結果をそのまま返す
@@ -380,6 +380,7 @@ mod tests {
       (r"\code", "code", "コード断片"),
       (r"\url", "url", "URI"),
       (r"\href{u}", "href", "2 個（リンク先 URI と表示テキスト）"),
+      (r"\hyperref{x}", "hyperref", "2 個（ラベル名と表示内容）"),
       (r"\num", "num", "1 個（数値）"),
       (r"\unit", "unit", "1 個（単位）"),
       (r"\qty{1}", "qty", "2 個（数値と単位）"),

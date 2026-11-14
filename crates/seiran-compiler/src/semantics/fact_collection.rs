@@ -4,7 +4,10 @@
 //! 環境単位採番が行採番の後に来る）。
 
 use crate::{
-  document::{HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, NodeId, SourceMap},
+  document::{
+    HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LinkDestination, NodeId,
+    SourceMap,
+  },
   semantics::{
     CitationId, CitationSiteFacts, CounterValue, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
     counter::CounterRegistry,
@@ -22,7 +25,7 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `[of=...]`）を
+/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `\hyperref` / `[of=...]`）を
 /// **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
 pub(super) fn collect_facts(
   hir: &HirDocument,
@@ -181,8 +184,18 @@ impl FactCompletenessChecker<'_> {
       match &inline.kind {
         HirInlineKind::Styled { children, .. }
         | HirInlineKind::Colored { children, .. }
-        | HirInlineKind::Link { children, .. }
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
+        HirInlineKind::Link { target, children } => {
+          match target {
+            LinkDestination::Uri(_) => {},
+            LinkDestination::Label(_) => assert!(
+              self.facts.refs.get(inline.id).is_some(),
+              "FactCollector が \\hyperref の参照先を登録し損ねている: {:?}",
+              inline.id
+            ),
+          }
+          self.inlines(children);
+        },
         HirInlineKind::Ref { .. } => assert!(
           self.facts.refs.get(inline.id).is_some(),
           "FactCollector が Ref の参照先を登録し損ねている: {:?}",
@@ -373,7 +386,7 @@ impl FactCollector<'_, '_> {
   /// リストアイテムの内容（ネストしたブロックノード列）を走査する
   fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.body); }
 
-  /// インラインノード列を走査し、参照箇所（`\ref`）を記録する
+  /// インラインノード列を走査し、参照箇所（`\ref` / `\hyperref`）を記録する
   ///
   /// インラインに採番対象は無いので失敗しない。
   fn inlines(&mut self, inlines: &[HirInline]) {
@@ -381,8 +394,14 @@ impl FactCollector<'_, '_> {
       match &inline.kind {
         HirInlineKind::Styled { children, .. }
         | HirInlineKind::Colored { children, .. }
-        | HirInlineKind::Link { children, .. }
         | HirInlineKind::Footnote { body: children, .. } => self.inlines(children),
+        HirInlineKind::Link { target, children } => {
+          match target {
+            LinkDestination::Uri(_) => {},
+            LinkDestination::Label(label) => self.facts.refs.insert(inline.id, LabelId::new(label.clone())),
+          }
+          self.inlines(children);
+        },
         HirInlineKind::Ref { label } => self.facts.refs.insert(inline.id, LabelId::new(label.clone())),
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
@@ -493,6 +512,47 @@ mod tests {
       &LabelId::new("thm:a"),
       "ref_target は site の NodeId から同じ LabelId を返すはず"
     );
+  }
+
+  #[test]
+  fn hyperref_registers_its_label_as_a_reference() {
+    let analyzed = analyze_source("\\section[label=sec:a]{A}\n\n\\hyperref{sec:a}{この節}\n");
+
+    let targets: Vec<&str> = analyzed.ref_sites().map(|(_, label)| return label.as_str()).collect();
+    assert_eq!(targets, vec!["sec:a"]);
+  }
+
+  #[test]
+  fn hyperref_to_undefined_label_is_unresolved() {
+    let source = r"本文 \hyperref{missing}{x} です。";
+    let hir = document(source);
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let failures =
+      semantics::analyze_for_test(hir, &policy, &no_references()).expect_err("未定義ラベルはエラーになるはず");
+
+    let SemanticError::UnresolvedRef { label, span, .. } = failures.first() else {
+      panic!("UnresolvedRef が期待されます: {failures:?}");
+    };
+    assert_eq!(label, "missing");
+    assert_eq!(&source[span.offset()..span.offset() + span.len()], r"\hyperref{missing}{x}");
+  }
+
+  #[test]
+  fn hyperref_resolves_forward_reference_across_sources() {
+    let sources = ["\\hyperref{sec:b}{後の節}\n", "\\section[label=sec:b]{B}\n"];
+    let hir = sources
+      .iter()
+      .enumerate()
+      .map(|(index, source)| return parse_for_test(source, SourceId::new(index)).expect("パースに成功するはず"))
+      .collect();
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let analyzed = semantics::analyze_for_test(HirDocument::assemble(hir), &policy, &no_references())
+      .expect("別ソースのラベルへの前方参照は解決するはず");
+
+    let targets: Vec<&str> = analyzed.ref_sites().map(|(_, label)| return label.as_str()).collect();
+    assert_eq!(targets, vec!["sec:b"]);
   }
 
   #[test]

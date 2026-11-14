@@ -6,7 +6,7 @@ use crate::{
     evaluator::{
       EvalContext, EvalError,
       environment::table::grid::Coverage,
-      inline::{IndexPolicy, evaluate_inline_children, evaluate_inline_elements},
+      inline::{InlinePolicy, evaluate_inline_children, evaluate_inline_elements},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::{Bound, Signature},
     },
@@ -35,7 +35,7 @@ pub(super) fn build_cell(
   ctx: &EvalContext<'_>,
   elements: &[CstElement<'_>],
   empty_span: Span,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
   column: usize,
   coverage: &Coverage,
 ) -> Result<HirTableCell, EvalError> {
@@ -75,7 +75,7 @@ pub(super) fn build_cell(
       });
     }
     let Bound { args: [arg], opts } = SIGNATURE.bind(&cell_cmd)?;
-    let cell = evaluate_cell_command(&cell_cmd, arg, &opts, ctx, index_policy)?;
+    let cell = evaluate_cell_command(&cell_cmd, arg, &opts, ctx, inline_policy)?;
     if let Some(owner) = coverage.owner(column..column + cell.column_span as usize) {
       return Err(EvalError::TableCoveredSlotNotEmpty {
         span: cell_cmd.span().into(),
@@ -87,7 +87,7 @@ pub(super) fn build_cell(
 
   let segment = segment_span(elements, empty_span);
   let id = ctx.alloc(segment);
-  let content = trim_cell_content(evaluate_inline_elements(source, ctx, elements, index_policy)?);
+  let content = trim_cell_content(evaluate_inline_elements(source, ctx, elements, inline_policy)?);
   if !content.is_empty()
     && let Some(owner) = coverage.owner(column..column + 1)
   {
@@ -111,14 +111,14 @@ fn evaluate_cell_command(
   arg: &CstNode<'_>,
   opts: &OptArgs,
   ctx: &EvalContext<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<HirTableCell, EvalError> {
   let column_span = opts.get(SPAN).unwrap_or(1);
   let row_span = opts.get(ROW_SPAN).unwrap_or(1);
   let rule_below = opts.get(RULE_BELOW).unwrap_or(false);
 
   let id = ctx.alloc(view.span());
-  let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, index_policy)?);
+  let content = trim_cell_content(evaluate_inline_children(view.source(), ctx, arg, inline_policy)?);
   return Ok(HirTableCell {
     id,
     content,

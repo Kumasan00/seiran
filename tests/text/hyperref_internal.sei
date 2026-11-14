@@ -1,0 +1,36 @@
+\section{表示を書く内部リンク}
+
+// 表示を著者が書く内部リンク `\hyperref`: 前方参照・装飾と数式の表示・明示色・折り返し・表セル・脚注本体・見出しの中を
+// 1 文書で通す。golden ではリンクの行き先が `Label` で、折り返した表示は行ごとに同じ行き先の矩形を持ち、
+// 見出しの中の `\hyperref` は目次の行でリンクにならないことを見る。
+
+詳しくは\hyperref{sec:method}{この方法}を参照し、結論は\hyperref{thm:main}{\bold{主定理}}、
+関係式は\hyperref{eq:energy}{$E=mc^{2}$}にまとめる。色を明示した表示は
+\hyperref{sec:method}{\color[color=#ff0000]{赤い表示}}になる。
+
+長い表示内容は行をまたいで折り返し、\hyperref{sec:method}{行ごとに分かれたどの部分を押しても同じ節へ移動する長い表示内容の例として、ここに十分な長さの文章を置いて二行以上に折り返させる。版面の幅が広いので、同じ趣旨の文をもう一度繰り返して確実に行末を越えさせる。行ごとに分かれたどの部分を押しても同じ節へ移動する長い表示内容の例として、ここに十分な長さの文章を置いて二行以上に折り返させる}ことを確かめる。
+
+脚注の中からも参照できる\footnote{\hyperref{sec:method}{脚注から方法の節へ}移動する。}。
+
+\begin{table}[columns=left left]
+\head{
+  \row{\hyperref{sec:method}{見出しセル} & 値}
+}
+\row{\hyperref{thm:main}{本体セル} & 1}
+\end{table}
+
+\section[label=sec:method]{方法}
+
+ここが方法の節。
+
+\begin{theorem}[title=主定理, label=thm:main]
+主定理の本文。
+\end{theorem}
+
+\begin{equation}[label=eq:energy]
+E=mc^{2}
+\end{equation}
+
+\section{\hyperref{sec:method}{方法}の続き}
+
+見出しの中の内部リンクは本文の見出しではリンクになり、目次の行としおりでは表示内容だけになる。

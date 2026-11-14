@@ -12,7 +12,7 @@ use crate::{
           grid::{self, Coverage},
         },
       },
-      inline::IndexPolicy,
+      inline::InlinePolicy,
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::{Bound, Signature},
     },
@@ -95,7 +95,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
           head = evaluate_head(&cmd_view, arg, ctx)?;
         },
         TableCommand::Row => {
-          rows.push(evaluate_row(&cmd_view, arg, &opts, ctx, IndexPolicy::Allow, &mut coverage)?);
+          rows.push(evaluate_row(&cmd_view, arg, &opts, ctx, InlinePolicy::Allow, &mut coverage)?);
         },
         TableCommand::Caption => {
           if caption.is_some() {
@@ -140,7 +140,7 @@ pub(super) fn scan_table_body(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>)
 /// `\head{\row{...} ...}` をヘッダ行に変換する
 ///
 /// ヘッダ行は表が改ページするたび全ページへ再描画される複製文脈なので、出現ページが一意に
-/// 定まらない。セル内の `\index` は [`IndexPolicy::Reject`] で拒否する。
+/// 定まらない。セル内の `\index` は [`InlinePolicy::RejectIndex`] で拒否する。
 fn evaluate_head(
   view: &CommandView<'_>,
   arg: &CstNode<'_>,
@@ -159,7 +159,7 @@ fn evaluate_head(
   ) in
     body_scan::collect_allowed_commands(source, arg.children, "table", &[("row", (), ROW)], "\\head の中の \\row")?
   {
-    rows.push(evaluate_row(&row_view, row_arg, &opts, ctx, IndexPolicy::Reject, &mut coverage)?);
+    rows.push(evaluate_row(&row_view, row_arg, &opts, ctx, InlinePolicy::RejectIndex, &mut coverage)?);
   }
   if rows.is_empty() {
     return Err(EvalError::MissingCommandArgument {
@@ -177,7 +177,7 @@ fn evaluate_row(
   arg: &CstNode<'_>,
   opts: &OptArgs,
   ctx: &EvalContext<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
   coverage: &mut Coverage,
 ) -> Result<HirTableRow, EvalError> {
   let separator = match opts.get(SEPARATOR) {
@@ -206,7 +206,7 @@ fn evaluate_row(
     if let CstElement::Token(token) = child
       && token.kind == TokenKind::Ampersand
     {
-      let cell = build_cell(source, ctx, &segment, empty_cell_span, index_policy, column, coverage)?;
+      let cell = build_cell(source, ctx, &segment, empty_cell_span, inline_policy, column, coverage)?;
       column += cell.column_span as usize;
       cells.push(cell);
       segment.clear();
@@ -215,7 +215,7 @@ fn evaluate_row(
       segment.push(*child);
     }
   }
-  cells.push(build_cell(source, ctx, &segment, empty_cell_span, index_policy, column, coverage)?);
+  cells.push(build_cell(source, ctx, &segment, empty_cell_span, inline_policy, column, coverage)?);
   coverage.advance(&cells);
 
   for cell in &cells {

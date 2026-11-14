@@ -5,7 +5,7 @@ use crate::{
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      inline::{IndexPolicy, evaluate_inline_children},
+      inline::{InlinePolicy, evaluate_inline_children},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
     },
@@ -49,7 +49,7 @@ pub(super) fn heading(
 
   let id = ctx.alloc(view.span());
   // 見出しタイトルは目次・走り文へも展開されうる複製文脈なので `\index` を拒否する
-  let title = evaluate_inline_children(view.source(), ctx, title_arg, IndexPolicy::Reject)?;
+  let title = evaluate_inline_children(view.source(), ctx, title_arg, InlinePolicy::RejectIndex)?;
 
   return Ok(HirNode::new(
     id,

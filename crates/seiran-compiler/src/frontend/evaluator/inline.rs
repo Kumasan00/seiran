@@ -16,20 +16,25 @@ use crate::{
   source::Span,
 };
 
-/// 引数の再帰評価で `\index` を許すかどうかの文脈方針
+/// 引数の再帰評価で `\index` とリンクを許すかどうかの文脈方針
 ///
 /// `\index` の出現ページは「マーカーを含む内容が実際に置かれたページ」なので、内容が 1 箇所にしか
-/// 置かれない文脈でのみ許せる。呼び出し側は自分の文脈が複製されうるかで [`Self::Allow`] /
-/// [`Self::Reject`] を決め、書体 / 色指定・脚注本体のように「外側の文脈をそのまま引き継ぐ」引数は
-/// 受け取った方針を子へ渡す（`\section{\bold{x\index{x}}}` に穴を開けないため）。
+/// 置かれない文脈でのみ許せる。リンクの表示内容の中のリンクは、矩形が重なってどちらへ飛ぶかが字面から
+/// 決まらないので許さない。3 つの文脈は許す範囲が順に狭まる。呼び出し側は自分の文脈でどれかを決め、
+/// 書体 / 色指定・脚注本体のように「外側の文脈をそのまま引き継ぐ」引数は受け取った方針を子へ渡す
+/// （`\section{\bold{x\index{x}}}` / `\href{u}{\bold{\ref{x}}}` に穴を開けないため）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
-pub(in crate::frontend) enum IndexPolicy {
-  /// `\index` を許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈）
+pub(in crate::frontend) enum InlinePolicy {
+  /// `\index` もリンクも許可する（キャプション・表の本体セルなど、内容が 1 箇所に置かれる文脈）
   Allow,
   /// `\index` を [`EvalError::IndexNotAllowedHere`] で拒否する
   ///
-  /// 見出しタイトル・`\href` の表示テキスト・表の `\head` セル・`\index` 自身の語。
-  Reject,
+  /// 見出しタイトル・表の `\head` セル（複製されうる）と `\index` 自身の語。
+  RejectIndex,
+  /// `\index` に加えて、リンクを作るコマンドを [`EvalError::LinkInLinkDisplay`] で拒否する
+  ///
+  /// リンクの表示内容（`\href` / `\hyperref` の第 2 引数）。
+  RejectIndexAndLinks,
 }
 
 /// トークン 1 個がインライン要素として持つ内容
@@ -183,9 +188,9 @@ pub(super) fn evaluate_inline_children(
   source: &str,
   ctx: &EvalContext<'_>,
   node: &CstNode<'_>,
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
-  return evaluate_inline_elements(source, ctx, node.children, index_policy);
+  return evaluate_inline_elements(source, ctx, node.children, inline_policy);
 }
 
 /// CST 要素のスライスから [`HirInline`] のリストを構築する
@@ -199,7 +204,7 @@ pub(super) fn evaluate_inline_elements(
   source: &str,
   ctx: &EvalContext<'_>,
   elements: &[CstElement<'_>],
-  index_policy: IndexPolicy,
+  inline_policy: InlinePolicy,
 ) -> Result<Vec<HirInline>, EvalError> {
   let mut sink = InlineSink::default();
   for child in elements {
@@ -218,7 +223,7 @@ pub(super) fn evaluate_inline_elements(
       CstElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
           let view = CommandView::new(child_node, source);
-          sink.push_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, index_policy)?);
+          sink.push_inline_result(child_node.span, command::evaluate_inline_command(&view, ctx, inline_policy)?);
         },
         SyntaxKind::InlineMath => {
           let id = ctx.alloc(child_node.span);
@@ -350,7 +355,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(
       &inlines[0].kind,
@@ -369,7 +374,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
     assert_eq!(inlines.len(), 1);
     assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol('α')));
   }
@@ -383,7 +388,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow);
+    let result = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow);
 
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "nonexistent"));
   }
@@ -397,7 +402,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Reject);
+    let result = evaluate_inline_children_to_hir(source, arg, InlinePolicy::RejectIndex);
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
   }
@@ -411,7 +416,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert!(
       matches!(&inlines[0].kind, HirInlineKind::Index { word, reading } if word == "語" && reading.is_none()),
@@ -429,7 +434,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let result = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Reject);
+    let result = evaluate_inline_children_to_hir(source, arg, InlinePolicy::RejectIndex);
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })));
   }
@@ -442,7 +447,7 @@ mod tests {
     let section_node = cst.child_nodes().next().unwrap();
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
     let has_math = inlines.iter().any(|n| matches!(n.kind, HirInlineKind::Math(_)));
     assert!(has_math, "Math ノードが含まれるべき: {inlines:?}");
   }
@@ -456,7 +461,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 2, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "AV"), "{inlines:?}");
@@ -472,7 +477,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 4, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "a"), "{inlines:?}");
@@ -490,7 +495,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 5, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "ab"), "{inlines:?}");
@@ -509,7 +514,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 3, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Colored { .. }), "{inlines:?}");
@@ -526,7 +531,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 3, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Link { .. }), "{inlines:?}");
@@ -543,7 +548,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 5, "{inlines:?}");
     assert!(matches!(&inlines[1].kind, HirInlineKind::Text(t) if t == " "), "{inlines:?}");
@@ -559,7 +564,7 @@ mod tests {
     let view = CommandView::new(section_node, source);
     let arg = view.first_arg().unwrap();
 
-    let inlines = evaluate_inline_children_to_hir(source, arg, IndexPolicy::Allow).unwrap();
+    let inlines = evaluate_inline_children_to_hir(source, arg, InlinePolicy::Allow).unwrap();
 
     assert_eq!(inlines.len(), 4, "{inlines:?}");
     assert!(matches!(&inlines[0].kind, HirInlineKind::Text(t) if t == "A"), "{inlines:?}");

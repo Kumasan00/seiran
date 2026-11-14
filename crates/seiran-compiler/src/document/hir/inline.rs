@@ -22,6 +22,15 @@ impl HirInline {
   pub(crate) fn new(id: NodeId, kind: HirInlineKind) -> Self { return HirInline { id, kind }; }
 }
 
+/// リンクの行き先
+#[derive(Debug, PartialEq, Eq)]
+pub(crate) enum LinkDestination {
+  /// 外部 URI（`\url` / `\href` の第 1 引数）
+  Uri(String),
+  /// 文書内のラベル（`\hyperref` の第 1 引数）。`\ref` と同じラベル名で、解決済み `LabelId` ではない
+  Label(String),
+}
+
 /// インラインノードの種別
 ///
 /// 解決済みの表示内容・生成物は持たない（`Cite` は引用「箇所」だけを表す）。
@@ -84,11 +93,11 @@ pub(crate) enum HirInlineKind {
     label: String,
   },
 
-  /// 外部リンク（`\url{uri}` / `\href{uri}{表示}`）
+  /// リンク（`\url{uri}` / `\href{uri}{表示}` / `\hyperref{label}{表示}`）。表示は子のインライン要素
   Link {
-    /// リンク先の外部 URI
-    url: String,
-    /// 表示テキスト（インライン要素）
+    /// リンクの行き先
+    target: LinkDestination,
+    /// 表示（インライン要素）
     children: Vec<HirInline>,
   },
 

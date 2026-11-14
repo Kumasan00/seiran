@@ -121,7 +121,7 @@ pub(crate) enum SemanticError {
     comma_hint: &'static str,
   },
 
-  /// `\ref{label}` / `proof` の `[of=...]` が参照するラベルが未定義の場合
+  /// `\ref{label}` / `\hyperref{label}{...}` / `proof` の `[of=...]` が参照するラベルが未定義の場合
   #[error("未解決の参照です: ラベル `{label}`")]
   #[diagnostic(code(semantics::unresolved_ref), help("対応する label が定義されているか確認してください。"))]
   UnresolvedRef {

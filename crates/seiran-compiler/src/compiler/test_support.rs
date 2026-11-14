@@ -442,6 +442,11 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "toc", "enabled", true);
       set(table, "toc", "leader", ".");
     },
+    // 見出しの中の \hyperref が目次の行でリンクにならず、本文の内部リンクにはリンク色が付くことを見る
+    "hyperref_internal" => {
+      set(table, "toc", "enabled", true);
+      set(table, "hyperref", "link_color", "#0000ff");
+    },
     // 題目に数式・装飾・リンクを含む目次。本文のリンク色との対比で、目次の行にリンク色が付かないことを見る
     "toc_inline" => {
       set(table, "toc", "enabled", true);
