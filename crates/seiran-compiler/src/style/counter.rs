@@ -10,7 +10,7 @@ use thiserror::Error;
 use crate::{
   document::HeadingLevel,
   project::non_empty_text,
-  style::{CounterTemplate, RefTemplate, number_style::NumberStyle},
+  style::{CounterTemplate, RefNumberTemplate, RefTemplate, number_style::NumberStyle},
 };
 
 /// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
@@ -57,6 +57,7 @@ impl Default for CounterStyles {
         "{n}",
         NumberStyle::RomanUpper,
         "{display_name} {number}",
+        "{number}",
         &[
           CounterName::Chapter,
           CounterName::Section,
@@ -70,6 +71,7 @@ impl Default for CounterStyles {
         "{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
+        "{number}",
         &[
           CounterName::Section,
           CounterName::Subsection,
@@ -85,6 +87,7 @@ impl Default for CounterStyles {
         "{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
+        "{number}",
         &[
           CounterName::Subsection,
           CounterName::Paragraph,
@@ -96,6 +99,7 @@ impl Default for CounterStyles {
         "{chapter}.{section}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
+        "{number}",
         &[CounterName::Paragraph, CounterName::Subparagraph],
       ),
       paragraph: CounterStyle::new(
@@ -103,6 +107,7 @@ impl Default for CounterStyles {
         "{chapter}.{section}.{subsection}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
+        "{number}",
         &[CounterName::Subparagraph],
       ),
       subparagraph: CounterStyle::new(
@@ -110,11 +115,26 @@ impl Default for CounterStyles {
         "{chapter}.{section}.{subsection}.{paragraph}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
+        "{number}",
         &[],
       ),
-      table: CounterStyle::new("Table", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
-      figure: CounterStyle::new("Figure", "{chapter}.{n}", NumberStyle::Arabic, "{display_name} {number}", &[]),
-      equation: CounterStyle::new("Equation", "{chapter}.{n}", NumberStyle::Arabic, "({number})", &[]),
+      table: CounterStyle::new(
+        "Table",
+        "{chapter}.{n}",
+        NumberStyle::Arabic,
+        "{display_name} {number}",
+        "{number}",
+        &[],
+      ),
+      figure: CounterStyle::new(
+        "Figure",
+        "{chapter}.{n}",
+        NumberStyle::Arabic,
+        "{display_name} {number}",
+        "{number}",
+        &[],
+      ),
+      equation: CounterStyle::new("Equation", "{chapter}.{n}", NumberStyle::Arabic, "{number}", "({number})", &[]),
     };
   }
 }
@@ -155,12 +175,18 @@ pub(crate) struct CounterStyle {
   pub number_format: CounterTemplate,
   /// 各プレースホルダの数字表記スタイル（参照先カウンタは参照先のスタイルが使われる）
   pub number_style: NumberStyle,
-  /// `\ref{label}` の表示テンプレート。`{number}` で `number_format` の出力、`{display_name}` で
-  /// 種別名を埋め込む
+  /// `\ref{label}` の表示テンプレート。`{number}` は必須で、`ref_number_format` を通した番号
+  /// （`\refs` / `\refrange` では一覧・範囲）が入る。`{display_name}` で種別名を埋め込む
   ///
-  /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"({number})"` → `"(1.2)"`
+  /// 例: `"{display_name} {number}"` → `"Section 1.2"`、`"{number}"` と `ref_number_format = "({number})"` → `"(1.2)"`
   #[garde(dive)]
   pub ref_format: RefTemplate,
+  /// 参照 1 件ぶんの番号の見せ方。`{number}`（必須）に `number_format` の出力が入り、
+  /// 結果が `ref_format` の `{number}` へ入る
+  ///
+  /// 例: `"{number}"`（そのまま）、`"({number})"`（括弧付き。equation の既定）
+  #[garde(dive)]
+  pub ref_number_format: RefNumberTemplate,
   /// このカウンタが進んだときに 0 にリセットする下位カウンタ群
   pub resets: Vec<CounterName>,
 }
@@ -173,6 +199,7 @@ impl CounterStyle {
     number_format: &str,
     number_style: NumberStyle,
     ref_format: &str,
+    ref_number_format: &str,
     resets: &[CounterName],
   ) -> Self {
     return Self {
@@ -180,6 +207,7 @@ impl CounterStyle {
       number_format: CounterTemplate::parse(number_format),
       number_style,
       ref_format: RefTemplate::parse(ref_format),
+      ref_number_format: RefNumberTemplate::parse(ref_number_format),
       resets: resets.to_vec(),
     };
   }
@@ -241,6 +269,8 @@ struct CounterStyleOverride {
   number_style: Option<NumberStyle>,
   /// `\ref{label}` の表示テンプレート
   ref_format: Option<RefTemplate>,
+  /// 参照 1 件ぶんの番号の書式
+  ref_number_format: Option<RefNumberTemplate>,
   /// リセットする下位カウンタ群（既定の列を置き換える）
   resets: Option<Vec<CounterName>>,
 }
@@ -256,6 +286,7 @@ impl CounterStyleOverride {
       number_format,
       number_style,
       ref_format,
+      ref_number_format,
       resets,
     } = self;
     return CounterStyle {
@@ -263,6 +294,7 @@ impl CounterStyleOverride {
       number_format: number_format.unwrap_or(base.number_format),
       number_style: number_style.unwrap_or(base.number_style),
       ref_format: ref_format.unwrap_or(base.ref_format),
+      ref_number_format: ref_number_format.unwrap_or(base.ref_number_format),
       resets: resets.unwrap_or(base.resets),
     };
   }
@@ -340,13 +372,13 @@ mod tests {
 
   #[test]
   fn validate_rejects_empty_display_name() {
-    let counter = CounterStyle::new("", "{n}", NumberStyle::Arabic, "{number}", &[]);
+    let counter = CounterStyle::new("", "{n}", NumberStyle::Arabic, "{number}", "{number}", &[]);
     assert!(counter.validate().is_err());
   }
 
   #[test]
   fn validate_rejects_empty_ref_format() {
-    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "", &[]);
+    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "", "{number}", &[]);
     assert!(counter.validate().is_err());
   }
 
@@ -359,9 +391,23 @@ mod tests {
   }
 
   #[test]
-  fn default_counters_equation_uses_parens_ref_format() {
+  fn validate_rejects_ref_format_without_number() {
+    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "{display_name}", "{number}", &[]);
+    assert!(counter.validate().is_err());
+
+    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "{number}", "()", &[]);
+    assert!(counter.validate().is_err());
+  }
+
+  #[test]
+  fn default_counters_equation_wraps_each_number() {
     let counters = CounterStyles::default();
-    assert_eq!(counters.equation.ref_format.as_str(), "({number})");
+    assert_eq!(counters.equation.ref_format.as_str(), "{number}");
+    assert_eq!(counters.equation.ref_number_format.as_str(), "({number})");
+    assert_eq!(counters.figure.ref_number_format.as_str(), "{number}");
+
+    let overridden: CounterStyles = toml::from_str("[equation]\nref_number_format = \"[{number}]\"\n").unwrap();
+    assert_eq!(overridden.equation.ref_number_format.as_str(), "[{number}]");
   }
 
   #[test]

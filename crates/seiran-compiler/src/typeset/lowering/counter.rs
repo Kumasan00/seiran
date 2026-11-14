@@ -34,6 +34,7 @@ pub(super) fn format_counter_value(style: &Style, value: &CounterValue) -> Strin
 
 /// [`CounterValue`] を `\ref` の表示文字列にする（表示番号に `ref_format` を適用したもの）
 ///
+/// `ref_format` の `{number}` には `ref_number_format` を通した番号が入る（定理は番号をそのまま入れる）。
 /// 例: `chapter` なら `"Chapter 1"`、`equation` なら `"(1.1)"`、定理なら `"Theorem 1"`。
 #[must_use]
 pub(super) fn format_ref_display(style: &Style, value: &CounterValue) -> String {
@@ -41,7 +42,7 @@ pub(super) fn format_ref_display(style: &Style, value: &CounterValue) -> String 
   return match *value {
     CounterValue::Counter { name, .. } => {
       let def = &style.counters[name];
-      def.ref_format.expand(&number, &def.display_name)
+      def.ref_format.expand(&def.ref_number_format.expand(&number), &def.display_name)
     },
     CounterValue::Theorem { class, .. } => THEOREM_REF_FORMAT.expand(&number, &style.theorems[class].display_name),
   };
@@ -82,7 +83,7 @@ fn render_named(style: &Style, counters: &CounterValues, target: CounterName) ->
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::style::{CounterTemplate, NumberStyle, TheoremReset};
+  use crate::style::{CounterTemplate, NumberStyle, RefNumberTemplate, RefTemplate, TheoremReset};
 
   /// `(カウンタ名, 値)` の列を全カウンタの値にする（列に無いカウンタは 0）
   fn snapshot(values: &[(CounterName, u32)]) -> CounterValues {
@@ -181,6 +182,26 @@ mod tests {
     let text = format_ref_display(&style, &counter_value(CounterName::Chapter, &[(CounterName::Chapter, 1)]));
 
     assert_eq!(text, "Chapter 1");
+  }
+
+  #[test]
+  fn equation_ref_display_is_unchanged() {
+    let style = Style::default();
+
+    let text = format_ref_display(&style, &counter_value(CounterName::Equation, &[(CounterName::Equation, 1)]));
+
+    assert_eq!(text, "(1)");
+  }
+
+  #[test]
+  fn ref_display_applies_ref_number_format_inside_ref_format() {
+    let mut style = Style::default();
+    style.counters.equation.ref_format = RefTemplate::parse("Eq. {number}");
+    style.counters.equation.ref_number_format = RefNumberTemplate::parse("[{number}]");
+
+    let text = format_ref_display(&style, &counter_value(CounterName::Equation, &[(CounterName::Equation, 1)]));
+
+    assert_eq!(text, "Eq. [1]");
   }
 
   #[test]

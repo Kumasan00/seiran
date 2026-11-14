@@ -22,10 +22,13 @@ use crate::style::counter::CounterName;
 
 /// 用途別プレースホルダ集合が満たす性質
 ///
-/// 「どの名前を書けるか」と「空テンプレートを許すか」の 2 点だけが用途ごとの差分。
-trait Placeholder: Sized {
+/// 「どの名前を書けるか」「空テンプレートを許すか」「どの名前が必須か」の 3 点だけが用途ごとの差分。
+trait Placeholder: Sized + PartialEq {
   /// 空文字列のテンプレートを許可するか（走り文スロットだけが `true`）
   const ALLOW_EMPTY: bool;
+
+  /// 少なくとも 1 回は書かれていなければならないプレースホルダ名（無ければ解析が問題を積む）
+  const REQUIRED: &'static [&'static str];
 
   /// プレースホルダ名を値へ写す。この用途で使えない名前は `None`
   fn from_name(name: &str) -> Option<Self>;
@@ -120,6 +123,16 @@ impl<P: Placeholder> Analyzed<P> {
     }
 
     push_literal(&mut parts, literal_start..source.len());
+    for &required in P::REQUIRED {
+      let required_placeholder = P::from_name(required)
+        .expect("REQUIRED に挙げた名前は同じ Placeholder の from_name が解釈できる（実装側の対応表が揃える）");
+      let present = parts
+        .iter()
+        .any(|part| return matches!(part, Part::Placeholder(found) if *found == required_placeholder));
+      if !present {
+        problems.push(format!("必須のプレースホルダ '{{{required}}}' がありません"));
+      }
+    }
     return Analyzed {
       source: source.to_string(),
       parts,
@@ -234,6 +247,7 @@ enum NumberTitlePlaceholder {
 
 impl Placeholder for NumberTitlePlaceholder {
   const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &[];
 
   fn from_name(name: &str) -> Option<Self> {
     return match name {
@@ -253,6 +267,7 @@ enum NumberPlaceholder {
 
 impl Placeholder for NumberPlaceholder {
   const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &[];
 
   fn from_name(name: &str) -> Option<Self> {
     return match name {
@@ -273,6 +288,7 @@ pub(crate) enum CounterPlaceholder {
 
 impl Placeholder for CounterPlaceholder {
   const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &[];
 
   fn from_name(name: &str) -> Option<Self> {
     if name == "n" {
@@ -293,11 +309,31 @@ enum RefPlaceholder {
 
 impl Placeholder for RefPlaceholder {
   const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &["number"];
 
   fn from_name(name: &str) -> Option<Self> {
     return match name {
       "number" => Some(Self::Number),
       "display_name" => Some(Self::DisplayName),
+      _ => None,
+    };
+  }
+}
+
+/// 参照 1 件の番号書式（`ref_number_format`）で使えるプレースホルダ
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum RefNumberPlaceholder {
+  /// `{number}` — 参照先の表示番号
+  Number,
+}
+
+impl Placeholder for RefNumberPlaceholder {
+  const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &["number"];
+
+  fn from_name(name: &str) -> Option<Self> {
+    return match name {
+      "number" => Some(Self::Number),
       _ => None,
     };
   }
@@ -318,6 +354,7 @@ enum TheoremHeadingPlaceholder {
 
 impl Placeholder for TheoremHeadingPlaceholder {
   const ALLOW_EMPTY: bool = false;
+  const REQUIRED: &'static [&'static str] = &[];
 
   fn from_name(name: &str) -> Option<Self> {
     return match name {
@@ -347,6 +384,7 @@ enum RunningPlaceholder {
 
 impl Placeholder for RunningPlaceholder {
   const ALLOW_EMPTY: bool = true;
+  const REQUIRED: &'static [&'static str] = &[];
 
   fn from_name(name: &str) -> Option<Self> {
     return match name {
@@ -376,8 +414,13 @@ define_template! {
 }
 
 define_template! {
-  /// `{number}` / `{display_name}` を持つ書式（カウンタの `ref_format`）
+  /// `{number}` / `{display_name}` を持つ書式（カウンタの `ref_format`。`{number}` は必須）
   RefTemplate(RefPlaceholder)
+}
+
+define_template! {
+  /// `{number}` だけを持つ書式（カウンタの `ref_number_format`。`{number}` は必須）
+  RefNumberTemplate(RefNumberPlaceholder)
 }
 
 define_template! {
@@ -495,6 +538,18 @@ impl RefTemplate {
   }
 }
 
+impl RefNumberTemplate {
+  /// `{number}` に表示番号を埋めた文字列を返す
+  #[must_use]
+  pub(crate) fn expand(&self, number: &str) -> String {
+    return self.0.expand_to_string(|placeholder| {
+      return match placeholder {
+        RefNumberPlaceholder::Number => number.to_string(),
+      };
+    });
+  }
+}
+
 /// 定理見出しテンプレートへ渡す文字列値
 #[derive(Debug, Clone, Copy)]
 pub(crate) struct TheoremHeadingValues<'a> {
@@ -585,8 +640,8 @@ mod tests {
   use strum::VariantArray;
 
   use super::{
-    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
-    RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefNumberTemplate, RefTemplate,
+    RunningTemplate, RunningValues, TheoremHeadingTemplate, TheoremHeadingValues,
   };
   use crate::style::CounterName;
 
@@ -733,6 +788,21 @@ mod tests {
     assert!(violation(&TheoremHeadingTemplate::parse("{page}")).is_some());
     assert!(violation(&RunningTemplate::parse("{page} / {pages} — {title}{author}{date}")).is_none());
     assert!(violation(&RunningTemplate::parse("{pagee}")).is_some());
+  }
+
+  #[test]
+  fn ref_template_requires_number_placeholder() {
+    let message = violation(&RefTemplate::parse("{display_name}")).unwrap();
+
+    assert!(message.contains("必須のプレースホルダ '{number}' がありません"), "{message}");
+  }
+
+  #[test]
+  fn ref_number_template_requires_number_placeholder() {
+    let message = violation(&RefNumberTemplate::parse("()")).unwrap();
+
+    assert!(message.contains("必須のプレースホルダ '{number}' がありません"), "{message}");
+    assert!(violation(&RefNumberTemplate::parse("({number})")).is_none());
   }
 
   #[test]

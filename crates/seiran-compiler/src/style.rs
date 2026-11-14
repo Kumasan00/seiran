@@ -48,8 +48,8 @@ pub(crate) use crate::style::{
   },
   running::RunningContentStyle,
   template::{
-    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
-    RunningValues, TheoremHeadingValues,
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefNumberTemplate, RefTemplate,
+    RunningTemplate, RunningValues, TheoremHeadingValues,
   },
   theorem::TheoremStyle,
   title_page::TitlePageStyle,
