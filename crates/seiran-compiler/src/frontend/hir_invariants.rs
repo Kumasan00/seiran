@@ -100,7 +100,11 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
   return;
 }
 
-/// インラインノードを親子関係つきで走査する
+/// インラインノードを親子関係つきで走査し、複数参照・範囲参照のラベルの不変条件を検査する
+///
+/// # Panics
+///
+/// 複数参照のラベルが 2 個未満・空・重複を含むとき、または範囲参照の両端が同じラベルのとき。
 fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Visited>) {
   for inline in inlines {
     out.push(Visited {
@@ -114,6 +118,16 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
       | HirInlineKind::Link { children, .. }
       | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, out),
       HirInlineKind::Math(math) => walk_math(math, here, out),
+      HirInlineKind::RefList { labels } => {
+        let distinct: HashSet<&str> = labels.iter().map(String::as_str).collect();
+        assert!(
+          labels.len() >= 2 && !distinct.contains("") && distinct.len() == labels.len(),
+          "複数参照のラベルは 2 個以上・空なし・重複なしのはず: {labels:?}"
+        );
+      },
+      HirInlineKind::RefRange { first, last } => {
+        assert!(first != last, "範囲参照の両端は異なるラベルのはず: {first:?}");
+      },
       HirInlineKind::Text(_)
       | HirInlineKind::Code(_)
       | HirInlineKind::Symbol(_)
@@ -197,8 +211,8 @@ fn visit_source(hir: &HirSource) -> Vec<Visited> {
 ///
 /// 検査は (1) 同じソースを 2 回パースした HIR が等しい（決定性）、各ノードについて (2) `NodeId` がソース内で一意、
 /// (3) 子の ID が親より後に確保されている、(4) `SourceMap` から自分のソースの位置を引ける、(5) span が入力の内側で
-/// 両端が字の境界、(6) 空でない入力で `Span::DUMMY` を使わない（0 幅の位置は段落・空セルの予約に限る）。ID の稠密性・
-/// 連続性は要求しない。評価器はトークンの内側を分割して span を作るので、字の境界はトークンとは独立に検査する。
+/// 両端が字の境界、(6) 空でない入力で `Span::DUMMY` を使わない（0 幅の位置は段落・空セルの予約に限る）、
+/// (7) 複数参照のラベルが 2 個以上・空なし・重複なしで、範囲参照の両端が異なる。ID の稠密性・連続性は要求しない。評価器はトークンの内側を分割して span を作るので、字の境界はトークンとは独立に検査する。
 ///
 /// # Errors
 ///
@@ -308,6 +322,15 @@ mod tests {
 
       assert!(hir.nodes.is_empty(), "{source:?}: 空白だけならブロックはないはず: {:?}", hir.nodes);
     }
+  }
+
+  #[test]
+  fn ref_groups_satisfy_hir_invariants() {
+    let source = r"\refs{ b, a\,x ,c} と \refrange{ e\_1 }{e2}";
+
+    let hir = parse_checked(source).unwrap_or_else(|e| panic!("{source:?} は評価に成功するはず: {e:?}"));
+
+    assert!(!visit_source(&hir).is_empty());
   }
 
   #[test]
@@ -460,6 +483,8 @@ mod tests {
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
         | HirInlineKind::Ref { .. }
+        | HirInlineKind::RefList { .. }
+        | HirInlineKind::RefRange { .. }
         | HirInlineKind::Cite { .. }
         | HirInlineKind::Index { .. } => {},
       }

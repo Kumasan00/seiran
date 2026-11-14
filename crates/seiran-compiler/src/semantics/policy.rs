@@ -108,6 +108,10 @@ mod tests {
     display_variant.counters.chapter.ref_format = RefTemplate::parse("{display_name}（{number}）");
     display_variant.counters.chapter.ref_number_format = RefNumberTemplate::parse("[{number}]");
     display_variant.counters.chapter.display_name = "章".to_string();
+    display_variant.counters.chapter.display_name_plural = "章".to_string();
+    display_variant.theorems.theorem.display_name_plural = "定理".to_string();
+    display_variant.cross_reference.list_separator = "、".to_string();
+    display_variant.cross_reference.range_separator = "〜".to_string();
     display_variant.counters.chapter.number_style = NumberStyle::RomanUpper;
 
     let base_policy = SemanticPolicy::from_style(&base);

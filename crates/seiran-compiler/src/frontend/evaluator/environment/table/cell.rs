@@ -180,6 +180,8 @@ pub(super) fn contains_line_break(nodes: &[HirInline]) -> bool {
     | HirInlineKind::Quantity { .. }
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }
+    | HirInlineKind::RefList { .. }
+    | HirInlineKind::RefRange { .. }
     | HirInlineKind::Link { .. }
     | HirInlineKind::Cite { .. }
     | HirInlineKind::Footnote { .. }

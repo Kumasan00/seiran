@@ -108,7 +108,9 @@ mod tests {
         HirInlineKind::NoIndent
         | HirInlineKind::Footnote { .. }
         | HirInlineKind::Index { .. }
-        | HirInlineKind::Ref { .. } => {},
+        | HirInlineKind::Ref { .. }
+        | HirInlineKind::RefList { .. }
+        | HirInlineKind::RefRange { .. } => {},
         HirInlineKind::Cite { keys } => out.push_str(&keys.join(", ")),
       }
     }

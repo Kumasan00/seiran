@@ -536,6 +536,32 @@ impl RefTemplate {
       };
     });
   }
+
+  /// `{display_name}` を埋め、`{number}` の位置へ `number` の出力を差し込んだ出力型 `T` の列に展開する
+  ///
+  /// `{display_name}` と地の文字は隣り合う分を 1 つの `literal` にまとめる。`number` は `{number}` が現れるたびに呼ぶ。
+  pub(crate) fn expand_pieces<T>(
+    &self,
+    display_name: &str,
+    mut number: impl FnMut() -> Vec<T>,
+    mut literal: impl FnMut(&str) -> T,
+  ) -> Vec<T> {
+    self.0.ensure_validated();
+    let mut nodes: Vec<T> = Vec::new();
+    let mut buffer = String::new();
+    for part in &self.0.parts {
+      match part {
+        Part::Literal(range) => buffer.push_str(&self.0.source[range.clone()]),
+        Part::Placeholder(RefPlaceholder::DisplayName) => buffer.push_str(display_name),
+        Part::Placeholder(RefPlaceholder::Number) => {
+          flush_literal(&mut nodes, &mut buffer, &mut literal);
+          nodes.extend(number());
+        },
+      }
+    }
+    flush_literal(&mut nodes, &mut buffer, &mut literal);
+    return nodes;
+  }
 }
 
 impl RefNumberTemplate {
@@ -682,6 +708,23 @@ mod tests {
     });
 
     assert_eq!(text, "第3章・２節");
+  }
+
+  #[test]
+  fn ref_expand_pieces_merges_display_name_into_literals_and_calls_number_per_placeholder() {
+    let template = RefTemplate::parse("{display_name} {number}・{number}.");
+    let mut calls = 0;
+
+    let pieces = template.expand_pieces(
+      "Figures",
+      || {
+        calls += 1;
+        return vec![format!("<{calls}>")];
+      },
+      str::to_string,
+    );
+
+    assert_eq!(pieces, ["Figures ", "<1>", "・", "<2>", "."]);
   }
 
   /// `{n}` を `"1"`、`{chapter}` / `{section}` を引数の文字列（空文字列は値 0 の表示）に解決して展開する

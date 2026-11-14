@@ -6,7 +6,7 @@
 use crate::{
   document::{HirDocument, NodeId},
   semantics::{
-    BibliographyEntry, CounterValue, GeneratedCitations, GeneratedInline, HeadingKey, LabelId,
+    BibliographyEntry, CounterValue, GeneratedCitations, GeneratedInline, HeadingKey, LabelId, RefGroup,
     facts::{HeadingFacts, SemanticFacts},
   },
 };
@@ -69,9 +69,29 @@ impl SemanticDocument {
     return target;
   }
 
+  /// 複数参照・範囲参照の箇所（`\refs` / `\refrange`）の参照先を引く
+  ///
+  /// # Panics
+  ///
+  /// `analyze` が返した `SemanticDocument` に無い `site` を渡した場合にパニックします
+  /// （参照箇所の網羅は走査が保証している）。
+  #[must_use]
+  pub(crate) fn ref_group(&self, site: NodeId) -> &RefGroup {
+    let Some(group) = self.facts.ref_groups.get(site) else {
+      unreachable!("全複数参照・範囲参照の箇所は semantics::analyze の走査が ref_groups へ登録している: {site:?}")
+    };
+    return group;
+  }
+
   /// 参照箇所を文書順に走査する
   #[cfg(test)]
   pub(super) fn ref_sites(&self) -> impl Iterator<Item = (NodeId, &LabelId)> { return self.facts.refs.iter(); }
+
+  /// 複数参照・範囲参照の箇所を文書順に走査する
+  #[cfg(test)]
+  pub(super) fn ref_group_sites(&self) -> impl Iterator<Item = (NodeId, &RefGroup)> {
+    return self.facts.ref_groups.iter();
+  }
 
   /// 引用箇所を文書順に走査する
   #[cfg(test)]

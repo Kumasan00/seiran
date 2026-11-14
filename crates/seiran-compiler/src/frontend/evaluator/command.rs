@@ -4,6 +4,7 @@
 
 mod cite;
 mod control;
+mod cross_ref;
 mod footnote;
 mod heading;
 mod index;
@@ -150,6 +151,8 @@ enum UnaryCommand {
   ColoredText,
   /// `\ref{label}` — 相互参照のスタブを生成する（解決はしない）
   Ref,
+  /// `\refs{a, b}` — 複数参照のスタブを生成する（解決はしない）
+  Refs,
   /// `\cite{key}` — 文献引用のスタブを生成する（キー存在の検証はしない）
   Cite,
   /// `\footnote{...}` — 脚注本体を再帰評価してスタブを生成する（採番はしない）
@@ -173,6 +176,8 @@ enum BinaryCommand {
   Href,
   /// `\hyperref{label}{表示}` — 表示を著者が書く内部リンクのスタブを生成する（解決はしない）
   Hyperref,
+  /// `\refrange{始点}{終点}` — 範囲参照のスタブを生成する（解決はしない）
+  RefRange,
   /// `\qty{数値}{単位}` — 量（必須引数 2 個とも外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Quantity,
 }
@@ -221,8 +226,10 @@ impl CommandKind {
         | UnaryCommand::Unit,
       )
       | Self::Binary(BinaryCommand::Quantity) => false,
-      Self::Unary(UnaryCommand::Ref | UnaryCommand::Url | UnaryCommand::Cite | UnaryCommand::Footnote)
-      | Self::Binary(BinaryCommand::Href | BinaryCommand::Hyperref) => true,
+      Self::Unary(
+        UnaryCommand::Ref | UnaryCommand::Refs | UnaryCommand::Url | UnaryCommand::Cite | UnaryCommand::Footnote,
+      )
+      | Self::Binary(BinaryCommand::Href | BinaryCommand::Hyperref | BinaryCommand::RefRange) => true,
     };
   }
 
@@ -269,6 +276,7 @@ impl UnaryCommand {
       Self::StyledText(_) => text_style::STYLED,
       Self::ColoredText => text_style::COLORED,
       Self::Ref => REF,
+      Self::Refs => cross_ref::REFS,
       Self::Cite => cite::SIGNATURE,
       Self::Footnote => footnote::SIGNATURE,
       Self::Index => index::SIGNATURE,
@@ -304,6 +312,7 @@ impl UnaryCommand {
         return text_style::colored_text(view, arg, opts, ctx, placement.inline_policy()).map(CommandResult::Inline);
       },
       Self::Ref => return ref_(view, arg, ctx).map(CommandResult::Inline),
+      Self::Refs => return cross_ref::refs(view, arg, ctx).map(CommandResult::Inline),
       Self::Cite => return cite::cite(view, arg, ctx).map(CommandResult::Inline),
       Self::Footnote => {
         return footnote::footnote(view, arg, ctx, placement.inline_policy()).map(CommandResult::Inline);
@@ -332,6 +341,7 @@ impl BinaryCommand {
     return match self {
       Self::Href => link::HREF,
       Self::Hyperref => link::HYPERREF,
+      Self::RefRange => cross_ref::REF_RANGE,
       Self::Quantity => quantity::SIGNATURE,
     };
   }
@@ -346,6 +356,7 @@ impl BinaryCommand {
     return match self {
       Self::Href => link::href(view, args, ctx).map(CommandResult::Inline),
       Self::Hyperref => link::hyperref(view, args, ctx).map(CommandResult::Inline),
+      Self::RefRange => cross_ref::ref_range(view, args, ctx).map(CommandResult::Inline),
       Self::Quantity => quantity::quantity(view.source(), args).map(|(numeral, unit)| {
         return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
       }),
@@ -382,6 +393,8 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
   "pagebreak" => CommandKind::Leaf(LeafCommand::PageBreak),
 
   "ref" => CommandKind::Unary(UnaryCommand::Ref),
+  "refs" => CommandKind::Unary(UnaryCommand::Refs),
+  "refrange" => CommandKind::Binary(BinaryCommand::RefRange),
 
   "cite" => CommandKind::Unary(UnaryCommand::Cite),
 
@@ -925,6 +938,16 @@ mod tests {
         "cite",
         vec![],
         vec![keys.join(", ")]
+      )),
+      prop::collection::btree_set(identifier(), 2..=3).prop_map(|labels| return Call::new(
+        "refs",
+        vec![],
+        vec![labels.into_iter().collect::<Vec<_>>().join(", ")]
+      )),
+      prop::collection::btree_set(identifier(), 2..=2).prop_map(|labels| return Call::new(
+        "refrange",
+        vec![],
+        labels.into_iter().collect()
       )),
     ];
   }

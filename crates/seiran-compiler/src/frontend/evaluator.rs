@@ -220,6 +220,8 @@ fn is_non_blank_inline(inline: &HirInline) -> bool {
     | HirInlineKind::LineBreak
     | HirInlineKind::NoIndent
     | HirInlineKind::Ref { .. }
+    | HirInlineKind::RefList { .. }
+    | HirInlineKind::RefRange { .. }
     | HirInlineKind::Link { .. }
     | HirInlineKind::Cite { .. }
     | HirInlineKind::Footnote { .. }
@@ -374,6 +376,8 @@ mod tests {
       (r"\color[color=#000000]", "color", "テキスト"),
       (r"\color{x}", "color", "色 (color=#rrggbb)"),
       (r"\ref", "ref", "ラベル名"),
+      (r"\refs", "refs", "ラベル名の列"),
+      (r"\refrange{x}", "refrange", "2 個（始点と終点のラベル名）"),
       (r"\cite", "cite", "引用キー"),
       (r"\footnote", "footnote", "脚注本体"),
       (r"\index", "index", "索引語"),

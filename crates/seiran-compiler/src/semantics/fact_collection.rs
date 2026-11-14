@@ -9,7 +9,8 @@ use crate::{
     SourceMap,
   },
   semantics::{
-    CitationId, CitationSiteFacts, CounterValue, LabelId, References, SemanticError, SemanticFailures, SemanticPolicy,
+    CitationId, CitationSiteFacts, CounterValue, LabelId, RefGroup, References, SemanticError, SemanticFailures,
+    SemanticPolicy,
     counter::CounterRegistry,
     error::{self, UnknownCitationSite},
     facts::SemanticFacts,
@@ -25,8 +26,8 @@ use crate::{
 ///
 /// # Errors
 ///
-/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `\hyperref` / `[of=...]`）を
-/// **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
+/// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `\refs` / `\refrange` /
+/// `\hyperref` / `[of=...]`）を **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
 pub(super) fn collect_facts(
   hir: &HirDocument,
   policy: &SemanticPolicy,
@@ -56,7 +57,7 @@ pub(super) fn collect_facts(
     .map(|(node, error)| return (order_key(node), error))
     .chain(unresolved_refs(&facts, hir.source_map()))
     .collect();
-  // 3 種はそれぞれ文書順に積まれているので、安定ソートで種別を跨いだ文書順になる。
+  // 安定ソートなので、同じ箇所の診断（複数参照の未定義ラベル）は積んだ順（ソース順）を保ったまま文書順に並ぶ。
   errors.sort_by_key(|(key, _)| return *key);
   if let Some(failures) = SemanticFailures::from_vec(errors.into_iter().map(|(_, error)| return error).collect()) {
     return Err(failures);
@@ -201,6 +202,11 @@ impl FactCompletenessChecker<'_> {
           "FactCollector が Ref の参照先を登録し損ねている: {:?}",
           inline.id
         ),
+        HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => assert!(
+          self.facts.ref_groups.get(inline.id).is_some(),
+          "FactCollector が RefList / RefRange の参照先を登録し損ねている: {:?}",
+          inline.id
+        ),
         HirInlineKind::Cite { .. } => assert!(
           self.facts.citations.get(inline.id).is_some(),
           "FactCollector が Cite の引用先を登録し損ねている: {:?}",
@@ -244,14 +250,20 @@ impl FactCompletenessChecker<'_> {
   }
 }
 
-/// `refs` fact に記録された参照箇所のうち、解決できないものを文書順に**全件**集める
+/// `refs` / `ref_groups` fact に記録された参照先のうち、解決できないものを**全件**集める
 ///
-/// 参照先は先勝ちで記録された最初の定義（[`SemanticFacts::declare_label`]）なので、同名ラベルが
-/// 重複していても解決先は一意に決まる。重複の検出と同じ 1 つの表を引く。
+/// `refs` の各箇所に続けて、`ref_groups` の各箇所の未定義ラベルを 1 個ずつ（箇所の中ではソース順に）積む。
+/// どちらの表も文書順なので、呼び出し側の安定ソートで種別を跨いだ文書順になる。参照先は先勝ちで記録された最初の
+/// 定義（[`SemanticFacts::declare_label`]）なので、同名ラベルが重複していても解決先は一意に決まる。重複の検出と
+/// 同じ 1 つの表を引く。
 fn unresolved_refs(facts: &SemanticFacts, source_map: &SourceMap) -> Vec<(OrderKey, SemanticError)> {
-  return facts
-    .refs
+  let single = facts.refs.iter();
+  let grouped = facts
+    .ref_groups
     .iter()
+    .flat_map(|(site, group)| return group.labels().map(move |label| return (site, label)));
+  return single
+    .chain(grouped)
     .filter(|(_, label)| return facts.label_definition(label.as_str()).is_none())
     .map(|(site, label)| {
       let location = source_map.location(site);
@@ -386,7 +398,7 @@ impl FactCollector<'_, '_> {
   /// リストアイテムの内容（ネストしたブロックノード列）を走査する
   fn list_item(&mut self, item: &HirListItem) { return self.nodes(&item.body); }
 
-  /// インラインノード列を走査し、参照箇所（`\ref` / `\hyperref`）を記録する
+  /// インラインノード列を走査し、参照箇所（`\ref` / `\refs` / `\refrange` / `\hyperref`）を記録する
   ///
   /// インラインに採番対象は無いので失敗しない。
   fn inlines(&mut self, inlines: &[HirInline]) {
@@ -403,6 +415,17 @@ impl FactCollector<'_, '_> {
           self.inlines(children);
         },
         HirInlineKind::Ref { label } => self.facts.refs.insert(inline.id, LabelId::new(label.clone())),
+        HirInlineKind::RefList { labels } => self
+          .facts
+          .ref_groups
+          .insert(inline.id, RefGroup::List(labels.iter().map(|label| return LabelId::new(label.clone())).collect())),
+        HirInlineKind::RefRange { first, last } => self.facts.ref_groups.insert(
+          inline.id,
+          RefGroup::Range {
+            first: LabelId::new(first.clone()),
+            last: LabelId::new(last.clone()),
+          },
+        ),
         HirInlineKind::Cite { keys } => self.cite(inline.id, keys),
         HirInlineKind::Text(_)
         | HirInlineKind::Code(_)
@@ -464,7 +487,7 @@ mod tests {
     document::HirDocument,
     frontend::test_support::parse_for_test,
     semantics::{
-      self, CitationId, CounterValue, LabelId, References, SemanticDocument, SemanticError, SemanticFailures,
+      self, CitationId, CounterValue, LabelId, RefGroup, References, SemanticDocument, SemanticError, SemanticFailures,
       SemanticPolicy, test_support::sample_references,
     },
     source::SourceId,
@@ -553,6 +576,108 @@ mod tests {
 
     let targets: Vec<&str> = analyzed.ref_sites().map(|(_, label)| return label.as_str()).collect();
     assert_eq!(targets, vec!["sec:b"]);
+  }
+
+  /// ラベル `label` 付きの図 1 つのソース
+  fn figure_source(label: &str) -> String {
+    return format!("\\begin{{figure}}[label={label}]\n\\image{{a.png}}\n\\caption{{図}}\n\\end{{figure}}\n\n");
+  }
+
+  #[test]
+  fn refs_registers_labels_in_source_order() {
+    let analyzed = analyze_source("\\section[label=b]{B}\n\n\\section[label=a]{A}\n\n\\refs{b, a}\n");
+
+    let sites: Vec<_> = analyzed.ref_group_sites().collect();
+    assert_eq!(sites.len(), 1, "{sites:?}");
+    let (site, group) = sites[0];
+    assert_eq!(group, &RefGroup::List(vec![LabelId::new("b"), LabelId::new("a")]));
+    assert_eq!(analyzed.ref_group(site), group);
+  }
+
+  #[test]
+  fn ref_range_registers_both_ends() {
+    let analyzed = analyze_source("\\section[label=a]{A}\n\n\\section[label=b]{B}\n\n\\refrange{a}{b}\n");
+
+    let groups: Vec<&RefGroup> = analyzed.ref_group_sites().map(|(_, group)| return group).collect();
+    assert_eq!(
+      groups,
+      vec![&RefGroup::Range {
+        first: LabelId::new("a"),
+        last: LabelId::new("b"),
+      }]
+    );
+  }
+
+  /// `source` を解析して、未解決参照の（ラベル, span が指すソースの字面）を報告順に集める
+  fn unresolved(source: &str) -> Vec<(String, String)> {
+    let policy = SemanticPolicy::from_style(&Style::default());
+    let failures = semantics::analyze_for_test(document(source), &policy, &no_references())
+      .expect_err("未定義ラベルはエラーになるはず");
+    return failures
+      .iter()
+      .map(|error| {
+        let SemanticError::UnresolvedRef { label, span, .. } = error else {
+          panic!("UnresolvedRef だけが期待されます: {error:?}");
+        };
+        return (label.clone(), source[span.offset()..span.offset() + span.len()].to_string());
+      })
+      .collect();
+  }
+
+  #[test]
+  fn refs_to_undefined_labels_report_each_label() {
+    let source = format!("{}本文 \\refs{{x, f1, y}} です。\n", figure_source("f1"));
+
+    let reported = unresolved(&source);
+
+    let command = r"\refs{x, f1, y}".to_string();
+    assert_eq!(
+      reported,
+      vec![
+        ("x".to_string(), command.clone()),
+        ("y".to_string(), command)
+      ]
+    );
+  }
+
+  #[test]
+  fn refs_with_escaped_comma_resolves() {
+    let figures = format!("{}{}", figure_source(r"a\,b"), figure_source("f2"));
+    let escaped = format!("{figures}\\refs{{a\\,b, f2}}\n");
+    let split = format!("{figures}\\refs{{a,b, f2}}\n");
+
+    let analyzed = analyze_source(&escaped);
+    let reported = unresolved(&split);
+
+    let groups: Vec<&RefGroup> = analyzed.ref_group_sites().map(|(_, group)| return group).collect();
+    assert_eq!(
+      groups,
+      vec![&RefGroup::List(vec![
+        LabelId::new("a,b"),
+        LabelId::new("f2")
+      ])]
+    );
+    let labels: Vec<&str> = reported.iter().map(|(label, _)| return label.as_str()).collect();
+    assert_eq!(labels, vec!["a", "b"]);
+  }
+
+  #[test]
+  fn refs_resolve_forward_reference_across_sources() {
+    let sources = [
+      "\\refs{sec:a, sec:b} と \\refrange{sec:a}{sec:b}\n",
+      "\\section[label=sec:a]{A}\n\n\\section[label=sec:b]{B}\n",
+    ];
+    let hir = sources
+      .iter()
+      .enumerate()
+      .map(|(index, source)| return parse_for_test(source, SourceId::new(index)).expect("パースに成功するはず"))
+      .collect();
+    let policy = SemanticPolicy::from_style(&Style::default());
+
+    let analyzed = semantics::analyze_for_test(HirDocument::assemble(hir), &policy, &no_references())
+      .expect("別ソースのラベルへの前方参照は解決するはず");
+
+    assert_eq!(analyzed.ref_group_sites().count(), 2);
   }
 
   #[test]

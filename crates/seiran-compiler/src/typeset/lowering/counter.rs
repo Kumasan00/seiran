@@ -1,12 +1,13 @@
 //! [`CounterValue`]（構造値）から表示文字列を作る純粋関数群
 //!
-//! カウンタの表示側フィールド（`number_format` / `number_style` / `ref_format`）を読むのはこの module だけ。
+//! カウンタの表示側フィールド（`number_format` / `number_style` / `ref_format` / `ref_number_format`）と
+//! `[cross_reference]` の区切りを読むのはこの module だけ。
 
 use std::sync::LazyLock;
 
 use crate::{
   document::TheoremClass,
-  semantics::{CounterValue, CounterValues},
+  semantics::{CounterValue, CounterValues, LabelId, RefGroup},
   style::{CounterName, CounterPlaceholder, RefTemplate, Style},
 };
 
@@ -38,13 +39,63 @@ pub(super) fn format_counter_value(style: &Style, value: &CounterValue) -> Strin
 /// 例: `chapter` なら `"Chapter 1"`、`equation` なら `"(1.1)"`、定理なら `"Theorem 1"`。
 #[must_use]
 pub(super) fn format_ref_display(style: &Style, value: &CounterValue) -> String {
-  let number = format_counter_value(style, value);
+  let number = format_ref_number(style, value);
   return match *value {
     CounterValue::Counter { name, .. } => {
       let def = &style.counters[name];
-      def.ref_format.expand(&def.ref_number_format.expand(&number), &def.display_name)
+      def.ref_format.expand(&number, &def.display_name)
     },
     CounterValue::Theorem { class, .. } => THEOREM_REF_FORMAT.expand(&number, &style.theorems[class].display_name),
+  };
+}
+
+/// 複数参照・範囲参照の表示を文字列の断片の列にする（`Some` は番号 1 個の断片と、そのリンク先のラベル）
+///
+/// 番号 1 個の断片は [`format_ref_display`] の `{number}` と同じもので、`List` は番号の間に `list_separator` を、
+/// `Range` は始点と終点の間に `range_separator` を挟む。その列を外側の `ref_format`（定理は固定書式）の `{number}` へ
+/// 入れ、`{display_name}` には複数形の表示名を入れる。種別名と外側の書式は先頭の項目の種類から引く。
+#[must_use]
+pub(super) fn format_ref_group<'a>(
+  style: &Style,
+  group: &'a RefGroup,
+  value_of: impl Fn(&LabelId) -> &'a CounterValue,
+) -> Vec<(String, Option<&'a LabelId>)> {
+  let separator = match group {
+    RefGroup::List(_) => &style.cross_reference.list_separator,
+    RefGroup::Range { .. } => &style.cross_reference.range_separator,
+  };
+  let numbers = || {
+    let mut pieces = Vec::new();
+    for (index, label) in group.labels().enumerate() {
+      if index > 0 {
+        pieces.push((separator.clone(), None));
+      }
+      pieces.push((format_ref_number(style, value_of(label)), Some(label)));
+    }
+    return pieces;
+  };
+  let literal = |text: &str| return (text.to_string(), None);
+  let first = group
+    .labels()
+    .next()
+    .expect("RefGroup は参照先を持つ（List は frontend が 2 個以上を保証し、Range は両端を持つ）");
+  return match *value_of(first) {
+    CounterValue::Counter { name, .. } => {
+      let def = &style.counters[name];
+      def.ref_format.expand_pieces(&def.display_name_plural, numbers, literal)
+    },
+    CounterValue::Theorem { class, .. } => {
+      THEOREM_REF_FORMAT.expand_pieces(&style.theorems[class].display_name_plural, numbers, literal)
+    },
+  };
+}
+
+/// 参照 1 件ぶんの番号（カウンタは表示番号に `ref_number_format` を適用したもの、定理は表示番号そのまま）
+fn format_ref_number(style: &Style, value: &CounterValue) -> String {
+  let number = format_counter_value(style, value);
+  return match *value {
+    CounterValue::Counter { name, .. } => style.counters[name].ref_number_format.expand(&number),
+    CounterValue::Theorem { .. } => number,
   };
 }
 
@@ -83,7 +134,10 @@ fn render_named(style: &Style, counters: &CounterValues, target: CounterName) ->
 #[cfg(test)]
 mod tests {
   use super::*;
-  use crate::style::{CounterTemplate, NumberStyle, RefNumberTemplate, RefTemplate, TheoremReset};
+  use crate::{
+    semantics::{LabelId, RefGroup},
+    style::{CounterTemplate, NumberStyle, RefNumberTemplate, RefTemplate, TheoremReset},
+  };
 
   /// `(カウンタ名, 値)` の列を全カウンタの値にする（列に無いカウンタは 0）
   fn snapshot(values: &[(CounterName, u32)]) -> CounterValues {
@@ -264,5 +318,116 @@ mod tests {
     let text = format_ref_display(&style, &value);
 
     assert_eq!(text, "Figure 1.1");
+  }
+
+  /// `entries` からラベルの値を引く関数を作る（無いラベルはテストの組み立て誤り）
+  fn values_of<'a>(entries: &'a [(LabelId, CounterValue)]) -> impl Fn(&LabelId) -> &'a CounterValue {
+    return move |label| {
+      return entries
+        .iter()
+        .find_map(|(key, value)| return (key == label).then_some(value))
+        .expect("テストはすべてのラベルの値を渡すはず");
+    };
+  }
+
+  /// 断片列を文字列として連結する
+  fn joined(pieces: &[(String, Option<&LabelId>)]) -> String {
+    return pieces.iter().map(|(text, _)| return text.as_str()).collect();
+  }
+
+  #[test]
+  fn ref_list_links_each_number() {
+    let style = Style::default();
+    let (f1, f3) = (LabelId::new("f1"), LabelId::new("f3"));
+    let entries = [
+      (f1.clone(), counter_value(CounterName::Figure, &[(CounterName::Figure, 1)])),
+      (f3.clone(), counter_value(CounterName::Figure, &[(CounterName::Figure, 3)])),
+    ];
+    let group = RefGroup::List(vec![f1.clone(), f3.clone()]);
+
+    let pieces = format_ref_group(&style, &group, values_of(&entries));
+
+    assert_eq!(
+      pieces,
+      vec![
+        ("Figures ".to_string(), None),
+        ("1".to_string(), Some(&f1)),
+        (", ".to_string(), None),
+        ("3".to_string(), Some(&f3)),
+      ]
+    );
+  }
+
+  #[test]
+  fn ref_range_wraps_each_end_with_ref_number_format() {
+    let style = Style::default();
+    let (e1, e3) = (LabelId::new("e1"), LabelId::new("e3"));
+    let entries = [
+      (e1.clone(), counter_value(CounterName::Equation, &[(CounterName::Equation, 1)])),
+      (e3.clone(), counter_value(CounterName::Equation, &[(CounterName::Equation, 3)])),
+    ];
+    let group = RefGroup::Range {
+      first: e1.clone(),
+      last: e3.clone(),
+    };
+
+    let pieces = format_ref_group(&style, &group, values_of(&entries));
+
+    assert_eq!(
+      pieces,
+      vec![
+        ("(1)".to_string(), Some(&e1)),
+        ("\u{2013}".to_string(), None),
+        ("(3)".to_string(), Some(&e3)),
+      ]
+    );
+  }
+
+  #[test]
+  fn theorem_ref_list_uses_plural_display_name() {
+    let style = Style::default();
+    let (t1, t2) = (LabelId::new("t1"), LabelId::new("t2"));
+    let entries = [
+      (t1.clone(), theorem_value(TheoremClass::Theorem, &[], 1)),
+      (t2.clone(), theorem_value(TheoremClass::Theorem, &[], 2)),
+    ];
+    let group = RefGroup::List(vec![t1.clone(), t2.clone()]);
+
+    let pieces = format_ref_group(&style, &group, values_of(&entries));
+
+    assert_eq!(joined(&pieces), "Theorems 1, 2");
+    assert_eq!(pieces[1], ("1".to_string(), Some(&t1)));
+    assert_eq!(pieces[3], ("2".to_string(), Some(&t2)));
+  }
+
+  #[test]
+  fn same_refs_change_notation_with_style_only() {
+    let mut style = Style::default();
+    style.counters.figure.display_name = "図".to_string();
+    style.counters.figure.display_name_plural = "図".to_string();
+    style.counters.figure.ref_format = RefTemplate::parse("{display_name}{number}");
+    style.counters.equation.display_name = "式".to_string();
+    style.counters.equation.display_name_plural = "式".to_string();
+    style.counters.equation.ref_format = RefTemplate::parse("{display_name}{number}");
+    style.cross_reference.list_separator = "、".to_string();
+    style.cross_reference.range_separator = "〜".to_string();
+    let (f1, f3, e1, e3) = (LabelId::new("f1"), LabelId::new("f3"), LabelId::new("e1"), LabelId::new("e3"));
+    let entries = [
+      (f1.clone(), counter_value(CounterName::Figure, &[(CounterName::Figure, 1)])),
+      (f3.clone(), counter_value(CounterName::Figure, &[(CounterName::Figure, 3)])),
+      (e1.clone(), counter_value(CounterName::Equation, &[(CounterName::Equation, 1)])),
+      (e3.clone(), counter_value(CounterName::Equation, &[(CounterName::Equation, 3)])),
+    ];
+    let figures = RefGroup::List(vec![f1, f3]);
+    let equations = RefGroup::Range {
+      first: e1,
+      last: e3,
+    };
+
+    let figure_pieces = format_ref_group(&style, &figures, values_of(&entries));
+    let equation_pieces = format_ref_group(&style, &equations, values_of(&entries));
+
+    assert_eq!(joined(&figure_pieces), "図1、3");
+    assert_eq!(joined(&equation_pieces), "式(1)〜(3)");
   }
 }

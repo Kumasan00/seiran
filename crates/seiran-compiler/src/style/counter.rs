@@ -54,6 +54,7 @@ impl Default for CounterStyles {
     return Self {
       part: CounterStyle::new(
         "Part",
+        "Parts",
         "{n}",
         NumberStyle::RomanUpper,
         "{display_name} {number}",
@@ -68,6 +69,7 @@ impl Default for CounterStyles {
       ),
       chapter: CounterStyle::new(
         "Chapter",
+        "Chapters",
         "{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -84,6 +86,7 @@ impl Default for CounterStyles {
       ),
       section: CounterStyle::new(
         "Section",
+        "Sections",
         "{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -96,6 +99,7 @@ impl Default for CounterStyles {
       ),
       subsection: CounterStyle::new(
         "Subsection",
+        "Subsections",
         "{chapter}.{section}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -104,6 +108,7 @@ impl Default for CounterStyles {
       ),
       paragraph: CounterStyle::new(
         "Paragraph",
+        "Paragraphs",
         "{chapter}.{section}.{subsection}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -112,6 +117,7 @@ impl Default for CounterStyles {
       ),
       subparagraph: CounterStyle::new(
         "Subparagraph",
+        "Subparagraphs",
         "{chapter}.{section}.{subsection}.{paragraph}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -120,6 +126,7 @@ impl Default for CounterStyles {
       ),
       table: CounterStyle::new(
         "Table",
+        "Tables",
         "{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
@@ -128,13 +135,22 @@ impl Default for CounterStyles {
       ),
       figure: CounterStyle::new(
         "Figure",
+        "Figures",
         "{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
         &[],
       ),
-      equation: CounterStyle::new("Equation", "{chapter}.{n}", NumberStyle::Arabic, "{number}", "({number})", &[]),
+      equation: CounterStyle::new(
+        "Equation",
+        "Equations",
+        "{chapter}.{n}",
+        NumberStyle::Arabic,
+        "{number}",
+        "({number})",
+        &[],
+      ),
     };
   }
 }
@@ -163,9 +179,13 @@ impl Index<CounterName> for CounterStyles {
 #[derive(Debug, Clone, Validate)]
 #[garde(allow_unvalidated)]
 pub(crate) struct CounterStyle {
-  /// 表示名（例: `"Figure"`、`"図"`）。`ref_format` の `{display_name}` から参照される
+  /// 表示名（例: `"Figure"`、`"図"`）。`\ref` の `ref_format` の `{display_name}` に入る
   #[garde(custom(non_empty_text))]
   pub display_name: String,
+  /// 複数形の表示名（例: `"Figures"`、`"図"`）。`\refs` / `\refrange` の `ref_format` の `{display_name}` に入る。
+  /// `display_name` からは導出しないので、`display_name` だけを上書きしても既定のまま残る
+  #[garde(custom(non_empty_text))]
+  pub display_name_plural: String,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
   /// （`resets` の関係に無いカウンタも書ける）。値 0（未登場）のカウンタは直後の区切りごと省く
   /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）
@@ -196,6 +216,7 @@ impl CounterStyle {
   #[must_use]
   fn new(
     display_name: &str,
+    display_name_plural: &str,
     number_format: &str,
     number_style: NumberStyle,
     ref_format: &str,
@@ -204,6 +225,7 @@ impl CounterStyle {
   ) -> Self {
     return Self {
       display_name: display_name.to_string(),
+      display_name_plural: display_name_plural.to_string(),
       number_format: CounterTemplate::parse(number_format),
       number_style,
       ref_format: RefTemplate::parse(ref_format),
@@ -263,6 +285,8 @@ impl From<CounterStylesTable> for CounterStyles {
 struct CounterStyleOverride {
   /// 表示名
   display_name: Option<String>,
+  /// 複数形の表示名
+  display_name_plural: Option<String>,
   /// 番号構築テンプレート
   number_format: Option<CounterTemplate>,
   /// 数字表記スタイル
@@ -283,6 +307,7 @@ impl CounterStyleOverride {
   fn apply(self, base: CounterStyle) -> CounterStyle {
     let Self {
       display_name,
+      display_name_plural,
       number_format,
       number_style,
       ref_format,
@@ -291,6 +316,7 @@ impl CounterStyleOverride {
     } = self;
     return CounterStyle {
       display_name: display_name.unwrap_or(base.display_name),
+      display_name_plural: display_name_plural.unwrap_or(base.display_name_plural),
       number_format: number_format.unwrap_or(base.number_format),
       number_style: number_style.unwrap_or(base.number_style),
       ref_format: ref_format.unwrap_or(base.ref_format),
@@ -372,13 +398,48 @@ mod tests {
 
   #[test]
   fn validate_rejects_empty_display_name() {
-    let counter = CounterStyle::new("", "{n}", NumberStyle::Arabic, "{number}", "{number}", &[]);
+    let counter = CounterStyle::new("", "Chapters", "{n}", NumberStyle::Arabic, "{number}", "{number}", &[]);
     assert!(counter.validate().is_err());
   }
 
   #[test]
+  fn validate_rejects_empty_display_name_plural() {
+    let counter = CounterStyle::new("Chapter", "", "{n}", NumberStyle::Arabic, "{number}", "{number}", &[]);
+    assert!(counter.validate().is_err());
+  }
+
+  #[test]
+  fn default_counters_have_plural_display_names() {
+    let expected = [
+      (CounterName::Part, "Parts"),
+      (CounterName::Chapter, "Chapters"),
+      (CounterName::Section, "Sections"),
+      (CounterName::Subsection, "Subsections"),
+      (CounterName::Paragraph, "Paragraphs"),
+      (CounterName::Subparagraph, "Subparagraphs"),
+      (CounterName::Table, "Tables"),
+      (CounterName::Figure, "Figures"),
+      (CounterName::Equation, "Equations"),
+    ];
+    let counters = CounterStyles::default();
+
+    for (name, plural) in expected {
+      assert_eq!(counters[name].display_name_plural, plural, "{name:?}");
+    }
+  }
+
+  #[test]
+  fn display_name_plural_override_keeps_other_defaults() {
+    let counters: CounterStyles = toml::from_str("[figure]\ndisplay_name_plural = \"図\"\n").unwrap();
+
+    assert_eq!(counters.figure.display_name_plural, "図");
+    assert_eq!(counters.figure.display_name, "Figure", "単数形は書かれなければ既定のまま");
+    assert_eq!(counters.table.display_name_plural, "Tables");
+  }
+
+  #[test]
   fn validate_rejects_empty_ref_format() {
-    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "", "{number}", &[]);
+    let counter = CounterStyle::new("Chapter", "Chapters", "{n}", NumberStyle::Arabic, "", "{number}", &[]);
     assert!(counter.validate().is_err());
   }
 
@@ -392,10 +453,11 @@ mod tests {
 
   #[test]
   fn validate_rejects_ref_format_without_number() {
-    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "{display_name}", "{number}", &[]);
+    let counter =
+      CounterStyle::new("Chapter", "Chapters", "{n}", NumberStyle::Arabic, "{display_name}", "{number}", &[]);
     assert!(counter.validate().is_err());
 
-    let counter = CounterStyle::new("Chapter", "{n}", NumberStyle::Arabic, "{number}", "()", &[]);
+    let counter = CounterStyle::new("Chapter", "Chapters", "{n}", NumberStyle::Arabic, "{number}", "()", &[]);
     assert!(counter.validate().is_err());
   }
 
