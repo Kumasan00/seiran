@@ -13,7 +13,7 @@ mod tree;
 
 pub(crate) use builder::HirBuilder;
 pub(crate) use id::NodeId;
-pub(crate) use inline::{HirInline, HirInlineKind};
+pub(crate) use inline::{HirInline, HirInlineKind, LinkDestination};
 pub(crate) use math::{HirMath, HirMathKind, HirMathRow};
 pub(crate) use node::{
   HirFigure, HirFlush, HirHeading, HirList, HirListItem, HirMathBlock, HirNode, HirNodeKind, HirProofTarget, HirQuote,

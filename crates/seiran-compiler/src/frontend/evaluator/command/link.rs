@@ -1,4 +1,4 @@
-//! `\url{uri}` / `\href{uri}{表示}` コマンド
+//! `\url{uri}` / `\href{uri}{表示}` / `\hyperref{label}{表示}` コマンド
 //!
 //! ## URL 内の `//`
 //!
@@ -9,14 +9,20 @@
 //! （数式の語彙に `\url` / `\href` は無く、`$...$` の中に書くと未知のコマンドになる）。
 //!
 //! verbatim 内では `\` も不活性なので、`\/` は URL に literal `\/` として残る。
+//!
+//! ## 表示を著者が書く内部リンク
+//!
+//! `\hyperref` の第 1 引数はラベル名で、verbatim ではなく `\ref` と同じ読み（エスケープを解いた平文）・同じ
+//! 名前空間を持つ。第 2 引数は `\href` の第 2 引数と同じ表示内容の規則に従う（[`link_display`]）。
 
 use crate::{
-  document::{HirInline, HirInlineKind, HirMathKind},
+  document::{HirInline, HirInlineKind, HirMathKind, LinkDestination},
   frontend::{
     evaluator::{
       EvalContext, EvalError,
       inline::{InlinePolicy, evaluate_inline_children},
       signature::Signature,
+      string_arg,
     },
     syntax::{
       ArgMode, CstNode,
@@ -30,6 +36,9 @@ pub(super) const URL: Signature<1> = Signature::new([ArgMode::Verbatim], "URI", 
 /// `\href` の署名（第 1 引数のリンク先だけが verbatim）
 pub(super) const HREF: Signature<2> =
   Signature::new([ArgMode::Verbatim, ArgMode::Inherit], "2 個（リンク先 URI と表示テキスト）", &[]);
+/// `\hyperref` の署名（ラベル名は `\ref` と同じ読み、表示内容は活性）
+pub(super) const HYPERREF: Signature<2> =
+  Signature::new([ArgMode::Inherit, ArgMode::Inherit], "2 個（ラベル名と表示内容）", &[]);
 
 /// `\url{uri}` を `HirInlineKind::Link` に変換する（URI 自身を表示テキストにする）
 pub(super) fn url(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'_>) -> HirInline {
@@ -39,7 +48,7 @@ pub(super) fn url(view: &CommandView<'_>, arg: &CstNode<'_>, ctx: &EvalContext<'
   return HirInline::new(
     id,
     HirInlineKind::Link {
-      url,
+      target: LinkDestination::Uri(url),
       children: vec![text],
     },
   );
@@ -58,10 +67,38 @@ pub(super) fn href(
   let url = verbatim_text(view.source(), url_arg).trim().to_string();
   let id = ctx.alloc(view.span());
   let children = link_display(view, display_arg, ctx)?;
-  return Ok(HirInline::new(id, HirInlineKind::Link { url, children }));
+  return Ok(HirInline::new(
+    id,
+    HirInlineKind::Link {
+      target: LinkDestination::Uri(url),
+      children,
+    },
+  ));
 }
 
-/// リンクの表示内容（第 2 引数）を評価する
+/// `\hyperref{label}{表示}` を `HirInlineKind::Link` に変換する（行き先はラベル。解決はしない）
+///
+/// # Errors
+///
+/// ラベルに字以外の要素がある場合、表示内容の評価エラー、表示内容が空の場合（[`link_display`]）にエラーを返します。
+pub(super) fn hyperref(
+  view: &CommandView<'_>,
+  [label_arg, display_arg]: [&CstNode<'_>; 2],
+  ctx: &EvalContext<'_>,
+) -> Result<HirInline, EvalError> {
+  let label = string_arg::text(view, label_arg)?.trim().to_string();
+  let id = ctx.alloc(view.span());
+  let children = link_display(view, display_arg, ctx)?;
+  return Ok(HirInline::new(
+    id,
+    HirInlineKind::Link {
+      target: LinkDestination::Label(label),
+      children,
+    },
+  ));
+}
+
+/// リンクの表示内容（`\href` / `\hyperref` の第 2 引数）を評価する
 ///
 /// 中の `\index` とリンクを作るコマンドは [`InlinePolicy::RejectIndexAndLinks`] で拒否する。
 ///
@@ -125,8 +162,12 @@ mod tests {
     let arena = Bump::new();
     let view = CommandView::new(test_support::command_call_node(source, &arena), source);
     let result = run_handler(|ctx| return Ok(url(&view, URL.bind(&view)?.args[0], ctx))).unwrap();
-    let HirInlineKind::Link { url, children } = &result.kind else {
-      panic!("Link が期待されます: {result:?}");
+    let HirInlineKind::Link {
+      target: LinkDestination::Uri(url),
+      children,
+    } = &result.kind
+    else {
+      panic!("URI への Link が期待されます: {result:?}");
     };
     assert_eq!(children.len(), 1, "表示テキストは Text ノード 1 個: {children:?}");
     let HirInlineKind::Text(text) = &children[0].kind else {
@@ -179,8 +220,12 @@ mod tests {
   /// `\href{...}{...}` を評価してリンク先だけを取り出す
   fn href_url(source: &str) -> String {
     let result = href_link(source);
-    let HirInlineKind::Link { url, .. } = &result.kind else {
-      panic!("Link が期待されます: {result:?}");
+    let HirInlineKind::Link {
+      target: LinkDestination::Uri(url),
+      ..
+    } = &result.kind
+    else {
+      panic!("URI への Link が期待されます: {result:?}");
     };
     return url.clone();
   }
@@ -197,8 +242,12 @@ mod tests {
     // 第 1 引数は verbatim なので `//` をエスケープせず書ける
     let result = href_link(r"\href{https://example.com}{ここ}");
 
-    let HirInlineKind::Link { url, children } = &result.kind else {
-      panic!("Link が期待されます: {result:?}");
+    let HirInlineKind::Link {
+      target: LinkDestination::Uri(url),
+      children,
+    } = &result.kind
+    else {
+      panic!("URI への Link が期待されます: {result:?}");
     };
     assert_eq!(url, "https://example.com");
     assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "ここ"), "{children:?}");
@@ -353,6 +402,125 @@ mod tests {
 
       assert!(result.is_ok(), "{source}: {result:?}");
     }
+  }
+
+  /// `\hyperref{...}{...}` を評価してインラインノードを取り出す
+  fn hyperref_link(source: &str) -> HirInline {
+    let arena = Bump::new();
+    let view = CommandView::new(test_support::command_call_node(source, &arena), source);
+    return run_handler(|ctx| return hyperref(&view, HYPERREF.bind(&view)?.args, ctx)).unwrap();
+  }
+
+  /// `\hyperref{...}{...}` を評価して（ラベル, 表示）を取り出す
+  fn hyperref_parts(source: &str) -> (String, Vec<HirInline>) {
+    let result = hyperref_link(source);
+    let HirInlineKind::Link {
+      target: LinkDestination::Label(label),
+      children,
+    } = result.kind
+    else {
+      panic!("ラベルへの Link が期待されます: {result:?}");
+    };
+    return (label, children);
+  }
+
+  #[test]
+  fn hyperref_takes_label_and_display_as_two_mandatory_args() {
+    let (label, children) = hyperref_parts(r"\hyperref{sec:a}{この方法}");
+
+    assert_eq!(label, "sec:a");
+    assert_eq!(children.len(), 1, "{children:?}");
+    assert!(matches!(&children[0].kind, HirInlineKind::Text(t) if t == "この方法"), "{children:?}");
+  }
+
+  #[test]
+  fn hyperref_reads_label_like_ref() {
+    // `\ref` と同じくエスケープを解いた平文を trim する（verbatim ではない）
+    let (label, _) = hyperref_parts(r"\hyperref{ a\_b }{x}");
+
+    assert_eq!(label, "a_b");
+  }
+
+  #[test]
+  fn hyperref_evaluates_display_as_inline() {
+    let (_, bold) = hyperref_parts(r"\hyperref{thm:main}{\bold{主定理}}");
+    let (_, math) = hyperref_parts(r"\hyperref{eq:energy}{$E=mc^{2}$}");
+
+    assert!(matches!(&bold[0].kind, HirInlineKind::Styled { .. }), "{bold:?}");
+    assert_eq!(math.len(), 1, "表示は数式ノード 1 個: {math:?}");
+    assert!(matches!(&math[0].kind, HirInlineKind::Math(_)), "{math:?}");
+  }
+
+  #[test]
+  fn hyperref_rejects_link_producers_in_display() {
+    let cases = [
+      (r"\hyperref{x}{\ref{y}}", r"\ref"),
+      (r"\hyperref{x}{\url{v}}", r"\url"),
+      (r"\hyperref{x}{\href{v}{w}}", r"\href"),
+      (r"\hyperref{x}{\hyperref{y}{z}}", r"\hyperref"),
+      (r"\hyperref{x}{\cite{k}}", r"\cite"),
+      (r"\hyperref{x}{a\footnote{b}}", r"\footnote"),
+      (r"\hyperref{x}{\bold{\ref{y}}}", r"\ref"),
+    ];
+
+    for (source, expected) in cases {
+      let result = evaluate_document(source);
+
+      assert!(
+        matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
+        "{source}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn hyperref_rejects_blank_display() {
+    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\bold{}}"] {
+      let result = evaluate_document(source);
+
+      assert!(
+        matches!(result, Err(EvalError::EmptyLinkDisplay { ref what, .. }) if what == r"\hyperref"),
+        "{source}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn hyperref_rejects_index_in_display() {
+    let result = evaluate_document(r"\hyperref{x}{\index{語}}");
+
+    assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn hyperref_rejects_options() {
+    let result = evaluate_document(r"\hyperref[k=v]{x}{y}");
+
+    assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"), "{result:?}");
+  }
+
+  #[test]
+  fn hyperref_rejects_extra_argument() {
+    let result = evaluate_document(r"\hyperref{x}{y}{z}");
+
+    assert!(matches!(result, Err(EvalError::ExtraCommandArgument { .. })), "{result:?}");
+  }
+
+  #[test]
+  fn hyperref_inside_math_is_rejected_as_an_unknown_command() {
+    let result = evaluate_document(r"$\hyperref{x}{y}$");
+
+    assert!(
+      matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "hyperref"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn hyperref_inside_math_text_is_rejected() {
+    let result = evaluate_document(r"$\text{\hyperref{x}{y}}$");
+
+    assert!(matches!(result, Err(EvalError::UnsupportedInMathText { .. })), "{result:?}");
   }
 
   #[test]

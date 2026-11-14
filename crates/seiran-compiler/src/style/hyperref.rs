@@ -14,7 +14,7 @@ use crate::color::Color;
 #[garde(allow_unvalidated)]
 #[serde(deny_unknown_fields, default)]
 pub(crate) struct HyperrefStyle {
-  /// 内部参照リンク（`\ref` 等）の文字色。`None` は本文色を継承
+  /// 内部参照リンク（`\ref` / `\hyperref` 等）の文字色。`None` は本文色を継承
   pub link_color: Option<Color>,
   /// 外部 URL リンクの文字色。`None` は本文色を継承
   pub url_color: Option<Color>,

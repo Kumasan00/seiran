@@ -637,6 +637,20 @@ mod tests {
   }
 
   #[test]
+  fn hyperref_in_heading_is_plain_in_toc_and_bookmark() {
+    let headings = heading_records(
+      &ReadStyle::default(),
+      "\\section[label=sec:a]{A}\n\n\\section{\\hyperref{sec:a}{前の節}を受けて}\n",
+    );
+
+    let label = &headings[1].toc_label;
+    assert!(!flatten(label).iter().any(|n| matches!(n, InlineNode::Link { .. })), "{label:?}");
+    let joined: String = texts(label).iter().map(|(t, _)| return *t).collect();
+    assert!(joined.ends_with("前の節を受けて"), "{joined}");
+    assert_eq!(headings[1].title_plain, "前の節を受けて");
+  }
+
+  #[test]
   fn toc_label_does_not_consume_footnote_numbers() {
     let style = ReadStyle::default();
     let document = analyzed("\\section{A\\footnote{x}}\n\n本文\\footnote{y}\n");

@@ -33,7 +33,7 @@ pub(in crate::frontend) enum InlinePolicy {
   RejectIndex,
   /// `\index` に加えて、リンクを作るコマンドを [`EvalError::LinkInLinkDisplay`] で拒否する
   ///
-  /// リンクの表示内容（`\href` の第 2 引数）。
+  /// リンクの表示内容（`\href` / `\hyperref` の第 2 引数）。
   RejectIndexAndLinks,
 }
 

@@ -171,6 +171,8 @@ enum UnaryCommand {
 enum BinaryCommand {
   /// `\href{uri}{表示}` — 表示テキストと外部 URI を別に指定する外部リンク（第 1 引数は verbatim）
   Href,
+  /// `\hyperref{label}{表示}` — 表示を著者が書く内部リンクのスタブを生成する（解決はしない）
+  Hyperref,
   /// `\qty{数値}{単位}` — 量（必須引数 2 個とも外側によらず数式として読む。数式の中では数式の語彙が同じ評価を呼ぶ）
   Quantity,
 }
@@ -220,7 +222,7 @@ impl CommandKind {
       )
       | Self::Binary(BinaryCommand::Quantity) => false,
       Self::Unary(UnaryCommand::Ref | UnaryCommand::Url | UnaryCommand::Cite | UnaryCommand::Footnote)
-      | Self::Binary(BinaryCommand::Href) => true,
+      | Self::Binary(BinaryCommand::Href | BinaryCommand::Hyperref) => true,
     };
   }
 
@@ -329,6 +331,7 @@ impl BinaryCommand {
   fn signature(self) -> Signature<2> {
     return match self {
       Self::Href => link::HREF,
+      Self::Hyperref => link::HYPERREF,
       Self::Quantity => quantity::SIGNATURE,
     };
   }
@@ -342,6 +345,7 @@ impl BinaryCommand {
   ) -> Result<CommandResult, EvalError> {
     return match self {
       Self::Href => link::href(view, args, ctx).map(CommandResult::Inline),
+      Self::Hyperref => link::hyperref(view, args, ctx).map(CommandResult::Inline),
       Self::Quantity => quantity::quantity(view.source(), args).map(|(numeral, unit)| {
         return CommandResult::Inline(ctx.leaf_inline(view.span(), HirInlineKind::Quantity { numeral, unit }));
       }),
@@ -389,6 +393,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   "url" => CommandKind::Unary(UnaryCommand::Url),
   "href" => CommandKind::Binary(BinaryCommand::Href),
+  "hyperref" => CommandKind::Binary(BinaryCommand::Hyperref),
 
   "num" => CommandKind::Unary(UnaryCommand::Number),
   "unit" => CommandKind::Unary(UnaryCommand::Unit),
@@ -997,9 +1002,14 @@ mod tests {
     ];
   }
 
-  /// 外部リンクの呼び出し
+  /// 表示を持つリンクの呼び出し（`\url` / `\href` / `\hyperref`）
   fn link_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
+      (identifier(), inline_content(InlinePolicy::RejectIndexAndLinks)).prop_map(|(label, display)| return Call::new(
+        "hyperref",
+        vec![],
+        vec![label, display]
+      )),
       uri().prop_map(|uri| return Call::new("url", vec![], vec![uri])),
       (uri(), inline_content(InlinePolicy::RejectIndexAndLinks)).prop_map(|(uri, display)| return Call::new(
         "href",

@@ -380,6 +380,7 @@ mod tests {
       (r"\code", "code", "コード断片"),
       (r"\url", "url", "URI"),
       (r"\href{u}", "href", "2 個（リンク先 URI と表示テキスト）"),
+      (r"\hyperref{x}", "hyperref", "2 個（ラベル名と表示内容）"),
       (r"\num", "num", "1 個（数値）"),
       (r"\unit", "unit", "1 個（単位）"),
       (r"\qty{1}", "qty", "2 個（数値と単位）"),
