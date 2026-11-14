@@ -102,7 +102,7 @@ pub(super) struct UnknownCitationSite {
   pub keys: Vec<String>,
 }
 
-/// 解決（ラベル登録・`\ref` の名前解決・引用キーの存在検証）で発生し得るエラー
+/// 解決（ラベル登録・`\ref` の名前解決・引用キーの存在検証・複数参照と範囲参照の妥当性検証）で発生し得るエラー
 #[derive(Debug, Error, Diagnostic)]
 pub(crate) enum SemanticError {
   /// `\cite{...}` のキーが参照定義に存在しない場合（1 ソース分をまとめて 1 度に報告する）
@@ -152,6 +152,44 @@ pub(crate) enum SemanticError {
     /// 最初の定義の位置（先勝ちで有効なまま残っている定義）
     first_definition: SourceLocation,
   },
+
+  /// `\refs{...}` の参照先に種類（カウンタ名、または定理クラス）の違う項目が混ざっている場合
+  #[error("1 つの \\refs の参照先の種類が揃っていません")]
+  #[diagnostic(
+    code(semantics::mixed_ref_kinds),
+    help(
+      "\\refs に並べられるのは同じ種類（同じ見出しレベル・図・表・数式、または同じ定理クラス）の参照先だけです。種類ごとに \\refs / \\ref を分けて書いてください"
+    )
+  )]
+  MixedRefKinds {
+    /// 先頭のラベル
+    first: String,
+    /// 先頭と種類の違う最初のラベル
+    other: String,
+    /// `\refs{...}` のソース位置
+    #[label("`{first}` と `{other}` は種類が違います")]
+    span: miette::SourceSpan,
+    /// この参照が属するソース
+    source_id: SourceId,
+  },
+
+  /// `\refrange{...}{...}` の両端が、同じ種類で番号が途切れずに続く区間の始点と終点になっていない場合
+  #[error("範囲参照が不正です: {reason}")]
+  #[diagnostic(
+    code(semantics::invalid_ref_range),
+    help(
+      "\\refrange の 2 つのラベルには、同じ種類で番号が途切れずに続く項目の始点と終点を、始点を先にして指定してください"
+    )
+  )]
+  InvalidRefRange {
+    /// 範囲が成り立たない理由（両端のラベル名を含む）
+    reason: String,
+    /// `\refrange{...}{...}` のソース位置
+    #[label("この範囲は成り立ちません")]
+    span: miette::SourceSpan,
+    /// この参照が属するソース
+    source_id: SourceId,
+  },
 }
 
 impl SemanticError {
@@ -164,7 +202,9 @@ impl SemanticError {
     return match self {
       SemanticError::UnknownCitationKeys { source_id, .. }
       | SemanticError::UnresolvedRef { source_id, .. }
-      | SemanticError::DuplicateLabel { source_id, .. } => *source_id,
+      | SemanticError::DuplicateLabel { source_id, .. }
+      | SemanticError::MixedRefKinds { source_id, .. }
+      | SemanticError::InvalidRefRange { source_id, .. } => *source_id,
     };
   }
 
@@ -201,7 +241,9 @@ impl SemanticError {
       }),
       SemanticError::DuplicateLabel { .. }
       | SemanticError::UnknownCitationKeys { .. }
-      | SemanticError::UnresolvedRef { .. } => None,
+      | SemanticError::UnresolvedRef { .. }
+      | SemanticError::MixedRefKinds { .. }
+      | SemanticError::InvalidRefRange { .. } => None,
     };
   }
 }

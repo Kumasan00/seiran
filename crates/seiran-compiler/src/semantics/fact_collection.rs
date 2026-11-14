@@ -27,7 +27,8 @@ use crate::{
 /// # Errors
 ///
 /// 重複ラベル（同名ラベルの 2 回目以降の宣言）・未定義引用キー・未解決参照（`\ref` / `\refs` / `\refrange` /
-/// `\hyperref` / `[of=...]`）を **1 回の走査で全件**集め、文書順に並べた [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
+/// `\hyperref` / `[of=...]`）・`\refs` の種類の混在・不正な `\refrange` を **1 回の走査で全件**集め、文書順に並べた
+/// [`SemanticFailures`] を返します。1 件も無ければ `Ok`。
 pub(super) fn collect_facts(
   hir: &HirDocument,
   policy: &SemanticPolicy,
@@ -56,6 +57,7 @@ pub(super) fn collect_facts(
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
     .chain(unresolved_refs(&facts, hir.source_map()))
+    .chain(invalid_ref_groups(&facts, policy, hir.source_map()))
     .collect();
   // 安定ソートなので、同じ箇所の診断（複数参照の未定義ラベル）は積んだ順（ソース順）を保ったまま文書順に並ぶ。
   errors.sort_by_key(|(key, _)| return *key);
@@ -275,6 +277,104 @@ fn unresolved_refs(facts: &SemanticFacts, source_map: &SourceMap) -> Vec<(OrderK
       return (order_key(site), error);
     })
     .collect();
+}
+
+/// `ref_groups` の各箇所について、`\refs` の種類の混在と `\refrange` の不正な範囲を 1 箇所 1 件まで（文書順に）積む
+///
+/// 未定義のラベルを含む箇所は [`unresolved_refs`] が報告するので飛ばす。範囲の判定は `facts.counters` の挿入順が
+/// 採番順であること（`FactCollector::record_number` が採番の直後に挿入する）に依存し、両端の位置の間にある同じ系列の
+/// 項目を順に見る。採番済みの自番号は 1 以上で、リセット後の自番号は 1 なので、直前 + 1 と一致しない項目が
+/// あれば、その手前でリセットされている。
+fn invalid_ref_groups(
+  facts: &SemanticFacts,
+  policy: &SemanticPolicy,
+  source_map: &SourceMap,
+) -> Vec<(OrderKey, SemanticError)> {
+  return facts
+    .ref_groups
+    .iter()
+    .filter(|(_, group)| return group.labels().all(|label| return facts.label_definition(label.as_str()).is_some()))
+    .filter_map(|(site, group)| {
+      let location = source_map.location(site);
+      let span = location.span.into();
+      let source_id = location.source_id;
+      let error = match group {
+        RefGroup::List(labels) => {
+          let (first, other) = first_of_another_kind(facts, labels)?;
+          SemanticError::MixedRefKinds {
+            first: first.as_str().to_owned(),
+            other: other.as_str().to_owned(),
+            span,
+            source_id,
+          }
+        },
+        RefGroup::Range { first, last } => SemanticError::InvalidRefRange {
+          reason: invalid_range_reason(facts, policy, first, last)?,
+          span,
+          source_id,
+        },
+      };
+      return Some((order_key(site), error));
+    })
+    .collect();
+}
+
+/// 定義済みラベル `label` の、`facts.counters` の中の位置（採番順）と構造値
+fn numbered<'f>(facts: &'f SemanticFacts, label: &LabelId) -> (usize, &'f CounterValue) {
+  let Some(definition) = facts.label_definition(label.as_str()) else {
+    unreachable!("invalid_ref_groups は未定義のラベルを含む箇所を飛ばしている: {label:?}")
+  };
+  let (Some(position), Some(value)) = (facts.counters.position(definition.node), facts.counters.get(definition.node))
+  else {
+    unreachable!(
+      "ラベル宣言は採番の直後（record_number）にだけ記録されるので、定義済みラベルのノードは採番済み: {label:?}"
+    )
+  };
+  return (position, value);
+}
+
+/// `\refs` のラベル列で、先頭と種類の違う最初の項目を（先頭, その項目）として返す（揃っていれば `None`）
+fn first_of_another_kind<'g>(facts: &SemanticFacts, labels: &'g [LabelId]) -> Option<(&'g LabelId, &'g LabelId)> {
+  let Some((head, rest)) = labels.split_first() else {
+    unreachable!("frontend の \\refs はラベルが 2 個以上の RefList だけを作る")
+  };
+  let (_, head_value) = numbered(facts, head);
+  let other = rest.iter().find(|label| return !numbered(facts, label).1.same_kind(head_value))?;
+  return Some((head, other));
+}
+
+/// `\refrange` の範囲が成り立たない理由を、種類 → 前後関係 → リセット → 別の定理クラスの順に調べて最初の 1 つを返す
+/// （成り立てば `None`）
+fn invalid_range_reason(
+  facts: &SemanticFacts,
+  policy: &SemanticPolicy,
+  first: &LabelId,
+  last: &LabelId,
+) -> Option<String> {
+  let (start, start_value) = numbered(facts, first);
+  let (end, end_value) = numbered(facts, last);
+  let (first, last) = (first.as_str(), last.as_str());
+  if !start_value.same_kind(end_value) {
+    return Some(format!("始点 `{first}` と終点 `{last}` の種類が違います"));
+  }
+  if start > end {
+    return Some(format!("始点 `{first}` が終点 `{last}` より後ろにあります"));
+  }
+  let series: Vec<&CounterValue> = facts
+    .counters
+    .iter()
+    .skip(start)
+    .take(end - start + 1)
+    .map(|(_, value)| return value)
+    .filter(|value| return value.same_series(start_value, policy))
+    .collect();
+  if series.windows(2).any(|pair| return pair[1].own() != pair[0].own() + 1) {
+    return Some(format!("始点 `{first}` から終点 `{last}` までの間で番号がリセットされています"));
+  }
+  if series.iter().any(|value| return !value.same_kind(start_value)) {
+    return Some(format!("始点 `{first}` から終点 `{last}` までの間に別の定理クラスの項目があります"));
+  }
+  return None;
 }
 
 /// HIR を読み取り専用で走査し、採番・ラベル登録・見出し収集・参照箇所の記録を 1 回の走査で行って
@@ -678,6 +778,240 @@ mod tests {
       .expect("別ソースのラベルへの前方参照は解決するはず");
 
     assert_eq!(analyzed.ref_group_sites().count(), 2);
+  }
+
+  /// ラベル `label` 付きの表 1 つのソース
+  fn table_source(label: &str) -> String {
+    return format!("\\begin{{table}}[label={label}]\n\\row{{a}}\n\\caption{{表}}\n\\end{{table}}\n\n");
+  }
+
+  /// ラベル `label` 付きの数式 1 つのソース
+  fn equation_source(label: &str) -> String {
+    return format!("\\begin{{equation}}[label={label}]\nx = 1\n\\end{{equation}}\n\n");
+  }
+
+  /// ラベル `label` 付きの定理環境 `class` 1 つのソース
+  fn theorem_source(class: &str, label: &str) -> String {
+    return format!("\\begin{{{class}}}[label={label}]\n主張\n\\end{{{class}}}\n\n");
+  }
+
+  /// theorem 1 → lemma 2 → theorem 3（既定の style では共有カウンタ `theorem` で通し番号）のソース
+  fn theorem_lemma_theorem() -> String {
+    return format!(
+      "{}{}{}",
+      theorem_source("theorem", "t1"),
+      theorem_source("lemma", "l2"),
+      theorem_source("theorem", "t3")
+    );
+  }
+
+  /// ソース列を `SourceId` 0, 1, … の順にパースし、既定の policy で解析する
+  fn analyze_sources(sources: &[&str]) -> Result<SemanticDocument, SemanticFailures> {
+    let hir = sources
+      .iter()
+      .enumerate()
+      .map(|(index, source)| return parse_for_test(source, SourceId::new(index)).expect("パースに成功するはず"))
+      .collect();
+    let policy = SemanticPolicy::from_style(&Style::default());
+    return semantics::analyze_for_test(HirDocument::assemble(hir), &policy, &no_references());
+  }
+
+  /// 解析が報告する唯一の診断を返す
+  fn only_error(sources: &[&str]) -> SemanticError {
+    let (error, rest) = analyze_sources(sources).expect_err("エラーになるはず").into_parts();
+    assert!(rest.is_empty(), "診断は 1 件のはず: {error:?} {rest:?}");
+    return error;
+  }
+
+  /// 唯一の診断 `MixedRefKinds` の（先頭のラベル, 種類の違うラベル, span が指すソースの字面）
+  fn mixed_kinds(sources: &[&str]) -> (String, String, String) {
+    let error = only_error(sources);
+    assert_eq!(error.code().map(|code| return code.to_string()).as_deref(), Some("semantics::mixed_ref_kinds"));
+    let SemanticError::MixedRefKinds {
+      first,
+      other,
+      span,
+      source_id,
+    } = error
+    else {
+      panic!("MixedRefKinds が期待されます: {error:?}");
+    };
+    let source = sources[source_id.index()];
+    return (first, other, source[span.offset()..span.offset() + span.len()].to_string());
+  }
+
+  /// 唯一の診断 `InvalidRefRange` の（理由, span が指すソースの字面）
+  fn invalid_range(sources: &[&str]) -> (String, String) {
+    let error = only_error(sources);
+    assert_eq!(error.code().map(|code| return code.to_string()).as_deref(), Some("semantics::invalid_ref_range"));
+    let SemanticError::InvalidRefRange {
+      reason,
+      span,
+      source_id,
+    } = error
+    else {
+      panic!("InvalidRefRange が期待されます: {error:?}");
+    };
+    let source = sources[source_id.index()];
+    return (reason, source[span.offset()..span.offset() + span.len()].to_string());
+  }
+
+  #[test]
+  fn refs_rejects_mixed_counters() {
+    let source = format!("{}{}\\refs{{f1, t1}}\n", figure_source("f1"), table_source("t1"));
+
+    let reported = mixed_kinds(&[&source]);
+
+    assert_eq!(reported, ("f1".to_string(), "t1".to_string(), r"\refs{f1, t1}".to_string()));
+  }
+
+  #[test]
+  fn refs_rejects_mixed_heading_levels() {
+    let source = "\\section[label=sec:a]{A}\n\n\\subsection[label=sub:b]{B}\n\n\\refs{sec:a, sub:b}\n";
+
+    let reported = mixed_kinds(&[source]);
+
+    assert_eq!(reported, ("sec:a".to_string(), "sub:b".to_string(), r"\refs{sec:a, sub:b}".to_string()));
+  }
+
+  #[test]
+  fn refs_reports_only_the_first_item_of_another_kind() {
+    let source = format!(
+      "{}{}{}{}\\refs{{f1, f2, t1, e1}}\n",
+      figure_source("f1"),
+      figure_source("f2"),
+      table_source("t1"),
+      equation_source("e1")
+    );
+
+    let (first, other, _) = mixed_kinds(&[&source]);
+
+    assert_eq!((first.as_str(), other.as_str()), ("f1", "t1"));
+  }
+
+  #[test]
+  fn refs_rejects_theorem_classes_sharing_a_counter() {
+    let source = format!("{}{}\\refs{{t1, l2}}\n", theorem_source("theorem", "t1"), theorem_source("lemma", "l2"));
+
+    let (first, other, _) = mixed_kinds(&[&source]);
+
+    assert_eq!((first.as_str(), other.as_str()), ("t1", "l2"));
+  }
+
+  #[test]
+  fn refs_accepts_same_theorem_class_with_gap() {
+    let source = format!("{}\\refs{{t1, t3}}\n", theorem_lemma_theorem());
+
+    let result = analyze_sources(&[&source]);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn ref_range_accepts_contiguous_series_with_unlabeled_middle() {
+    let source =
+      "\\begin{align}\na &= b \\label{e1} \\\\\nc &= d \\\\\ne &= f \\label{e3}\n\\end{align}\n\n\\refrange{e1}{e3}\n";
+
+    let result = analyze_sources(&[source]);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn ref_range_rejects_reverse_order() {
+    let source = format!(
+      "{}{}{}\\refrange{{e3}}{{e1}}\n",
+      equation_source("e1"),
+      equation_source("e2"),
+      equation_source("e3")
+    );
+
+    let reported = invalid_range(&[&source]);
+
+    assert_eq!(reported, ("始点 `e3` が終点 `e1` より後ろにあります".to_string(), r"\refrange{e3}{e1}".to_string()));
+  }
+
+  #[test]
+  fn ref_range_rejects_reverse_order_across_sources() {
+    let first = equation_source("e1");
+    let second = format!("{}\\refrange{{e2}}{{e1}}\n", equation_source("e2"));
+
+    let reported = invalid_range(&[&first, &second]);
+
+    assert_eq!(reported, ("始点 `e2` が終点 `e1` より後ろにあります".to_string(), r"\refrange{e2}{e1}".to_string()));
+  }
+
+  #[test]
+  fn ref_range_rejects_different_kinds() {
+    let source = format!("{}{}\\refrange{{f1}}{{e1}}\n", figure_source("f1"), equation_source("e1"));
+
+    let (reason, _) = invalid_range(&[&source]);
+
+    assert_eq!(reason, "始点 `f1` と終点 `e1` の種類が違います");
+  }
+
+  #[test]
+  fn ref_range_rejects_crossing_chapter_reset() {
+    let source = format!(
+      "\\chapter{{A}}\n\n{}\\chapter{{B}}\n\n{}\\refrange{{f1}}{{f2}}\n",
+      figure_source("f1"),
+      figure_source("f2")
+    );
+
+    let (reason, _) = invalid_range(&[&source]);
+
+    assert_eq!(reason, "始点 `f1` から終点 `f2` までの間で番号がリセットされています");
+  }
+
+  #[test]
+  fn ref_range_rejects_reset_returning_to_same_values() {
+    // 部 II が章を 0 に戻すので、2 つの章 A はどちらも章番号 1 で、図の番号も同じ値を繰り返す
+    let source = format!(
+      "\\part{{I}}\n\n\\chapter{{A}}\n\n{}{}\\part{{II}}\n\n\\chapter{{A}}\n\n{}{}\\refrange{{f2}}{{f4}}\n",
+      figure_source("f1"),
+      figure_source("f2"),
+      figure_source("f3"),
+      figure_source("f4")
+    );
+
+    let (reason, _) = invalid_range(&[&source]);
+
+    assert_eq!(reason, "始点 `f2` から終点 `f4` までの間で番号がリセットされています");
+  }
+
+  #[test]
+  fn ref_range_rejects_other_theorem_class_between() {
+    let source = format!("{}\\refrange{{t1}}{{t3}}\n", theorem_lemma_theorem());
+
+    let (reason, _) = invalid_range(&[&source]);
+
+    assert_eq!(reason, "始点 `t1` から終点 `t3` までの間に別の定理クラスの項目があります");
+  }
+
+  #[test]
+  fn ref_range_accepts_across_sources() {
+    let first = equation_source("e1");
+    let second = format!("{}\\refrange{{e1}}{{e2}}\n", equation_source("e2"));
+
+    let result = analyze_sources(&[&first, &second]);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn unresolved_group_skips_validity_check() {
+    let source =
+      format!("{}{}\\refs{{f1, e1, x}} と \\refrange{{x}}{{e1}}\n", figure_source("f1"), equation_source("e1"));
+
+    let reported = unresolved(&source);
+
+    assert_eq!(
+      reported,
+      vec![
+        ("x".to_string(), r"\refs{f1, e1, x}".to_string()),
+        ("x".to_string(), r"\refrange{x}{e1}".to_string())
+      ]
+    );
   }
 
   #[test]

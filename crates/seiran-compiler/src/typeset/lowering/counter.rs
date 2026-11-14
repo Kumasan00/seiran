@@ -53,7 +53,8 @@ pub(super) fn format_ref_display(style: &Style, value: &CounterValue) -> String 
 ///
 /// 番号 1 個の断片は [`format_ref_display`] の `{number}` と同じもので、`List` は番号の間に `list_separator` を、
 /// `Range` は始点と終点の間に `range_separator` を挟む。その列を外側の `ref_format`（定理は固定書式）の `{number}` へ
-/// 入れ、`{display_name}` には複数形の表示名を入れる。種別名と外側の書式は先頭の項目の種類から引く。
+/// 入れ、`{display_name}` には複数形の表示名を入れる。種別名と外側の書式は先頭の項目の種類から引く。項目の種類が
+/// 揃っていることは `collect_facts` の検証（`MixedRefKinds` / `InvalidRefRange`）が保証する。
 #[must_use]
 pub(super) fn format_ref_group<'a>(
   style: &Style,
