@@ -288,7 +288,7 @@ mod tests {
 
   #[test]
   fn href_accepts_inline_math_as_display_text() {
-    // 数式全体をリンクにする書き方は、数式を `\href` の表示テキストに置く形だけ
+    // 数式全体をリンクにする書き方は、数式をリンク（`\href` / `\hyperref`）の表示内容に置く形だけ
     let result = href_link(r"\href{https://example.com}{$x^{2}$}");
 
     let HirInlineKind::Link { children, .. } = &result.kind else {
