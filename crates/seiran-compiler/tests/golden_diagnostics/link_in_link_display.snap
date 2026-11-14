@@ -1,0 +1,26 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::link_in_link_display
+
+  × リンクの表示内容の中にリンクは置けません
+   ╭─[tests/text/diagnostics/link_in_link_display_a.sei:3:41]
+ 2 │ 
+ 3 │ 本文 \href{https://example.com}{\bold{\ref{sec:x}}} です。
+   ·                                       ─────┬─────
+   ·                                            ╰── この \ref はリンクを作るので、リンクの表示内容の中では使用できません
+   ╰────
+  help: \ref・\url・\href・\hyperref・\cite・\footnote はそれぞれリンクを作ります。入れ子のリンク
+        はどちらへ飛ぶかが決まらないので、表示内容の外に書いてください
+
+Error: frontend::eval::link_in_link_display
+
+  × リンクの表示内容の中にリンクは置けません
+   ╭─[tests/text/diagnostics/link_in_link_display_b.sei:1:28]
+ 1 │ 本文 \hyperref{sec:x}{注\footnote{本体}} です。
+   ·                         ───────┬───────
+   ·                                ╰── この \footnote はリンクを作るので、リンクの表示内容の中では使用できません
+   ╰────
+  help: \ref・\url・\href・\hyperref・\cite・\footnote はそれぞれリンクを作ります。入れ子のリンク
+        はどちらへ飛ぶかが決まらないので、表示内容の外に書いてください

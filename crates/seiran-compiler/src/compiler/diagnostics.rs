@@ -662,6 +662,39 @@ fn diagnostic_undefined_ref() {
 }
 
 #[test]
+fn diagnostic_undefined_hyperref() {
+  // `\hyperref` の未定義ラベルは `\ref` と同じ診断で、label は呼び出し全体を指す
+  let failure = compile_err(&["tests/text/diagnostics/undefined_hyperref.sei"]);
+
+  assert_eq!(codes(&failure), vec!["semantics::unresolved_ref".to_string()]);
+  assert_matches_golden("undefined_hyperref", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_link_in_link_display() {
+  // `\href` の装飾の中の `\ref` と、`\hyperref` の表示内容の中の `\footnote`（脚注マーカーも内部リンク）
+  let failure = compile_err(&[
+    "tests/text/diagnostics/link_in_link_display_a.sei",
+    "tests/text/diagnostics/link_in_link_display_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::link_in_link_display".to_string(); 2]);
+  assert_matches_golden("link_in_link_display", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_empty_link_display() {
+  // 空白だけの `\href` の表示と、中身の無い装飾だけの `\hyperref` の表示
+  let failure = compile_err(&[
+    "tests/text/diagnostics/empty_link_display_a.sei",
+    "tests/text/diagnostics/empty_link_display_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::empty_link_display".to_string(); 2]);
+  assert_matches_golden("empty_link_display", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_unknown_cite_key() {
   let failure = compile_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 

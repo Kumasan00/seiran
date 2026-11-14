@@ -1,0 +1,14 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+semantics::unresolved_ref
+
+  × 未解決の参照です: ラベル `missing-label`
+   ╭─[tests/text/diagnostics/undefined_hyperref.sei:3:14]
+ 2 │ 
+ 3 │ 本文中の \hyperref{missing-label}{この節} を参照します。
+   ·          ────────────────┬───────────────
+   ·                          ╰── この参照が未解決です
+   ╰────
+  help: 対応する label が定義されているか確認してください。

@@ -1,0 +1,23 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::empty_link_display
+
+  × リンクの表示内容が空です
+   ╭─[tests/text/diagnostics/empty_link_display_a.sei:1:8]
+ 1 │ 本文 \href{https://example.com}{ } です。
+   ·      ──────────────┬──────────────
+   ·                    ╰── この \href にはクリックできる表示がありません
+   ╰────
+  help: 第 2 引数に表示する文章・数式を書いてください
+
+Error: frontend::eval::empty_link_display
+
+  × リンクの表示内容が空です
+   ╭─[tests/text/diagnostics/empty_link_display_b.sei:1:8]
+ 1 │ 本文 \hyperref{sec:x}{\bold{}} です。
+   ·      ────────────┬────────────
+   ·                  ╰── この \hyperref にはクリックできる表示がありません
+   ╰────
+  help: 第 2 引数に表示する文章・数式を書いてください
