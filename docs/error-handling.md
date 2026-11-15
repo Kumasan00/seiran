@@ -154,7 +154,9 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   `#[diagnostic(severity(Warning), code(...))]`）。`code` の第 1 階層は**検出した段**
   （フォント検証の警告は `typeset::font::script::*`、config.toml の警告は `project::config::*`）
 - 表示順は入力の論理順。段の実行順（設定 → フォント → 組版）で束ね、段の中は各段が既に決定的な順序で
-  集めている（config は `sources` の宣言順、フォントは枠の宣言順 → 候補順（`FontFace` の順）、組版は物理ページの昇順）
+  集めている（config は `sources` の宣言順、フォントは枠の宣言順 → 候補順（`FontFace` の順）、組版は画像の警告（パスの
+  昇順）→ 異体字列の代替（要素の位置順、生成内容はその後ろ）→ 配置由来の警告（物理ページの昇順）。組版の並びの正典は
+  `typeset::compose` と `lay_out` の doc）
 - **失敗しても確定した warning は返す**。「成功／失敗」と
   「エラー／警告」は別の軸で、警告を生成し得る段の境界は `(Result<T, Failures<E>>, Vec<W>)` の組を返す。
   `compile` facade は 1 回の呼び出しに閉じたローカルの `Warnings` へ段の戻り値だけを積み、失敗したら
