@@ -4,10 +4,10 @@ expression: rendered
 ---
 semantics::invalid_ref_range
 
-  × 範囲参照が不正です: 始点 `fig:a` から終点 `fig:b` までの間で番号がリセットされています
+  × 範囲参照が不正です: 始点 `tab:a` から終点 `tab:b` までの間で番号がリセットされています
     ╭─[tests/text/diagnostics/ref_range_invalid.sei:15:23]
  14 │ 
- 15 │ 章をまたぐ範囲 \refrange{fig:a}{fig:b} は拒否される。
+ 15 │ 章をまたぐ範囲 \refrange{tab:a}{tab:b} は拒否される。
     ·                ───────────┬───────────
     ·                           ╰── この範囲は成り立ちません
     ╰────

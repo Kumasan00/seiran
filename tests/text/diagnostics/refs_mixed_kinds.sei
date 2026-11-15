@@ -1,13 +1,12 @@
 \section{A}
 
-\begin{figure}[label=fig:a]
-\image[width=30mm]{./tests/image/testimage1.jpg}
-\caption{図}
-\end{figure}
+\begin{theorem}[label=thm:a]
+定理。
+\end{theorem}
 
 \begin{table}[label=tab:a, columns=left]
 \row{甲}
 \caption{表}
 \end{table}
 
-図と表を混ぜた \refs{fig:a, tab:a} は拒否される。
+定理と表を混ぜた \refs{thm:a, tab:a} は拒否される。

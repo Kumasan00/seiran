@@ -4,31 +4,14 @@
 // golden ではリンクの矩形が番号 1 個ずつに分かれて各ラベルを指し、種別名と区切りには矩形が無く、
 // 見出しの中の `\refs` は目次の行でリンクにならないことを見る。
 
-前方参照として\refs{fig:b, fig:a}と\refrange{fig:a}{fig:c}を、式は\refs{eq:one, eq:three}と\refrange{eq:one}{eq:three}で参照する。
-定理は\refs{thm:a, thm:b}、表は\refs{tab:a, tab:b}、節は\refs{sec:first, sec:second}と並べられる。
-
-\begin{figure}[label=fig:a]
-\image[width=30mm]{./tests/image/testimage1.jpg}
-\caption{最初の図}
-\end{figure}
-
-\begin{figure}[label=fig:b]
-\image[width=30mm]{./tests/image/testimage1.jpg}
-\caption{二番目の図}
-\end{figure}
-
-\begin{figure}[label=fig:c]
-\image[width=30mm]{./tests/image/testimage1.jpg}
-\caption{三番目の図}
-\end{figure}
-
-後方参照として\refs{fig:a, fig:b, fig:c}と\refrange{fig:b}{fig:c}を使う。
+前方参照として\refs{tab:b, tab:a}と\refrange{tab:a}{tab:c}を、式は\refs{eq:one, eq:three}と\refrange{eq:one}{eq:three}で参照する。
+定理は\refs{thm:a, thm:b}、節は\refs{sec:first, sec:second}と並べられる。
 
 \begin{table}[label=tab:a, columns=left left]
 \head{
   \row{項目 & 値}
 }
-\row{\refs{fig:a, fig:b}の比較 & 1}
+\row{\refs{tab:a, tab:b}の比較 & 1}
 \caption{最初の表}
 \end{table}
 
@@ -36,6 +19,13 @@
 \row{甲 & 乙}
 \caption{二番目の表}
 \end{table}
+
+\begin{table}[label=tab:c, columns=left left]
+\row{丙 & 丁}
+\caption{三番目の表}
+\end{table}
+
+後方参照として\refs{tab:a, tab:b, tab:c}と\refrange{tab:b}{tab:c}を使う。
 
 \begin{align}
 a &= b \label{eq:one} \\
@@ -64,12 +54,12 @@ m &= n \label{eq:seven}
 
 行末近くから始めて折り返す長い複数参照を置くために、文章を並べ、行の終わりが近づいたところで\refs{eq:one, eq:three, eq:four, eq:five, eq:six, eq:seven}と続ける。
 
-脚注の中からも参照できる\footnote{脚注から\refs{fig:a, fig:b}と\refrange{eq:one}{eq:three}へ移動する。}。
+脚注の中からも参照できる\footnote{脚注から\refs{tab:a, tab:b}と\refrange{eq:one}{eq:three}へ移動する。}。
 
 \section[label=sec:first]{最初の節}
 
 最初の節。
 
-\section[label=sec:second]{\refs{fig:a, fig:b}の比較}
+\section[label=sec:second]{\refs{tab:a, tab:b}の比較}
 
 見出しの中の複数参照は本文の見出しではリンクになり、目次の行としおりでは平文になる。

@@ -282,8 +282,9 @@ impl<'a> LoweringState<'a> {
   ///
   /// # Panics
   ///
-  /// 参照先のカウンタ値が事実に無い場合にパニックします（`analyze` の存在検証を通過した
-  /// `LabelId` しか到達しないため、通常は起こりません）。
+  /// 次の場合にパニックします（どちらも `analyze` が確定した事実から引くため、通常は起こりません）。
+  /// - `site` が `\refs` / `\refrange` の箇所として登録されていない（`document.ref_group(site)`）
+  /// - 参照先のカウンタ値が事実に無い（`analyze` の存在検証を通過した `LabelId` しか到達しない）
   pub(super) fn ref_group_pieces(&self, style: &ReadStyle, site: NodeId) -> Vec<(String, Option<&'a LabelId>)> {
     let document = self.document;
     return counter::format_ref_group(style, document.ref_group(site), |label| {

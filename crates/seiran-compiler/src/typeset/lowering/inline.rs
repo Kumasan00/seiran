@@ -456,6 +456,27 @@ mod tests {
   }
 
   #[test]
+  fn lower_refs_numbers_theorem_and_lemma_with_shared_counter() {
+    let source = "\\begin{theorem}[label=t1]\n一。\n\\end{theorem}\n\n\\begin{lemma}[label=l1]\n二。\n\\end{lemma}\n\n\
+                  \\begin{theorem}[label=t3]\n三。\n\\end{theorem}\n\n\\refs{t1, t3}\n";
+
+    let nodes = lower_source(&ReadStyle::default(), source);
+
+    let last_paragraph = &nodes[nodes.len() - 1..];
+    let text: String = inlines(last_paragraph)
+      .flat_map(|node| match node {
+        InlineNode::Link { children, .. } => return children.iter().collect::<Vec<_>>(),
+        other => return vec![other],
+      })
+      .map(|node| match node {
+        InlineNode::Text(text, _) => return text.as_str(),
+        other => unreachable!("参照の表示は文字列だけでできている: {other:?}"),
+      })
+      .collect();
+    assert_eq!(text, "Theorems 1, 3");
+  }
+
+  #[test]
   fn lower_ref_still_links_whole_display() {
     let nodes =
       lower_source(&ReadStyle::default(), "\\begin{equation}[label=e1]\nx = 1\n\\end{equation}\n\n\\ref{e1}\n");

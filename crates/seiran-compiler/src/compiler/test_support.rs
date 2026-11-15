@@ -268,13 +268,12 @@ impl TestProjectBuilder {
     return self;
   }
 
-  /// golden fixture 名に対応する既定の入力（`sources` と機能有効化の差分）を適用する。画像を使う fixture（`refs` の図）のため `FIGURE_IMAGE_ASSETS` を登録する。
+  /// golden fixture 名に対応する既定の入力（`sources` と機能有効化の差分）を適用する。
   pub(super) fn golden_fixture(self, name: &str) -> Self {
     let name = name.to_string();
     let fixture = name.clone();
     return self
       .sources(&[&format!("tests/text/{name}.sei")])
-      .assets(FIGURE_IMAGE_ASSETS)
       .config_toml(move |table| apply_fixture_config_overrides(&fixture, table))
       .style_toml(move |table| apply_fixture_style_overrides(&name, table));
   }
@@ -448,7 +447,8 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "toc", "enabled", true);
       set(table, "hyperref", "link_color", "#0000ff");
     },
-    // 番号ごとのリンクにだけリンク色が付き、目次の行にはリンクが無いことを見る
+    // 番号ごとのリンクにだけリンク色が付き、目次の行にはリンクが無いことを見る。
+    // 本文幅を狭めるのは、長い \refs を折り返して番号と指す先の対応が行をまたいでも保たれることを見るため
     "refs" => {
       set(table, "toc", "enabled", true);
       set(table, "hyperref", "link_color", "#0000ff");
