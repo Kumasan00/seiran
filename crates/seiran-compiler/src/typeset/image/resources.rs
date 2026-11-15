@@ -1,7 +1,7 @@
 //! 画像の読込・自然寸法解決と 1 画像ぶんの表示寸法確定
 
 use std::{
-  collections::{BTreeMap, BTreeSet, HashMap},
+  collections::{BTreeMap, HashMap},
   sync::Arc,
 };
 
@@ -81,11 +81,11 @@ pub(in crate::typeset) fn pdf_page_index(format: ImageFormat, page: Option<u32>)
 }
 
 /// 画像ファイルを読み込み、自然寸法と判定済み形式・生バイト列を格納した [`ImageResources`] と、
-/// 取り込みで落とした内容の警告（パス → ページの昇順）を返す。
+/// 取り込みで落とした内容の警告（`\image` ごとに 1 件。パス → ページ → `\image` の文書順）を返す。
 ///
 /// `requests` は [`super::collect_image_requests`] が作った正規化済みパスの昇順で、1 ファイルの中の
-/// `page` も昇順なので、失敗の報告順も決定的になる。1 ファイルの中のページ検査は、失敗しても残りの
-/// ページを続ける（互いに独立）。
+/// `page` も昇順、同じ `page` を書いた `\image` は文書順なので、失敗の報告順も決定的になる。PDF のページの
+/// 検査は `\image` ごとで、失敗しても残りを続ける（互いに独立）。
 ///
 /// SVG は `svg`（描画側と同じ設定）でパースし、文字が設定済みフォントで組めることも確かめる。
 ///
@@ -100,7 +100,7 @@ pub(crate) fn load_image_resources(
 ) -> Result<(ImageResources, Vec<TypesetWarning>), Failures<TypesetError>> {
   let mut natural_sizes = BTreeMap::new();
   let mut assets = HashMap::with_capacity(requests.len());
-  let mut annotated_pages = BTreeSet::new();
+  let mut warnings = Vec::new();
   let mut errors = Vec::new();
   for request in requests {
     let path_string = request.path.to_string();
@@ -123,16 +123,23 @@ pub(crate) fn load_image_resources(
             continue;
           },
         };
-        for &page in request.pages.keys() {
-          match file.page(&path_string, page) {
-            Ok(selected) => {
-              let page_index = pdf_page_index(request.format, page);
-              natural_sizes.insert((request.path.clone(), page_index), selected.natural_size);
-              if selected.has_annotations {
-                annotated_pages.insert((request.path.clone(), page.unwrap_or(1)));
-              }
-            },
-            Err(error) => errors.push(error),
+        for (&page, sites) in &request.pages {
+          for &site in sites {
+            match file.page(&path_string, page, site) {
+              Ok(selected) => {
+                let page_index = pdf_page_index(request.format, page);
+                natural_sizes.insert((request.path.clone(), page_index), selected.natural_size);
+                if selected.has_annotations {
+                  warnings.push(TypesetWarning::PdfAnnotationsDropped {
+                    path: request.path.clone(),
+                    page: page.unwrap_or(1),
+                    source_id: site.source_id,
+                    span: site.span.at_start().into(),
+                  });
+                }
+              },
+              Err(error) => errors.push(error),
+            }
           }
         }
       },
@@ -176,10 +183,6 @@ pub(crate) fn load_image_resources(
     return Err(failures);
   }
   debug!(image_count = natural_sizes.len(), "画像の自然寸法を確定");
-  let warnings = annotated_pages
-    .into_iter()
-    .map(|(path, page)| return TypesetWarning::PdfAnnotationsDropped { path, page })
-    .collect();
   return Ok((
     ImageResources {
       natural_sizes,
@@ -236,6 +239,8 @@ fn fit_image_size(width: Option<f32>, height: Option<f32>, natural: NaturalSize,
 mod tests {
   use std::path::Path;
 
+  use miette::Diagnostic;
+
   use super::*;
   use crate::{
     document::SourceLocation,
@@ -257,6 +262,11 @@ mod tests {
 
   /// ページを指定しない（非 PDF の）1 ファイルぶんの読込要求を組み立てる
   fn request(path: &str, format: ImageFormat) -> ImageRequest { return pdf_request(path, format, &[None]); }
+
+  /// 診断の先頭ラベルの開始位置
+  fn label_offset(diagnostic: &dyn Diagnostic) -> usize {
+    return diagnostic.labels().and_then(|mut labels| return labels.next()).expect("ラベルを持つはず").offset();
+  }
 
   /// offset `offset` から 1 バイトの `\image` の位置（ソース 0）
   fn site(offset: u32) -> SourceLocation {
@@ -301,18 +311,20 @@ mod tests {
   }
 
   #[test]
-  fn inspect_reports_every_bad_request_of_one_file() {
-    let result = load_pdf("vector2.pdf", &[None, Some(2), Some(9)]);
+  fn inspect_reports_every_bad_image_of_one_file() {
+    // offset 0 と 3 が page を省略、offset 2 がページ数を超える。page の昇順 → 文書順に並ぶ
+    let result = load_pdf("vector2.pdf", &[None, Some(2), Some(9), None]);
 
     let Err(failures) = result else {
       panic!("ページ指定の誤りを期待");
     };
     let errors: Vec<_> = failures.into_iter().collect();
-    assert_eq!(errors.len(), 2, "{errors:?}");
+    assert_eq!(errors.len(), 3, "{errors:?}");
     assert!(matches!(errors[0], TypesetError::PdfPageRequired { page_count: 2, .. }), "{errors:?}");
+    assert!(matches!(errors[1], TypesetError::PdfPageRequired { page_count: 2, .. }), "{errors:?}");
     assert!(
       matches!(
-        errors[1],
+        errors[2],
         TypesetError::PdfPageOutOfRange {
           page: 9,
           page_count: 2,
@@ -321,14 +333,38 @@ mod tests {
       ),
       "{errors:?}"
     );
+    let offsets: Vec<_> = errors.iter().map(|error| return label_offset(error)).collect();
+    assert_eq!(offsets, [0, 3, 2]);
+    assert!(errors.iter().all(|error| return error.source_id() == Some(SourceId::new(0))), "{errors:?}");
   }
 
   #[test]
-  fn load_image_resources_warns_about_annotations_once_per_page() {
+  fn reports_only_the_image_that_omits_page() {
+    let result = load_pdf("vector2.pdf", &[Some(1), None]);
+
+    let Err(failures) = result else {
+      panic!("page を省略した図の誤りを期待");
+    };
+    let errors: Vec<_> = failures.into_iter().collect();
+    assert_eq!(errors.len(), 1, "{errors:?}");
+    assert!(matches!(errors[0], TypesetError::PdfPageRequired { .. }), "{errors:?}");
+    assert_eq!(label_offset(&errors[0]), 1);
+  }
+
+  #[test]
+  fn load_image_resources_warns_about_annotations_per_image() {
     let (_, warnings) = load_pdf("annotated.pdf", &[None, Some(1)]).expect("注釈付きの PDF も読めるはず");
 
-    assert_eq!(warnings.len(), 1, "{warnings:?}");
-    assert!(matches!(&warnings[0], TypesetWarning::PdfAnnotationsDropped { page: 1, .. }), "{warnings:?}");
+    assert_eq!(warnings.len(), 2, "{warnings:?}");
+    assert!(
+      warnings
+        .iter()
+        .all(|warning| return matches!(warning, TypesetWarning::PdfAnnotationsDropped { page: 1, .. })),
+      "{warnings:?}"
+    );
+    let offsets: Vec<_> = warnings.iter().map(|warning| return label_offset(warning)).collect();
+    assert_eq!(offsets, [0, 1]);
+    assert!(warnings.iter().all(|warning| return warning.source_id() == Some(SourceId::new(0))), "{warnings:?}");
   }
 
   #[test]
@@ -395,6 +431,7 @@ mod tests {
       panic!("ReadImage を期待");
     };
     assert!(matches!(source, ProjectSourceError::NotFound), "未登録パスは NotFound になるはず: {source:?}");
+    assert_eq!(failures.first().source_id(), None, "ファイル単位の失敗は位置を持たないはず");
   }
 
   #[test]

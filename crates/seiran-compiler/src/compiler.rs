@@ -39,6 +39,7 @@ use crate::{
   project::{PathResolver, ProjectPath, ProjectSource, SourceSet, config::ConfigWarning},
   publication::Publication,
   semantics::{self, AnalyzeError, SemanticDocument, SemanticError},
+  source::SourceId,
   typeset::{self, ComposeError, TypesetOutput},
 };
 
@@ -231,20 +232,34 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
 
 /// `typeset::compose` の失敗を表示可能な診断の集合にする。
 ///
-/// ソース位置を持ちうるのは字の欠落と寸法の溢れなので、そのうち要素に帰属するものにだけ、そのソースの本文を添える。
+/// ソース位置を持ちうるのは `\image` のページの選択の誤り・字の欠落・寸法の溢れなので、そのうち要素に帰属するものに
+/// だけ、そのソースの本文を添える。
 fn attribute_compose_error(error: ComposeError, sources: &SourceSet) -> CompileFailure {
   return match error {
-    ComposeError::Typeset(failures) => CompileFailure::from(failures),
-    ComposeError::Glyphs(failures) => CompileFailure::from_boxed(failures.map(|error| -> BoxedDiagnostic {
-      return match error.source_id() {
-        Some(source_id) => Box::new(SourceDiagnostic::attach(sources, source_id, error)),
-        None => Box::new(error),
-      };
+    ComposeError::Typeset(failures) => CompileFailure::from_boxed(failures.map(|error| {
+      let source_id = error.source_id();
+      return attach_if_located(sources, source_id, error);
+    })),
+    ComposeError::Glyphs(failures) => CompileFailure::from_boxed(failures.map(|error| {
+      let source_id = error.source_id();
+      return attach_if_located(sources, source_id, error);
     })),
     ComposeError::Dimension(error) => match error.source_id() {
       Some(source_id) => CompileFailure::single(SourceDiagnostic::attach(sources, source_id, error)),
       None => CompileFailure::single(error),
     },
+  };
+}
+
+/// `source_id` が `Some` の診断にだけ、そのソースの本文を添えて箱に入れる。
+fn attach_if_located<E: miette::Diagnostic + Send + Sync + 'static>(
+  sources: &SourceSet,
+  source_id: Option<SourceId>,
+  error: E,
+) -> BoxedDiagnostic {
+  return match source_id {
+    Some(source_id) => Box::new(SourceDiagnostic::attach(sources, source_id, error)),
+    None => Box::new(error),
   };
 }
 

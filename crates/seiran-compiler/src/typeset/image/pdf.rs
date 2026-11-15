@@ -16,8 +16,12 @@ use hayro_syntax::{
   object::{Array, Object, dict::keys::ANNOTS},
   page::Page,
 };
+use miette::SourceSpan;
 
-use crate::typeset::{error::TypesetError, image::natural_size::NaturalSize};
+use crate::{
+  document::SourceLocation,
+  typeset::{error::TypesetError, image::natural_size::NaturalSize},
+};
 
 /// hayro が面積 0 とみなして A4 寸法へ差し替える辺の上限（pt）。hayro-syntax の `base_dimensions` の判定と
 /// 同じ値で、同じく f32 へ落としてから以下かを比べる。
@@ -80,18 +84,22 @@ pub(super) fn open(path: &str, bytes: &Arc<[u8]>) -> Result<PdfFile, TypesetErro
 }
 
 impl PdfFile {
-  /// ソースに書かれた `page`（1 始まり。省略は `None`）のページを選び、その事実を返す。
+  /// `site` の `\image` がソースに書いた `page`（1 始まり。省略は `None`）のページを選び、その事実を返す。
   ///
   /// # Errors
   ///
-  /// 2 ページ以上で省略された・ページ数を超えた・表示範囲の面積が 0 の場合に [`TypesetError`] を返す。
-  pub(super) fn page(&self, path: &str, page: Option<u32>) -> Result<PdfPage, TypesetError> {
+  /// 2 ページ以上で省略された・ページ数を超えた・表示範囲の面積が 0 の場合に、`site` を指す [`TypesetError`] を返す。
+  pub(super) fn page(&self, path: &str, page: Option<u32>, site: SourceLocation) -> Result<PdfPage, TypesetError> {
+    let source_id = site.source_id;
+    let span = SourceSpan::from(site.span.at_start());
     let pages = self.pdf.pages();
     let page_count = pages.len();
     if page.is_none() && page_count >= 2 {
       return Err(TypesetError::PdfPageRequired {
         path: path.to_string(),
         page_count,
+        source_id,
+        span,
       });
     }
     // `page` は frontend が正整数だけを通す（`opt_args::positive_int`）ので 1 を引いても負にならない
@@ -101,12 +109,16 @@ impl PdfFile {
         path: path.to_string(),
         page: number,
         page_count,
+        source_id,
+        span,
       });
     };
     let natural_size = displayed_size(selected).ok_or_else(|| {
       return TypesetError::EmptyPdfPage {
         path: path.to_string(),
         page: number,
+        source_id,
+        span,
       };
     })?;
     return Ok(PdfPage {
@@ -153,7 +165,19 @@ mod tests {
   use hayro_syntax::page::A4;
 
   use super::{PdfFile, open};
-  use crate::typeset::{error::TypesetError, image::natural_size::NaturalSize};
+  use crate::{
+    document::SourceLocation,
+    source::{SourceId, Span},
+    typeset::{error::TypesetError, image::natural_size::NaturalSize},
+  };
+
+  /// テストの `\image` の位置（ここのテストは位置を読まない）
+  fn site() -> SourceLocation {
+    return SourceLocation {
+      source_id: SourceId::new(0),
+      span: Span::DUMMY,
+    };
+  }
 
   /// リポジトリ直下の `tests/image/` にある PDF fixture のバイト列を読む。
   fn fixture_bytes(name: &str) -> Arc<[u8]> {
@@ -174,14 +198,14 @@ mod tests {
   /// 選べるはずのページの自然寸法。
   fn size(name: &str, page: Option<u32>) -> NaturalSize {
     return opened(name)
-      .page(name, page)
+      .page(name, page, site())
       .unwrap_or_else(|error| panic!("{name} {page:?}: {error:?}"))
       .natural_size;
   }
 
   #[test]
   fn open_accepts_single_page_vector_pdf() {
-    let page = opened("vector1.pdf").page("vector1.pdf", None).expect("1 ページなら page を省略できるはず");
+    let page = opened("vector1.pdf").page("vector1.pdf", None, site()).expect("1 ページなら page を省略できるはず");
 
     assert_eq!(page.natural_size, NaturalSize::new(200.0, 120.0).unwrap());
     assert!(!page.has_annotations);
@@ -206,14 +230,14 @@ mod tests {
 
   #[test]
   fn page_requires_explicit_number_on_multi_page_pdf() {
-    let result = opened("vector2.pdf").page("vector2.pdf", None);
+    let result = opened("vector2.pdf").page("vector2.pdf", None, site());
 
     assert!(matches!(result, Err(TypesetError::PdfPageRequired { page_count: 2, .. })), "{result:?}");
   }
 
   #[test]
   fn page_beyond_count_reports_page_count() {
-    let result = opened("vector2.pdf").page("vector2.pdf", Some(3));
+    let result = opened("vector2.pdf").page("vector2.pdf", Some(3), site());
 
     assert!(
       matches!(
@@ -235,7 +259,7 @@ mod tests {
 
   #[test]
   fn zero_area_page_is_rejected() {
-    let result = opened("zero_area.pdf").page("zero_area.pdf", None);
+    let result = opened("zero_area.pdf").page("zero_area.pdf", None, site());
 
     assert!(matches!(result, Err(TypesetError::EmptyPdfPage { page: 1, .. })), "{result:?}");
   }
@@ -248,7 +272,7 @@ mod tests {
   fn edge_at_hayro_threshold_is_rejected() {
     let file = opened("subpoint_edges.pdf");
 
-    let result = file.page("subpoint_edges.pdf", Some(1));
+    let result = file.page("subpoint_edges.pdf", Some(1), site());
 
     assert!(matches!(result, Err(TypesetError::EmptyPdfPage { page: 1, .. })), "{result:?}");
     // 複製したしきい値と hayro の判定が一致していること（hayro を上げてずれたらここで落ちる）
@@ -272,7 +296,7 @@ mod tests {
 
   #[test]
   fn annotations_are_detected() {
-    let page = opened("annotated.pdf").page("annotated.pdf", None).expect("注釈付きのページも選べるはず");
+    let page = opened("annotated.pdf").page("annotated.pdf", None, site()).expect("注釈付きのページも選べるはず");
 
     assert!(page.has_annotations);
   }

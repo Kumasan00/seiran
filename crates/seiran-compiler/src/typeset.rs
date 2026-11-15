@@ -226,7 +226,7 @@ fn lay_out(
   variation_warnings.extend(text_warnings);
   // 同じ位置のものは数式（事前検査）が先のまま
   variation_warnings.sort_by_key(VariationSequenceFallback::order_key);
-  // 画像ファイルの警告（パス → ページ順）を先に、ソース位置を持つ字の警告をその後に並べる
+  // 画像の警告（パス → ページ → `\image` の文書順）を先に、字の警告をその後に並べる
   let mut warnings = image_warnings;
   warnings.extend(into_variation_warnings(variation_warnings));
   if let Some(failures) = Failures::from_vec(glyph_errors) {
