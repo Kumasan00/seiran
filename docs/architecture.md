@@ -731,8 +731,9 @@ seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker �
 `\footnote`、表環境、`\row`）の開始位置を**長さ 0 のラベル**で持つ（要素全体の span は複数行の段落・コードを警告ごとに全行
 印字するため）。起源は HIR の `NodeId` として lowering → boxing → `break_pages` の `Overflow` まで運び、
 `PlacedBlock` / `Page` 以降には載せない。単一のソース要素に対応しない生成物（タイトルページ・書誌・目次の題・
-索引）の行は起源 `None` で、ページだけで指す。目次の項目は元の見出しを指す。フォントの警告は
-位置を持たない。位置を持つ警告にだけ `compiler` が `SourceDiagnostic` で本文を添える。
+索引）の行は起源 `None` で、ページだけで指す。目次の項目は元の見出しを指す。図にした PDF の注釈の
+脱落は `\image` ごとに 1 件で、同じく `\image` の開始位置を長さ 0 のラベルで持つ（同じページは別のソースからも使えるので、
+1 件にまとめてラベルを並べない）。フォントの警告は位置を持たない。位置を持つ警告にだけ `compiler` が `SourceDiagnostic` で本文を添える。
 
 #### `font`
 
@@ -805,12 +806,14 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 #### `error`
 
 `TypesetError` の**バリアントは入力・環境由来の回復可能な失敗だけ**（フォント資源・画像・ページ単位脚注採番の
-非収束）。画像は正規化済みパスの昇順に**全件**検査し、PDF は 1 ファイルの中の要求ページも昇順に全件検査する。`compose` の失敗型は制御フロー型 `ComposeError`
-（`miette::Diagnostic` 非実装）で、ソース位置に帰属しない `Typeset(Failures<TypesetError>)` と、ソース位置に
+非収束）。画像は正規化済みパスの昇順に**全件**検査し、PDF は 1 ファイルの中の要求ページの昇順に、同じページは `\image` ごと（文書順）に全件検査する。ページの選択の
+誤り（省略・超過・面積 0）は `\image` ごとに 1 件で、その開始位置を長さ 0 のラベルで持つ（ファイル単位の失敗は位置を
+持たない）。`compose` の失敗型は制御フロー型 `ComposeError`
+（`miette::Diagnostic` 非実装）で、組版の失敗 `Typeset(Failures<TypesetError>)`（位置を持つのはページの選択の誤りだけ）と、ソース位置に
 帰属しうる字の問題 `Glyphs(Failures<TextGlyphError>)`（数式フォントの字の欠落を文書順に、続けて本文の枠の字の
 欠落と代替の候補の方向の不一致。数値・単位の上付きの指標の欠落もこの腕で運ぶ。`glyph_issues` 項）と、寸法の溢れ `Dimension(DimensionOverflow)` の 3 腕を持つ
-（`semantics::AnalyzeError` と同じ形）。`compiler` は前者を `InputError` を経由せず `Failures<E>` の汎用 `From` で直接
-`CompileFailure` へ平坦化し、後 2 者は位置を持つもの（`TextGlyphError::source_id` / `DimensionOverflow::source_id` が
+（`semantics::AnalyzeError` と同じ形）。`compiler` は 3 腕とも `InputError` を経由せず
+`CompileFailure` へ平坦化し、位置を持つもの（`TypesetError::source_id` / `TextGlyphError::source_id` / `DimensionOverflow::source_id` が
 `Some`）にだけ `SourceDiagnostic` で本文を添える。3 本目は配置の内側では起源を `ElementOverflow`（`NodeId`。生成物・
 ページ単位の計算は `None`）として運び、`pagination::paginate` がはみ出し警告と同じ `SourceMap` で位置に解決する。
 `emit` の溢れは起源を持たず、`compose` が位置なしの `DimensionOverflow` にする。
@@ -851,7 +854,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 #### `image`
 
 画像資源の解決（ファイルと PDF のページの収集 → `ProjectSource` 経由の読込 → 自然寸法 → 表示寸法の確定）を閉じる子 module。
-収集はパスで決定的に重複除去し（1 ファイルにつき形式と書かれた `page` の集合）、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
+収集はパスで決定的に重複除去し（1 ファイルにつき形式と、書かれた `page` ごとにそれを書いた `\image` の位置の列）、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
 図の単位は（パス, PDF のページ index）で、自然寸法・`PublicationImage` もこの単位ごとに 1 件、バイト列はファイルごとに
 1 つを `Arc<[u8]>` で共有する。ページ index は `pdf_page_index` 1 つで決める（`page` の省略は 1 ページの PDF にだけ
 許されるので先頭ページ。中身を読まずに決まる）。
@@ -1589,7 +1592,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   問題を別ソースで示す関連診断（重複ラベルの最初の定義）はそのソースの本文を添えてから内側の `related` の
   後ろに連結する（miette は本文を持たない関連診断を主診断の本文で描くため）。`semantics` の `AnalyzeError`
   は CSL 由来（それ自身が leaf 診断）と意味解析由来（ソースごとに分割済み）に振り分け、後者だけに本文を
-  添える。`typeset` の `ComposeError` も同じ形で、位置を持たない組版の失敗・字の欠落・寸法の溢れに振り分け、後 2 者のうち要素に
+  添える。`typeset` の `ComposeError` も同じ形で、組版の失敗・字の欠落・寸法の溢れに振り分け、3 者とも要素に
   帰属するものだけに本文を添える（目次のリーダー・ページ番号や走り文など生成内容の欠字は位置を持たない）。パーサのエラーも `NamedSource` を自前で持たず、facade が宣言順に並べて `CompileFailure` にする
   （集約診断を先頭へ足さない）。`config.toml` / `style.toml` の TOML 構文エラーは各 `load` 自身が
   `NamedSource` を組み立てる

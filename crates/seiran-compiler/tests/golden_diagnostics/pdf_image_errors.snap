@@ -50,6 +50,18 @@ Error: typeset::image::pdf_page_required
     ╰────
   help: \image[page=N] で 1〜2 のページ番号を指定してください。
 
+Error: typeset::image::pdf_page_required
+
+  × ./tests/image/vector2.pdf は 2 ページあるため、使うページを指定する必要があります
+   ╭─[tests/text/diagnostics/pdf_image_errors_b.sei:4:1]
+ 3 │ \begin{figure}
+ 4 │ \image{./tests/image/vector2.pdf}
+   · ▲
+   · ╰── この画像です
+ 5 │ \end{figure}
+   ╰────
+  help: \image[page=N] で 1〜2 のページ番号を指定してください。
+
 Error: typeset::image::pdf_page_out_of_range
 
   × ./tests/image/vector2.pdf に 5 ページ目はありません（2 ページの PDF です）
