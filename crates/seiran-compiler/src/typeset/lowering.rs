@@ -31,7 +31,7 @@ use std::mem;
 pub(super) use heading::toc_entry_style;
 pub(super) use layout_node::{
   DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
-  ParagraphLayout, QuantityPiece, TableColumn, TableLayout, TableRowLayout, TextStyle,
+  ParagraphLayout, QuantityPiece, TableCellContent, TableColumn, TableLayout, TableRowLayout, TextStyle,
 };
 pub(super) use math::{
   CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,
@@ -489,11 +489,13 @@ mod tests {
         return contains_line_break(children);
       },
       LayoutNode::Table(table) => {
-        return table
-          .head
-          .iter()
-          .chain(table.rows.iter())
-          .any(|row| return row.cells.iter().any(|cell| return contains_line_break_inline(&cell.content)));
+        return table.head.iter().chain(table.rows.iter()).any(|row| {
+          return row.cells.iter().any(|cell| match &cell.content {
+            TableCellContent::Inline(nodes) => return contains_line_break_inline(nodes),
+            // decimal 列の値のセルは数値要素・脚注・索引語だけで、改行を持てない
+            TableCellContent::Decimal { .. } => return false,
+          });
+        });
       },
       _ => return false,
     });

@@ -214,14 +214,28 @@ pub(in crate::typeset) struct TableRowLayout {
 /// 表の 1 セルの物理レイアウト表現
 #[derive(Debug, Clone)]
 pub(in crate::typeset) struct TableCellLayout {
-  /// セル内容（スタイル付与済みのインライン列）
-  pub content: Vec<InlineNode>,
+  /// セル内容
+  pub content: TableCellContent,
   /// 列方向の結合数（1 以上）
   pub column_span: u32,
   /// 行方向の結合数（1 以上）
   pub row_span: u32,
   /// 跨ぐ列の範囲の下に部分罫を引くか
   pub rule_below: bool,
+}
+
+/// 表のセルの内容
+#[derive(Debug, Clone)]
+pub(in crate::typeset) enum TableCellContent {
+  /// 小数点で揃えない内容（スタイル付与済みのインライン列）
+  Inline(Vec<InlineNode>),
+  /// decimal 列の値（値の左右に分ける）
+  Decimal {
+    /// 符号 + 整数部の数量ノード
+    integer: InlineNode,
+    /// 整数部より後ろ（数値の残りと単位の数量ノード・脚注マーク・索引語）
+    rest: Vec<InlineNode>,
+  },
 }
 
 /// ディスプレイ数式環境の 1 行の物理レイアウト表現

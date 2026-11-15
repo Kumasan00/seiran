@@ -18,7 +18,7 @@
 //! 置く）。リンクは再掲先にもクリック矩形が要るので残す — 脚注マーカーのリンクも残るので、再掲ヘッダのマーカーは
 //! 初出の脚注本体へ飛ぶ。
 
-use std::ops::Range;
+use std::{iter, ops::Range};
 
 use crate::{
   document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
@@ -32,7 +32,7 @@ use crate::{
     },
     breaking::{self, LineBreaker},
     error::ElementOverflow,
-    lowering::{TableColumn, TableLayout, TableRowLayout},
+    lowering::{TableCellContent, TableColumn, TableLayout, TableRowLayout},
   },
 };
 
@@ -166,8 +166,17 @@ impl Measurer<'_> {
         let mut cells = Vec::with_capacity(row.cells.len());
         for cell in row.cells {
           let mut list = HList::default();
-          for node in cell.content {
-            measurer.collect_inline(node, &mut list)?;
+          match cell.content {
+            TableCellContent::Inline(nodes) => {
+              for node in nodes {
+                measurer.collect_inline(node, &mut list)?;
+              }
+            },
+            TableCellContent::Decimal { integer, rest } => {
+              for node in iter::once(integer).chain(rest) {
+                measurer.collect_inline(node, &mut list)?;
+              }
+            },
           }
           cells.push(MeasuredCell {
             items: list.into_items(),

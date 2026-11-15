@@ -2,31 +2,47 @@
 
 use crate::{
   color::Color,
-  document::{HirTable, HirTableRow, NodeId},
+  document::{ColumnAlign, HirInline, HirInlineKind, HirTable, HirTableRow, NodeId},
   typeset::{
     error::ElementOverflow,
     lowering::{
       LoweringContext, LoweringState,
       float::{FloatCaption, FloatMargins, lower_numbered_float},
-      inline::lower_inlines,
-      layout_node::{LayoutNode, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle},
+      inline::{colored, lower_inlines, quantity_node},
+      layout_node::{
+        LayoutNode, TableCellContent, TableCellLayout, TableColumn, TableLayout, TableRowLayout, TextStyle,
+      },
+      quantity::{split_number_pieces, split_quantity_pieces},
     },
   },
 };
 
 /// `HirTableRow` の列を [`TableRowLayout`] の列に変換する
+///
+/// `value_columns` は本体行の列の揃え（`None` は `\head` の行で、列の値を持たない）。`Decimal` 列で始まり
+/// `column_span == 1` のセルが列の値のセルで、[`lower_decimal_cell`] で左右に分ける。
 fn lower_rows(
   ctx: &LoweringContext<'_>,
   rows: &[HirTableRow],
+  value_columns: Option<&[ColumnAlign]>,
   cell_style: TextStyle,
   state: &mut LoweringState<'_>,
 ) -> Result<Vec<TableRowLayout>, ElementOverflow> {
   let mut result = Vec::with_capacity(rows.len());
   for row in rows {
     let mut cells = Vec::with_capacity(row.cells.len());
+    let mut column = 0usize;
     for cell in &row.cells {
+      let is_value = cell.column_span == 1
+        && value_columns.is_some_and(|columns| return columns.get(column) == Some(&ColumnAlign::Decimal));
+      column += cell.column_span as usize;
+      let content = if is_value {
+        lower_decimal_cell(ctx, &cell.content, cell_style, state)?
+      } else {
+        TableCellContent::Inline(lower_inlines(ctx, &cell.content, cell_style, state)?)
+      };
       cells.push(TableCellLayout {
-        content: lower_inlines(ctx, &cell.content, cell_style, state)?,
+        content,
         column_span: cell.column_span,
         row_span: cell.row_span,
         rule_below: cell.rule_below,
@@ -39,6 +55,40 @@ fn lower_rows(
     });
   }
   return Ok(result);
+}
+
+/// decimal 列の値のセルを、符号 + 整数部と、その後ろ（数値の残り・単位・脚注マーク・索引語）に分ける
+///
+/// 空のセルは分ける値が無いので空の [`TableCellContent::Inline`]。
+fn lower_decimal_cell(
+  ctx: &LoweringContext<'_>,
+  content: &[HirInline],
+  cell_style: TextStyle,
+  state: &mut LoweringState<'_>,
+) -> Result<TableCellContent, ElementOverflow> {
+  let Some((head, trailing)) = content.split_first() else {
+    return Ok(TableCellContent::Inline(Vec::new()));
+  };
+  let (value, style) = match &head.kind {
+    HirInlineKind::Colored { color, children } => match children.as_slice() {
+      [value] => (value, colored(cell_style, *color)),
+      _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
+    },
+    HirInlineKind::Number(_) | HirInlineKind::Quantity { .. } => (head, cell_style),
+    _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
+  };
+  let (left, right) = match &value.kind {
+    HirInlineKind::Number(numeral) => split_number_pieces(numeral, &ctx.style.quantity),
+    HirInlineKind::Quantity { numeral, unit } => split_quantity_pieces(numeral, unit, &ctx.style.quantity),
+    _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
+  };
+  let integer = quantity_node(ctx, left, style);
+  let mut rest = Vec::new();
+  if !right.is_empty() {
+    rest.push(quantity_node(ctx, right, style));
+  }
+  rest.extend(lower_inlines(ctx, trailing, cell_style, state)?);
+  return Ok(TableCellContent::Decimal { integer, rest });
 }
 
 /// 表をレイアウトノードに変換する
@@ -89,8 +139,8 @@ pub(super) fn lower_table(
           };
         })
         .collect(),
-      head: lower_rows(ctx, &table.head, head_style, state)?,
-      rows: lower_rows(ctx, &table.rows, body_style, state)?,
+      head: lower_rows(ctx, &table.head, None, head_style, state)?,
+      rows: lower_rows(ctx, &table.rows, Some(&table.columns), body_style, state)?,
       breakable: table.breakable,
       cell_padding: style.cell_padding,
       outer_rule_thickness: style.outer_rule_thickness,
@@ -112,7 +162,7 @@ mod tests {
     length::Length,
     style::Style as ReadStyle,
     typeset::lowering::{
-      layout_node::InlineNode,
+      layout_node::{InlineNode, QuantityPiece},
       test_support::{analyzed, inlines, lower, paragraph_layout},
     },
   };
@@ -141,6 +191,14 @@ mod tests {
   /// 表の本体 `VBox` の子要素列を取り出すヘルパ
   fn table_children(nodes: &[LayoutNode]) -> &[LayoutNode] {
     return find_table_children(nodes).expect("表本体の VBox があるはず");
+  }
+
+  /// 分けないセルのインライン列を取り出すヘルパ
+  fn inline_content(cell: &TableCellLayout) -> &[InlineNode] {
+    let TableCellContent::Inline(nodes) = &cell.content else {
+      panic!("分けないセルのはず: {cell:?}");
+    };
+    return nodes;
   }
 
   /// `lower_table` の結果から `TableLayout` を取り出すヘルパ
@@ -182,11 +240,11 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{table}\n\\head{\n\\row{Name}\n}\n\\row{Alice}\n\\end{table}\n");
 
     let table = find_table(&nodes);
-    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+    let InlineNode::Text(_, head_style) = inline_content(&table.head[0].cells[0])[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(head_style.typeface, Typeface::SansSerif);
-    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = inline_content(&table.rows[0].cells[0])[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.typeface, Typeface::Serif, "本体セルは文脈の本文書体（最上位なので [text]）のまま");
@@ -204,11 +262,11 @@ mod tests {
     );
 
     let table = find_table(&nodes);
-    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = inline_content(&table.rows[0].cells[0])[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.typeface, Typeface::SerifItalic, "本体セルは定理本体の書体に従う");
-    let InlineNode::Text(_, head_style) = &table.head[0].cells[0].content[0] else {
+    let InlineNode::Text(_, head_style) = inline_content(&table.head[0].cells[0])[0] else {
       panic!("ヘッダセルは Text であるべき");
     };
     assert_eq!(
@@ -226,7 +284,7 @@ mod tests {
     let nodes = lower_source(&style, "\\begin{quote}\n\\begin{table}\n\\row{Alice}\n\\end{table}\n\\end{quote}\n");
 
     let table = find_table(&nodes);
-    let InlineNode::Text(_, body_style) = &table.rows[0].cells[0].content[0] else {
+    let InlineNode::Text(_, body_style) = inline_content(&table.rows[0].cells[0])[0] else {
       panic!("本体セルは Text であるべき");
     };
     assert_eq!(body_style.typeface, Typeface::SansSerif, "本体セルは引用の書体に従う");
@@ -399,9 +457,9 @@ mod tests {
 
     let table = find_table(&nodes);
     assert!(
-      matches!(&table.rows[0].cells[0].content[1], InlineNode::Footnote { number: 2, .. }),
+      matches!(inline_content(&table.rows[0].cells[0])[1], InlineNode::Footnote { number: 2, .. }),
       "{:?}",
-      table.rows[0].cells[0].content
+      inline_content(&table.rows[0].cells[0])
     );
   }
 
@@ -421,8 +479,8 @@ mod tests {
         _ => return None,
       });
     };
-    assert_eq!(number_in(&table.head[0].cells[0].content), Some(1), "ヘッダのセルが 1 番: {table:?}");
-    assert_eq!(number_in(&table.rows[0].cells[0].content), Some(2), "本文セルが 2 番: {table:?}");
+    assert_eq!(number_in(inline_content(&table.head[0].cells[0])), Some(1), "ヘッダのセルが 1 番: {table:?}");
+    assert_eq!(number_in(inline_content(&table.rows[0].cells[0])), Some(2), "本文セルが 2 番: {table:?}");
   }
 
   #[test]
@@ -435,11 +493,11 @@ mod tests {
     );
 
     let table = find_table(&nodes);
-    let cell_number = table.rows[0].cells[0].content.iter().find_map(|n| match n {
+    let cell_number = inline_content(&table.rows[0].cells[0]).iter().find_map(|n| match n {
       InlineNode::Footnote { number, .. } => return Some(*number),
       _ => return None,
     });
-    assert_eq!(cell_number, Some(1), "セルの脚注が 1 番: {:?}", table.rows[0].cells[0].content);
+    assert_eq!(cell_number, Some(1), "セルの脚注が 1 番: {:?}", inline_content(&table.rows[0].cells[0]));
     let caption_numbers: Vec<u32> = inlines(table_children(&nodes))
       .filter_map(|n| match n {
         InlineNode::Footnote { number, .. } => return Some(*number),
@@ -447,5 +505,65 @@ mod tests {
       })
       .collect();
     assert_eq!(caption_numbers, vec![2], "キャプションの脚注が 2 番: {nodes:?}");
+  }
+
+  #[test]
+  fn lower_table_splits_decimal_value_cells() {
+    let nodes = lower_source(
+      &ReadStyle::default(),
+      "\\begin{table}[columns=left decimal]\n\\head{\\row{名前 & 値}}\n\\row{a & \\num{12.5}}\n\\row{b & }\n\\end{table}\n",
+    );
+    let table = find_table(&nodes);
+
+    assert!(matches!(&table.head[0].cells[1].content, TableCellContent::Inline(_)), "見出しは分けない");
+    let TableCellContent::Decimal { integer, rest } = &table.rows[0].cells[1].content else {
+      panic!("値のセルは分ける: {table:?}");
+    };
+    assert!(
+      matches!(integer, InlineNode::Quantity { pieces, .. } if pieces == &[QuantityPiece::Text("12".to_string())])
+    );
+    assert!(
+      matches!(rest.as_slice(), [InlineNode::Quantity { pieces, .. }] if pieces == &[QuantityPiece::Text(".5".to_string())]),
+      "{rest:?}"
+    );
+    assert!(
+      matches!(&table.rows[1].cells[1].content, TableCellContent::Inline(nodes) if nodes.is_empty()),
+      "空の値は空の Inline"
+    );
+    assert!(matches!(&table.rows[0].cells[0].content, TableCellContent::Inline(_)), "left 列は分けない");
+  }
+
+  #[test]
+  fn lower_table_decimal_cell_keeps_marks_after_the_rest() {
+    let nodes = lower_source(
+      &ReadStyle::default(),
+      "\\begin{table}[columns=decimal]\n\\row{\\color[color=#cc0000]{\\num{7}}\\footnote{注}}\n\\end{table}\n",
+    );
+    let table = find_table(&nodes);
+
+    let TableCellContent::Decimal { integer, rest } = &table.rows[0].cells[0].content else {
+      panic!("値のセルは分ける: {table:?}");
+    };
+    let InlineNode::Quantity { pieces, style } = integer else {
+      panic!("integer は Quantity のはず: {integer:?}");
+    };
+    assert_eq!(pieces, &[QuantityPiece::Text("7".to_string())]);
+    assert!(style.color.is_some(), "色は整数部に付く");
+    assert!(
+      rest.iter().all(|node| return !matches!(node, InlineNode::Quantity { .. })),
+      "R の数量ノードは作らない: {rest:?}"
+    );
+    assert!(rest.iter().any(|node| return matches!(node, InlineNode::Footnote { number: 1, .. })), "{rest:?}");
+  }
+
+  #[test]
+  fn lower_table_decimal_span_cell_is_not_split() {
+    let nodes = lower_source(
+      &ReadStyle::default(),
+      "\\begin{table}[columns=decimal decimal]\n\\row{\\cell[span=2]{合計}}\n\\end{table}\n",
+    );
+    let table = find_table(&nodes);
+
+    assert!(matches!(&table.rows[0].cells[0].content, TableCellContent::Inline(_)));
   }
 }
