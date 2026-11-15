@@ -1,7 +1,8 @@
 //! 意味解析（`crate::semantics`）が必要とする設定だけを抜き出した投影 [`SemanticPolicy`]。
 //!
 //! `style.toml` の表示側フィールド（`number_format` / `ref_format` / `ref_number_format` / `display_name` /
-//! `number_style`）はここに写さない。意味解析が表示設定を読めないことを型として保証する境界。
+//! `display_name_plural` / `number_style` と `[cross_reference]` の区切り）はここに写さない。
+//! 意味解析が表示設定を読めないことを型として保証する境界。
 
 use std::collections::HashMap;
 
