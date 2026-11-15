@@ -10,6 +10,7 @@ mod opt_args;
 
 use body::{resolve_column_count, scan_table_body};
 use decimal::check_column_values;
+#[cfg(any(test, feature = "fuzzing"))]
 pub(in crate::frontend) use decimal::{column_value_violation, value_cells};
 pub(super) use opt_args::SIGNATURE;
 use opt_args::{parse_columns_spec, parse_widths_spec, table_opt_args};
