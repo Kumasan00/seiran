@@ -512,7 +512,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
   配下の test module だけが使う（子孫は親の非公開項目に到達できるので、`evaluator` の外へ幅を広げない）
 - `syntax::preservation` / `hir_invariants`（`cfg(any(test, feature = "fuzzing"))`）: frontend の出力の不変条件
-  （トークンと CST の入力保存、HIR の決定性・`NodeId` の一意性と親子の順序・span の範囲と字の境界）の**唯一の
+  （トークンと CST の入力保存、HIR の構造的な性質 — 項目は `parse_checked` の doc）の**唯一の
   定義**（診断ラベルの範囲だけは任意入力でしか意味を持たないので `fuzzing` が持つ）。通常テスト（parser の proptest・fixture のループ）と fuzz 入口が同じ関数を呼ぶ — 新しい frontend の
   不変条件はここへ足し、テスト側に検査を複製しない。`preservation` の構文解析は呼び出し側が行う（parser のテストはテスト用、
   fuzz は本番の `mode_resolver`）。`hir_invariants` は自分で `frontend::parse` を呼ぶ

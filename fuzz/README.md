@@ -12,7 +12,7 @@ proptest・fuzz・golden の使い分けは `docs/coding-conventions.md`「テ�
 - panic・abort・stack overflow
 - 不変条件の破れ（`seiran_compiler::fuzzing::check_source` が検査する。定義は
   `frontend::syntax::preservation`（トークンと CST の入力保存）と `frontend::hir_invariants::parse_checked`
-  （HIR の決定性・`NodeId` の一意性と親子の順序・span の範囲と字の境界）、診断ラベルの範囲）
+  （HIR の構造的な性質。項目はその doc が正典）、診断ラベルの範囲）
 - 資源予算の超過（1 入力の時間・メモリ）
 
 fuzz で壊れないことは、意味や組版結果の正しさの証明ではない。

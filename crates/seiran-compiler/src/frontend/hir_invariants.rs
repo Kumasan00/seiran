@@ -6,7 +6,7 @@ use std::{collections::HashSet, path::Path};
 
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
-  frontend::{self, ParseError},
+  frontend::{self, ParseError, evaluator::InlinePolicy},
   project::PathResolver,
   source::{SourceId, Span},
 };
@@ -28,8 +28,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
     });
     let here = Some(node.id);
     match &node.kind {
-      HirNodeKind::Heading(heading) => walk_inlines(&heading.title, here, out),
-      HirNodeKind::Paragraph(inlines) => walk_inlines(inlines, here, out),
+      HirNodeKind::Heading(heading) => walk_inlines(&heading.title, here, InlinePolicy::RejectIndex, out),
+      HirNodeKind::Paragraph(inlines) => walk_inlines(inlines, here, InlinePolicy::Allow, out),
       HirNodeKind::List(list) => {
         for item in &list.items {
           out.push(Visited {
@@ -62,25 +62,31 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
           parent: here,
         });
         if let Some(caption) = &figure.caption {
-          walk_inlines(caption, here, out);
+          walk_inlines(caption, here, InlinePolicy::Allow, out);
         }
       },
       HirNodeKind::Table(table) => {
-        for row in table.head.iter().chain(table.rows.iter()) {
-          out.push(Visited {
-            id: row.id,
-            parent: here,
-          });
-          for cell in &row.cells {
+        // ヘッダ行は改ページのたびに再描画される複製文脈なので `\index` を許さない
+        for (rows, policy) in [
+          (&table.head, InlinePolicy::RejectIndex),
+          (&table.rows, InlinePolicy::Allow),
+        ] {
+          for row in rows {
             out.push(Visited {
-              id: cell.id,
-              parent: Some(row.id),
+              id: row.id,
+              parent: here,
             });
-            walk_inlines(&cell.content, Some(cell.id), out);
+            for cell in &row.cells {
+              out.push(Visited {
+                id: cell.id,
+                parent: Some(row.id),
+              });
+              walk_inlines(&cell.content, Some(cell.id), policy, out);
+            }
           }
         }
         if let Some(caption) = &table.caption {
-          walk_inlines(caption, here, out);
+          walk_inlines(caption, here, InlinePolicy::Allow, out);
         }
       },
       HirNodeKind::Theorem(theorem) => {
@@ -100,13 +106,32 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
   return;
 }
 
-/// インラインノードを親子関係つきで走査し、複数参照・範囲参照のラベルの不変条件を検査する
+/// インラインノードを親子関係つきで走査し、置き場の方針 `policy` と複数参照・範囲参照のラベルの不変条件を検査する
+///
+/// 方針は HIR の構造から決める。リンクの子は常に [`InlinePolicy::RejectIndexAndLinks`]、書体・色・脚注本体の子は
+/// 外側の方針を引き継ぐ（評価器の `Placement::inline_policy` と同じ規則）。
 ///
 /// # Panics
 ///
-/// 複数参照のラベルが 2 個未満・空・重複を含むとき、または範囲参照の両端が同じラベルのとき。
-fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Visited>) {
+/// `policy` が禁じるリンクを作る要素・索引マーカーがあるとき、複数参照のラベルが 2 個未満・空・重複を含むとき、
+/// または範囲参照の両端が同じラベルのとき。
+fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePolicy, out: &mut Vec<Visited>) {
+  let (index_allowed, links_allowed) = match policy {
+    InlinePolicy::Allow => (true, true),
+    InlinePolicy::RejectIndex => (false, true),
+    InlinePolicy::RejectIndexAndLinks => (false, false),
+  };
   for inline in inlines {
+    assert!(
+      links_allowed || !creates_link(&inline.kind),
+      "リンクの表示内容の下にリンクを作る要素は無いはず: {:?}",
+      inline.id
+    );
+    assert!(
+      index_allowed || !matches!(inline.kind, HirInlineKind::Index { .. }),
+      "`\\index` を拒否する文脈に索引マーカーは無いはず（{policy:?}）: {:?}",
+      inline.id
+    );
     out.push(Visited {
       id: inline.id,
       parent,
@@ -115,8 +140,8 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
     match &inline.kind {
       HirInlineKind::Styled { children, .. }
       | HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Link { children, .. }
-      | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, out),
+      | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, policy, out),
+      HirInlineKind::Link { children, .. } => walk_inlines(children, here, InlinePolicy::RejectIndexAndLinks, out),
       HirInlineKind::Math(math) => walk_math(math, here, out),
       HirInlineKind::RefList { labels } => {
         let distinct: HashSet<&str> = labels.iter().map(String::as_str).collect();
@@ -142,6 +167,30 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, out: &mut Vec<Vis
     }
   }
   return;
+}
+
+/// インライン要素がリンクを作るか（脚注マーカーは脚注本体への内部リンク）
+fn creates_link(kind: &HirInlineKind) -> bool {
+  return match kind {
+    HirInlineKind::Link { .. }
+    | HirInlineKind::Ref { .. }
+    | HirInlineKind::RefList { .. }
+    | HirInlineKind::RefRange { .. }
+    | HirInlineKind::Cite { .. }
+    | HirInlineKind::Footnote { .. } => true,
+    HirInlineKind::Text(_)
+    | HirInlineKind::Styled { .. }
+    | HirInlineKind::Colored { .. }
+    | HirInlineKind::Code(_)
+    | HirInlineKind::Math(_)
+    | HirInlineKind::Symbol(_)
+    | HirInlineKind::Number(_)
+    | HirInlineKind::Unit(_)
+    | HirInlineKind::Quantity { .. }
+    | HirInlineKind::LineBreak
+    | HirInlineKind::NoIndent
+    | HirInlineKind::Index { .. } => false,
+  };
 }
 
 /// 数式ノードを親子関係つきで走査する
@@ -212,7 +261,10 @@ fn visit_source(hir: &HirSource) -> Vec<Visited> {
 /// 検査は (1) 同じソースを 2 回パースした HIR が等しい（決定性）、各ノードについて (2) `NodeId` がソース内で一意、
 /// (3) 子の ID が親より後に確保されている、(4) `SourceMap` から自分のソースの位置を引ける、(5) span が入力の内側で
 /// 両端が字の境界、(6) 空でない入力で `Span::DUMMY` を使わない（0 幅の位置は段落・空セルの予約に限る）、
-/// (7) 複数参照のラベルが 2 個以上・空なし・重複なしで、範囲参照の両端が異なる。ID の稠密性・連続性は要求しない。
+/// (7) 複数参照のラベルが 2 個以上・空なし・重複なしで、範囲参照の両端が異なる、(8) リンクの子孫にリンクを作る要素
+/// （`Link` / `Ref` / `RefList` / `RefRange` / `Cite` / `Footnote`）が無い、(9) 見出しタイトル・表のヘッダ行のセル・
+/// リンクの子孫に `Index` が無い（書体・色・脚注本体は外側の文脈を引き継ぐ。`\index` の語は文字列で持つので、
+/// 語の中の `\index` は HIR に表れない）。ID の稠密性・連続性は要求しない。
 /// 評価器はトークンの内側を分割して span を作るので、字の境界はトークンとは独立に検査する。
 ///
 /// # Errors
@@ -285,10 +337,16 @@ pub(super) fn parse_checked(source: &str) -> Result<HirSource, ParseError> {
 mod tests {
   use std::{fs, path::PathBuf};
 
-  use super::{parse_checked, visit_source};
+  use super::{parse_checked, visit_source, walk_inlines};
   use crate::{
-    document::{HirDocument, HirInline, HirInlineKind, HirNode, HirNodeKind, HirSource},
-    frontend::test_support::parse_for_test,
+    document::{
+      HirDocument, HirInline, HirInlineKind, HirNode, HirNodeKind, HirSource, LinkDestination, NodeId, Typeface,
+    },
+    frontend::{
+      ParseError,
+      evaluator::{EvalError, InlinePolicy},
+      test_support::parse_for_test,
+    },
     source::SourceId,
   };
 
@@ -332,6 +390,154 @@ mod tests {
     let hir = parse_checked(source).unwrap_or_else(|e| panic!("{source:?} は評価に成功するはず: {e:?}"));
 
     assert!(!visit_source(&hir).is_empty());
+  }
+
+  #[test]
+  fn accepted_link_and_index_placements_satisfy_hir_invariants() {
+    // 評価器が許す置き場で walker が誤検出しないこと（fuzz の偽陽性を防ぐ）
+    let sources = [
+      r"\section{\ref{x}\footnote{\cite{k}}}",
+      r"\href{https://example.com}{\bold{表示}$x$}",
+      r"\hyperref{l}{\color[color=#ff0000]{色}}",
+      r"本文\footnote{\index{語}\url{https://example.com}}",
+      "\\begin{table}\n\\head{\n  \\row{\\ref{x} & 見出し}\n}\n\\row{本体\\index{語} & \\ref{x}}\n\\caption{表\\index{表}}\n\\end{table}",
+    ];
+
+    for source in sources {
+      let result = parse_checked(source);
+
+      assert!(result.is_ok(), "{source:?}: {result:?}");
+    }
+  }
+
+  #[test]
+  fn rejected_link_and_index_placements_never_reach_hir() {
+    // 評価器の拒否を外すと評価が成功し、walker の assert が panic する（検査が空振りしないことの確認点）。
+    // 表示内容の先頭に字を置くのは、`link.rs` の `has_visible_content` の `unreachable!` より先に walker へ届かせるため
+    let links = [
+      r"\href{https://example.com}{a\ref{x}}",
+      r"\hyperref{l}{a\cite{k}}",
+      r"\href{https://example.com}{a\footnote{b}}",
+      r"\href{https://example.com}{a\refs{x, y}}",
+      r"\href{https://example.com}{a\refrange{x}{y}}",
+      r"\href{https://example.com}{a\url{https://example.org}}",
+      r"\hyperref{l}{a\href{https://example.com}{b}}",
+      r"\href{https://example.com}{a\bold{\ref{x}}}",
+      r"\hyperref{l}{a\color[color=#000000]{\hyperref{m}{b}}}",
+    ];
+    let indexes = [
+      r"\section{a\index{x}}",
+      r"\section{\bold{\index{x}}}",
+      r"\section{a\footnote{\index{x}}}",
+      r"\href{https://example.com}{a\index{x}}",
+      "\\begin{table}\n\\head{\n  \\row{見出し\\index{x} & b}\n}\n\\row{c & d}\n\\end{table}",
+    ];
+
+    for source in links {
+      let result = parse_checked(source);
+
+      assert!(
+        matches!(result, Err(ParseError::Eval(EvalError::LinkInLinkDisplay { .. }))),
+        "{source:?}: {result:?}"
+      );
+    }
+    for source in indexes {
+      let result = parse_checked(source);
+
+      assert!(
+        matches!(result, Err(ParseError::Eval(EvalError::IndexNotAllowedHere { .. }))),
+        "{source:?}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  #[should_panic(expected = "リンクの表示内容の下にリンクを作る要素は無いはず")]
+  fn link_under_styled_link_display_breaks_the_invariant() {
+    // `Allow` の外側でも、リンクの子は書体を挟んでもリンクを許さない
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Link {
+        target: LinkDestination::Uri("https://example.com".to_string()),
+        children: vec![
+          HirInline::new(id(1), HirInlineKind::Text("a".to_string())),
+          HirInline::new(
+            id(2),
+            HirInlineKind::Styled {
+              font: Typeface::SerifBold,
+              children: vec![HirInline::new(
+                id(3),
+                HirInlineKind::Ref {
+                  label: "x".to_string(),
+                },
+              )],
+            },
+          ),
+        ],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
+  fn index_under_footnote_in_rejecting_context_breaks_the_invariant() {
+    // 脚注本体は外側の方針を引き継ぐ
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Footnote {
+        body: vec![HirInline::new(
+          id(1),
+          HirInlineKind::Index {
+            word: "x".to_string(),
+            reading: None,
+          },
+        )],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::RejectIndex, &mut Vec::new());
+  }
+
+  /// 走査で `\index` を拒否する文脈の検査に掛ける索引マーカー
+  fn index_marker() -> HirInline {
+    return HirInline::new(
+      NodeId::for_test(SourceId::new(0), 1000),
+      HirInlineKind::Index {
+        word: "x".to_string(),
+        reading: None,
+      },
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
+  fn index_in_heading_title_breaks_the_invariant() {
+    // 見出しタイトルが `RejectIndex` で走査されること（評価器を通らない HIR で固定する）
+    let mut hir = parse_for_test(r"\section{見出し}", SourceId::new(0)).unwrap();
+    let HirNodeKind::Heading(heading) = &mut hir.nodes[0].kind else {
+      panic!("見出しのはず: {:?}", hir.nodes[0]);
+    };
+    heading.title.push(index_marker());
+
+    visit_source(&hir);
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
+  fn index_in_table_head_cell_breaks_the_invariant() {
+    // ヘッダ行のセルが `RejectIndex` で走査されること（本体行の `Allow` と取り違えない）
+    let source = "\\begin{table}\n\\head{\n  \\row{a & b}\n}\n\\row{c & d}\n\\end{table}";
+    let mut hir = parse_for_test(source, SourceId::new(0)).unwrap();
+    let HirNodeKind::Table(table) = &mut hir.nodes[0].kind else {
+      panic!("表のはず: {:?}", hir.nodes[0]);
+    };
+    table.head[0].cells[0].content.push(index_marker());
+
+    visit_source(&hir);
   }
 
   #[test]

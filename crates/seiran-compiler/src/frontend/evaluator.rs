@@ -15,6 +15,8 @@ mod string_arg;
 
 pub(super) use context::EvalContext;
 pub(super) use error::EvalError;
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) use inline::InlinePolicy;
 #[cfg(test)]
 use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
 
