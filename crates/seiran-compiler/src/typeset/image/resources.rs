@@ -123,7 +123,7 @@ pub(crate) fn load_image_resources(
             continue;
           },
         };
-        for &page in &request.pages {
+        for &page in request.pages.keys() {
           match file.page(&path_string, page) {
             Ok(selected) => {
               let page_index = pdf_page_index(request.format, page);
@@ -238,8 +238,10 @@ mod tests {
 
   use super::*;
   use crate::{
+    document::SourceLocation,
     project::{MemoryProjectSource, ProjectSourceError},
     publication::test_support,
+    source::{SourceId, Span},
   };
 
   /// フォントを 1 つも持たない SVG パーサ（ここのテストは文字を含む SVG を読まない）
@@ -256,23 +258,35 @@ mod tests {
   /// ページを指定しない（非 PDF の）1 ファイルぶんの読込要求を組み立てる
   fn request(path: &str, format: ImageFormat) -> ImageRequest { return pdf_request(path, format, &[None]); }
 
-  /// ソースに書かれた `page` の集合つきの読込要求を組み立てる
-  fn pdf_request(path: &str, format: ImageFormat, pages: &[Option<u32>]) -> ImageRequest {
+  /// offset `offset` から 1 バイトの `\image` の位置（ソース 0）
+  fn site(offset: u32) -> SourceLocation {
+    return SourceLocation {
+      source_id: SourceId::new(0),
+      span: Span::new(offset, offset + 1),
+    };
+  }
+
+  /// `uses[i]` を offset `i` の `\image` が書いた `page` とする読込要求を組み立てる（同じ `page` の重複可）
+  fn pdf_request(path: &str, format: ImageFormat, uses: &[Option<u32>]) -> ImageRequest {
+    let mut pages: BTreeMap<Option<u32>, Vec<SourceLocation>> = BTreeMap::new();
+    for (offset, &page) in (0u32..).zip(uses) {
+      pages.entry(page).or_default().push(site(offset));
+    }
     return ImageRequest {
       path: ProjectPath::new(path),
       format,
-      pages: pages.iter().copied().collect(),
+      pages,
     };
   }
 
   /// `tests/image/` の PDF fixture を `/project/<name>` に登録した資源と、その要求を読む
   fn load_pdf(
     name: &str,
-    pages: &[Option<u32>],
+    uses: &[Option<u32>],
   ) -> Result<(ImageResources, Vec<TypesetWarning>), Failures<TypesetError>> {
     let path = format!("/project/{name}");
     let source = MemoryProjectSource::new().with_bytes(&path, read_image_fixture(name));
-    return load_image_resources(&source, &[pdf_request(&path, ImageFormat::Pdf, pages)], &svg_parser());
+    return load_image_resources(&source, &[pdf_request(&path, ImageFormat::Pdf, uses)], &svg_parser());
   }
 
   #[test]

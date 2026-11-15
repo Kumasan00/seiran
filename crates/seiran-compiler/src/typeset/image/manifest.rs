@@ -1,9 +1,9 @@
 //! 文書木（HIR）が参照する画像の収集
 
-use std::collections::{BTreeMap, BTreeSet};
+use std::collections::BTreeMap;
 
 use crate::{
-  document::{HirDocument, HirNode, HirNodeKind, ImageFormat},
+  document::{HirDocument, HirNode, HirNodeKind, ImageFormat, SourceLocation, SourceMap},
   project::ProjectPath,
 };
 
@@ -14,21 +14,24 @@ pub(in crate::typeset) struct ImageRequest {
   pub(in crate::typeset) path: ProjectPath,
   /// 拡張子が宣言する画像形式（同じパスは同じ拡張子なので 1 つに決まる）
   pub(in crate::typeset) format: ImageFormat,
-  /// ソースに書かれた `page` の集合（省略は `None`。PDF 以外は frontend が `page` を拒否するので `{None}`）
-  pub(in crate::typeset) pages: BTreeSet<Option<u32>>,
+  /// ソースに書かれた `page`（省略は `None`）→ その `page` を書いた `\image` の位置（文書順。空の列は無い）。
+  /// PDF 以外は frontend が `page` を拒否するので `None` の 1 キー
+  pub(in crate::typeset) pages: BTreeMap<Option<u32>, Vec<SourceLocation>>,
 }
 
 /// 文書木（HIR）を再帰的に走査し、画像ファイルごとの要求を重複なく収集する（`ProjectPath` の昇順）。
+///
+/// `\image` の位置はソースの宣言順 → ソース内の出現順（HIR の走査順）に並ぶ。
 pub(in crate::typeset) fn collect_image_requests(document: &HirDocument) -> Vec<ImageRequest> {
   let mut requests: BTreeMap<ProjectPath, ImageRequest> = BTreeMap::new();
   for nodes in document.source_nodes() {
-    walk_nodes(nodes, &mut requests);
+    walk_nodes(nodes, document.source_map(), &mut requests);
   }
   return requests.into_values().collect();
 }
 
-/// `nodes` を再帰的に走査し、`Figure` のパス・形式・`page` を `requests` へ集める。
-fn walk_nodes(nodes: &[HirNode], requests: &mut BTreeMap<ProjectPath, ImageRequest>) {
+/// `nodes` を再帰的に走査し、`Figure` のパス・形式・`page` と `\image` の位置（`source_map` で引く）を `requests` へ集める。
+fn walk_nodes(nodes: &[HirNode], source_map: &SourceMap, requests: &mut BTreeMap<ProjectPath, ImageRequest>) {
   for node in nodes {
     match &node.kind {
       HirNodeKind::Figure(figure) => {
@@ -36,23 +39,23 @@ fn walk_nodes(nodes: &[HirNode], requests: &mut BTreeMap<ProjectPath, ImageReque
           return ImageRequest {
             path: figure.image_path.clone(),
             format: figure.format,
-            pages: BTreeSet::new(),
+            pages: BTreeMap::new(),
           };
         });
-        request.pages.insert(figure.page);
+        request.pages.entry(figure.page).or_default().push(source_map.location(figure.image_site));
       },
       HirNodeKind::Theorem(theorem) => {
-        walk_nodes(&theorem.body, requests);
+        walk_nodes(&theorem.body, source_map, requests);
       },
       HirNodeKind::Quote(quote) => {
-        walk_nodes(&quote.body, requests);
+        walk_nodes(&quote.body, source_map, requests);
       },
       HirNodeKind::Flush(flush) => {
-        walk_nodes(&flush.body, requests);
+        walk_nodes(&flush.body, source_map, requests);
       },
       HirNodeKind::List(list) => {
         for item in &list.items {
-          walk_nodes(&item.body, requests);
+          walk_nodes(&item.body, source_map, requests);
         }
       },
       HirNodeKind::Heading(_)
@@ -135,7 +138,29 @@ mod tests {
 
     assert_eq!(requests.len(), 1, "同じ PDF は 1 ファイルの要求にまとまるはず: {requests:?}");
     assert_eq!(requests[0].format, ImageFormat::Pdf);
-    assert_eq!(requests[0].pages.iter().copied().collect::<Vec<_>>(), vec![None, Some(2)]);
+    assert_eq!(requests[0].pages.keys().copied().collect::<Vec<_>>(), vec![None, Some(2)]);
+  }
+
+  #[test]
+  fn collects_every_image_that_writes_the_same_page_in_document_order() {
+    let source = "\\begin{figure}\n\\image{a.pdf}\n\\end{figure}\n\n\\begin{figure}\n\\image[page=2]{a.pdf}\n\\end{figure}\n\n\\begin{figure}\n\\image{a.pdf}\n\\end{figure}\n\n";
+    let requests = collect_image_requests(&document(source));
+
+    let omitted: Vec<u32> = requests[0].pages[&None].iter().map(|site| return site.span.start).collect();
+    let first = u32::try_from(source.find("\\image{a.pdf}").unwrap()).unwrap();
+    let last = u32::try_from(source.rfind("\\image{a.pdf}").unwrap()).unwrap();
+    assert_eq!(omitted, vec![first, last]);
+    assert_eq!(requests[0].pages[&Some(2)].len(), 1);
+  }
+
+  #[test]
+  fn collects_images_across_sources_in_declaration_order() {
+    let hir_a = parse_for_test(&figure("a.pdf"), SourceId::new(0)).expect("パースに成功するはず");
+    let hir_b = parse_for_test(&figure("a.pdf"), SourceId::new(1)).expect("パースに成功するはず");
+    let requests = collect_image_requests(&HirDocument::assemble(vec![hir_a, hir_b]));
+
+    let sources: Vec<SourceId> = requests[0].pages[&None].iter().map(|site| return site.source_id).collect();
+    assert_eq!(sources, vec![SourceId::new(0), SourceId::new(1)]);
   }
 
   #[test]
