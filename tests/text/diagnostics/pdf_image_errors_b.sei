@@ -1,0 +1,5 @@
+\section{別のソースから同じ PDF 図版を使うサンプル}
+
+\begin{figure}
+\image{./tests/image/vector2.pdf}
+\end{figure}

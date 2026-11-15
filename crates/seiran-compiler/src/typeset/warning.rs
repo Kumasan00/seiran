@@ -39,6 +39,11 @@ pub(crate) enum TypesetWarning {
     path: ProjectPath,
     /// ページ番号（1 始まり）
     page: u32,
+    /// `\image` が帰属するソース
+    source_id: SourceId,
+    /// `\image` コマンドの開始位置
+    #[label("この画像です")]
+    span: SourceSpan,
   },
 
   /// 行に付いた脚注群が、空のページでも版面に収まらなかった
@@ -203,14 +208,15 @@ pub(crate) enum TypesetWarning {
 }
 
 impl TypesetWarning {
-  /// 帰属するソースを返す。フォント・画像ファイルの警告と生成物の行・生成内容の字は `None`
+  /// 帰属するソースを返す。フォントの警告と生成物の行・生成内容の字は `None`
   #[must_use]
   pub(crate) fn source_id(&self) -> Option<SourceId> {
     return match self {
-      TypesetWarning::Font(_) | TypesetWarning::PdfAnnotationsDropped { .. } => None,
+      TypesetWarning::Font(_) => None,
       TypesetWarning::VariationSequenceFallback(warning) => warning.source_id(),
       TypesetWarning::LineOverflow { source_id, .. } => *source_id,
-      TypesetWarning::FootnoteOverflow { source_id, .. }
+      TypesetWarning::PdfAnnotationsDropped { source_id, .. }
+      | TypesetWarning::FootnoteOverflow { source_id, .. }
       | TypesetWarning::FootnoteLineOverflow { source_id, .. }
       | TypesetWarning::ImageOverflow { source_id, .. }
       | TypesetWarning::MathOverflow { source_id, .. }

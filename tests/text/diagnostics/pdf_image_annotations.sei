@@ -3,3 +3,7 @@
 \begin{figure}
 \image[width=40mm]{./tests/image/annotated.pdf}
 \end{figure}
+
+\begin{figure}
+\image[page=1, width=30mm]{./tests/image/annotated.pdf}
+\end{figure}

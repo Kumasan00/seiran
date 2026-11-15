@@ -845,9 +845,13 @@ fn diagnostic_image_option_not_applicable() {
 
 #[test]
 fn diagnostic_pdf_image_errors_are_collected_in_path_order() {
-  // 取り込めない PDF はファイルを読んで初めて分かるので、組版段がパスの昇順（同じパスはページの昇順）に集めて報告する
+  // 取り込めない PDF はファイルを読んで初めて分かるので、組版段がパスの昇順（同じパスはページの昇順 → `\image` の文書順）に
+  // 集めて報告する。2 本目のソースは同じ誤りを別のソースから書き、そのソースの本文で指されることを固定する
   let failure = TestProject::builder()
-    .sources(&["tests/text/diagnostics/pdf_image_errors.sei"])
+    .sources(&[
+      "tests/text/diagnostics/pdf_image_errors.sei",
+      "tests/text/diagnostics/pdf_image_errors_b.sei",
+    ])
     .assets(&[
       "./tests/image/png_bytes.pdf",
       "./tests/image/encrypted_corrupt.pdf",
@@ -873,6 +877,7 @@ fn diagnostic_pdf_image_errors_are_collected_in_path_order() {
       "typeset::image::unsupported_pdf_version",
       "typeset::image::parse_pdf",
       "typeset::image::pdf_page_required",
+      "typeset::image::pdf_page_required",
       "typeset::image::pdf_page_out_of_range",
       "typeset::image::empty_pdf_page",
     ]
@@ -891,7 +896,7 @@ fn diagnostic_pdf_annotations_are_warned_and_dropped() {
     .expect("注釈付きの PDF も描画内容だけ埋め込めるはず");
 
   let warnings = warnings_with_code(&compilation, "typeset::image::pdf_annotations_dropped");
-  assert_eq!(warnings.len(), 1, "{:?}", all_messages(&compilation));
+  assert_eq!(warnings.len(), 2, "{:?}", all_messages(&compilation));
   assert_matches_golden(
     "pdf_image_annotations",
     &render_warnings(&compilation, "typeset::image::pdf_annotations_dropped"),

@@ -6,4 +6,24 @@ typeset::image::pdf_annotations_dropped
 
   ⚠ ./tests/image/annotated.pdf の 1 ページ目の注釈（リンク・フォーム・コメント等）は取り込まず、
   │ 描画内容だけを埋め込みました
+   ╭─[tests/text/diagnostics/pdf_image_annotations.sei:4:1]
+ 3 │ \begin{figure}
+ 4 │ \image[width=40mm]{./tests/image/annotated.pdf}
+   · ▲
+   · ╰── この画像です
+ 5 │ \end{figure}
+   ╰────
+  help: 注釈も図に含めたい場合は、注釈を平坦化した PDF を指定してください。
+
+typeset::image::pdf_annotations_dropped
+
+  ⚠ ./tests/image/annotated.pdf の 1 ページ目の注釈（リンク・フォーム・コメント等）は取り込まず、
+  │ 描画内容だけを埋め込みました
+   ╭─[tests/text/diagnostics/pdf_image_annotations.sei:8:1]
+ 7 │ \begin{figure}
+ 8 │ \image[page=1, width=30mm]{./tests/image/annotated.pdf}
+   · ▲
+   · ╰── この画像です
+ 9 │ \end{figure}
+   ╰────
   help: 注釈も図に含めたい場合は、注釈を平坦化した PDF を指定してください。

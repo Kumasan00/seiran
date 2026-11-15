@@ -18,12 +18,12 @@ use crate::{
 
 /// [`compose`](fn@crate::typeset::compose) の失敗
 ///
-/// ソース位置に帰属しない組版の失敗と、ソース位置に帰属しうる字の欠落（[`TextGlyphError::source_id`]）・寸法の溢れ
-/// （[`DimensionOverflow::source_id`]）を分けて運ぶ制御フロー型で、表示単位ではない（`miette::Diagnostic` を実装しない）。
-/// 後者のうち位置を持つものだけに `compiler` がソース本文を添える。
+/// 組版の失敗（`\image` のページの選択の誤りだけが位置を持つ。[`TypesetError::source_id`]）と、字の欠落
+/// （[`TextGlyphError::source_id`]）・寸法の溢れ（[`DimensionOverflow::source_id`]）を分けて運ぶ制御フロー型で、表示単位
+/// ではない（`miette::Diagnostic` を実装しない）。どの腕も位置を持つものだけに `compiler` がソース本文を添える。
 #[derive(Debug)]
 pub(crate) enum ComposeError {
-  /// フォント資源の構築・画像資源・ページ単位脚注採番の失敗
+  /// フォント資源の構築・画像資源（PDF のページの選択の誤りは `\image` の位置付き）・ページ単位脚注採番の失敗
   Typeset(Failures<TypesetError>),
   /// 文書が使った字のフォントでの欠落（数式フォントの欠落を文書順に、続けて本文の枠の欠落）
   Glyphs(Failures<TextGlyphError>),
@@ -233,6 +233,11 @@ pub(crate) enum TypesetError {
     path: String,
     /// PDF のページ数（2 以上）。
     page_count: usize,
+    /// `\image` が帰属するソース
+    source_id: SourceId,
+    /// `\image` コマンドの開始位置
+    #[label("この画像です")]
+    span: SourceSpan,
   },
 
   /// `page` が PDF のページ数を超えています。
@@ -245,6 +250,11 @@ pub(crate) enum TypesetError {
     page: u32,
     /// PDF のページ数。
     page_count: usize,
+    /// `\image` が帰属するソース
+    source_id: SourceId,
+    /// `\image` コマンドの開始位置
+    #[label("この画像です")]
+    span: SourceSpan,
   },
 
   /// 選んだページの表示範囲（`CropBox` と `MediaBox` の共通部分）の辺が 1/4096pt 以下（hayro が面積 0 とみなす）です。
@@ -258,6 +268,11 @@ pub(crate) enum TypesetError {
     path: String,
     /// ページ番号（1 始まり。`page` を省略した 1 ページの PDF では 1）。
     page: u32,
+    /// `\image` が帰属するソース
+    source_id: SourceId,
+    /// `\image` コマンドの開始位置
+    #[label("この画像です")]
+    span: SourceSpan,
   },
 
   /// 画像の自然寸法が不正です（縦横比を算出できません）。
@@ -271,6 +286,31 @@ pub(crate) enum TypesetError {
     /// 自然高さ（ラスタはピクセル、SVG は pt）。
     height: f32,
   },
+}
+
+impl TypesetError {
+  /// 帰属するソースを返す。`\image` ごとのページの選択の誤りだけが `Some`
+  #[must_use]
+  pub(crate) fn source_id(&self) -> Option<SourceId> {
+    return match self {
+      TypesetError::PdfPageRequired { source_id, .. }
+      | TypesetError::PdfPageOutOfRange { source_id, .. }
+      | TypesetError::EmptyPdfPage { source_id, .. } => Some(*source_id),
+      TypesetError::Font(_)
+      | TypesetError::PerPageFootnoteNotConverged { .. }
+      | TypesetError::ReadImage { .. }
+      | TypesetError::DecodeImage { .. }
+      | TypesetError::ParseSvg { .. }
+      | TypesetError::SvgFontNotFound { .. }
+      | TypesetError::SvgMissingGlyph { .. }
+      | TypesetError::ParsePdf { .. }
+      | TypesetError::EncryptedPdf { .. }
+      | TypesetError::CorruptPdfEncryption { .. }
+      | TypesetError::UnsupportedPdfVersion { .. }
+      | TypesetError::EmptyPdf { .. }
+      | TypesetError::InvalidImageNaturalSize { .. } => None,
+    };
+  }
 }
 
 #[cfg(test)]
