@@ -447,6 +447,14 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "toc", "enabled", true);
       set(table, "hyperref", "link_color", "#0000ff");
     },
+    // 番号ごとのリンクにだけリンク色が付き、目次の行にはリンクが無いことを見る。
+    // 本文幅を狭めるのは、長い \refs を折り返して番号と指す先の対応が行をまたいでも保たれることを見るため
+    "refs" => {
+      set(table, "toc", "enabled", true);
+      set(table, "hyperref", "link_color", "#0000ff");
+      set(table, "page", "margin_left", "190mm");
+      set(table, "page", "margin_right", "190mm");
+    },
     // 題目に数式・装飾・リンクを含む目次。本文のリンク色との対比で、目次の行にリンク色が付かないことを見る
     "toc_inline" => {
       set(table, "toc", "enabled", true);

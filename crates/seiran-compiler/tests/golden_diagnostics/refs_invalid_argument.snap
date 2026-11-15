@@ -1,0 +1,14 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::invalid_command_argument
+
+  × コマンド \refs の引数が不正です: ラベル `sec:a` が 2 回以上並んでいます
+   ╭─[tests/text/diagnostics/refs_invalid_argument.sei:5:29]
+ 4 │ 
+ 5 │ 同じラベルを重ねた \refs{sec:a, sec:a} は拒否される。
+   ·                    ─────────┬─────────
+   ·                             ╰── この引数が不正です
+   ╰────
+  help: 引数の型や形式を確認してください

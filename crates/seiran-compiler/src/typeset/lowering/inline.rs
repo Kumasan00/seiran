@@ -102,6 +102,21 @@ pub(super) fn lower_inline(
         )],
       }]);
     },
+    HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => {
+      // リンクにするのは 1 つの参照先にだけ属する範囲（番号 1 個）だけ。種別名・区切り・書式の地の文字は
+      // 複数の参照先に属するのでリンクにしない
+      let link_style = with_link_color(parent_style, ctx.style.hyperref.link_color);
+      let nodes = state.ref_group_pieces(ctx.style, inline.id).into_iter().map(|(text, target)| {
+        return match target {
+          None => InlineNode::Text(text, parent_style),
+          Some(label) => InlineNode::Link {
+            target: LinkTarget::Internal(AnchorId::Label(label.clone())),
+            children: vec![InlineNode::Text(text, link_style)],
+          },
+        };
+      });
+      return Ok(nodes.collect());
+    },
     HirInlineKind::Link { target, children } => {
       let (target, link_color) = match target {
         LinkDestination::Uri(url) => (LinkTarget::External(url.clone()), ctx.style.hyperref.url_color),
@@ -394,6 +409,84 @@ mod tests {
     let nodes = lower_source(&style, REF_SOURCE);
 
     assert_eq!(ref_text_style(&nodes).color, Some(blue));
+  }
+
+  /// ラベル `f1`〜`f3` 付きの図 3 つと、`body` だけの段落を含むソース
+  fn figures_source(body: &str) -> String {
+    let figures: String = (1..=3)
+      .map(|n| return format!("\\begin{{figure}}[label=f{n}]\n\\image{{a.png}}\n\\end{{figure}}\n\n"))
+      .collect();
+    return format!("{figures}{body}\n");
+  }
+
+  #[test]
+  fn lower_refs_makes_one_link_per_number() {
+    let blue = Color::new(0x00, 0x00, 0xff);
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(blue);
+
+    let nodes = lower_source(&style, &figures_source(r"\refs{f1, f3}"));
+
+    let content: Vec<&InlineNode> = inlines(&nodes).collect();
+    let [
+      InlineNode::Text(lead, lead_style),
+      InlineNode::Link {
+        target: first,
+        children: first_children,
+      },
+      InlineNode::Text(separator, separator_style),
+      InlineNode::Link {
+        target: last,
+        children: last_children,
+      },
+    ] = content.as_slice()
+    else {
+      panic!("種別名・番号・区切り・番号の 4 つが期待されます: {content:?}");
+    };
+    assert_eq!((lead.as_str(), separator.as_str()), ("Figures ", ", "));
+    assert_eq!((lead_style.color, separator_style.color), (None, None), "リンクの外にはリンク色を付けない");
+    assert_eq!(*first, LinkTarget::Internal(AnchorId::Label(LabelId::new("f1"))));
+    assert_eq!(*last, LinkTarget::Internal(AnchorId::Label(LabelId::new("f3"))));
+    for (children, number) in [(first_children, "1"), (last_children, "3")] {
+      assert!(
+        matches!(children.as_slice(), [InlineNode::Text(text, style)] if text == number && style.color == Some(blue)),
+        "{children:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn lower_refs_numbers_theorem_and_lemma_with_shared_counter() {
+    let source = "\\begin{theorem}[label=t1]\n一。\n\\end{theorem}\n\n\\begin{lemma}[label=l1]\n二。\n\\end{lemma}\n\n\
+                  \\begin{theorem}[label=t3]\n三。\n\\end{theorem}\n\n\\refs{t1, t3}\n";
+
+    let nodes = lower_source(&ReadStyle::default(), source);
+
+    let last_paragraph = &nodes[nodes.len() - 1..];
+    let text: String = inlines(last_paragraph)
+      .flat_map(|node| match node {
+        InlineNode::Link { children, .. } => return children.iter().collect::<Vec<_>>(),
+        other => return vec![other],
+      })
+      .map(|node| match node {
+        InlineNode::Text(text, _) => return text.as_str(),
+        other => unreachable!("参照の表示は文字列だけでできている: {other:?}"),
+      })
+      .collect();
+    assert_eq!(text, "Theorems 1, 3");
+  }
+
+  #[test]
+  fn lower_ref_still_links_whole_display() {
+    let nodes =
+      lower_source(&ReadStyle::default(), "\\begin{equation}[label=e1]\nx = 1\n\\end{equation}\n\n\\ref{e1}\n");
+
+    let content: Vec<&InlineNode> = inlines(&nodes).collect();
+    let [InlineNode::Link { target, children }] = content.as_slice() else {
+      panic!("リンク 1 つが期待されます: {content:?}");
+    };
+    assert_eq!(*target, LinkTarget::Internal(AnchorId::Label(LabelId::new("e1"))));
+    assert!(matches!(children.as_slice(), [InlineNode::Text(text, _)] if text == "(1)"), "{children:?}");
   }
 
   #[test]

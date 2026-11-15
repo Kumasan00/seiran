@@ -135,6 +135,8 @@ fn has_visible_content(inlines: &[HirInline]) -> bool {
       },
       HirInlineKind::LineBreak => false,
       HirInlineKind::Ref { .. }
+      | HirInlineKind::RefList { .. }
+      | HirInlineKind::RefRange { .. }
       | HirInlineKind::Link { .. }
       | HirInlineKind::Cite { .. }
       | HirInlineKind::Footnote { .. }

@@ -1,0 +1,5 @@
+\section{A}
+
+\section[label=sec:a]{B}
+
+同じラベルを重ねた \refs{sec:a, sec:a} は拒否される。

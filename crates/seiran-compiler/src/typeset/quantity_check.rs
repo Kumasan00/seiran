@@ -110,6 +110,8 @@ fn collect_inlines(inlines: &[HirInline], quantity: &QuantityStyle, out: &mut Ve
       | HirInlineKind::LineBreak
       | HirInlineKind::NoIndent
       | HirInlineKind::Ref { .. }
+      | HirInlineKind::RefList { .. }
+      | HirInlineKind::RefRange { .. }
       | HirInlineKind::Cite { .. }
       | HirInlineKind::Index { .. } => {},
     }

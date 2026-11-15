@@ -307,8 +307,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   `Deserialize` は構文エラーで失敗させず、garde の `dive` で他フィールドの違反と一括報告する（理由と、
   展開が検証済みの値にだけ許される根拠は `template` の `//!`）
 - **番号 3 系統**: 表示数式の **tag**（式の横に出すもの。`[math.block].tag_format` / `number_side`）、
-  **number**（`counters.equation.number_format`）、**ref**（`counters.equation.ref_format`）は別物。旧
-  `[equation]` テーブルは `[math.block]` に統合済みで、**復活させない**
+  **number**（`counters.equation.number_format`）、**ref**（`counters.equation.ref_format` / `ref_number_format`）は別物。旧
+  `[equation]` テーブルは `[math.block]` に統合済みで、**復活させない**。ref は 2 層で、番号 1 個の見せ方 `ref_number_format` を
+  外側の `ref_format` の `{number}` が番号 1 個（`\ref`）・一覧（`\refs`）・範囲（`\refrange`）として包む（全カウンタ共通の形）
 - **キャプション**: figure / table は共通の `CaptionStyle` を持つ。`typeface` は番号リテラルと本体の両方に
   効き、`[text].typeface` からの導出はしない。配置は図・表ともソース上の `\caption` の出現位置で決まり、
   スタイル側では指定しない
@@ -345,6 +346,11 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   指数の上付きの縮小率・位置は style.toml に置かず、書体のフォント実体（MATH の定数か OS/2 の上付きの指標）から取る
 - **ページ**: `[page]` は本文領域の余白と組版挙動フラグ（段組みは別テーブル `[columns]`）。余白単体の不正
   （負値）はここで弾き、用紙寸法と突き合わせないと判定できない制約は `typeset::geometry` が持つ
+- **相互参照**: `[cross_reference]` は `\refs` の番号どうしと `\refrange` の両端の区切りで、参照先の種類によらない
+  文書全体の表記（種類ごとの番号の見せ方は `[counters.<name>].ref_number_format`）。`\refs` / `\refrange` の種別名
+  `display_name_plural` は、カウンタ・定理クラスとも `display_name` から導出しない。どの字をリンクにするかは style の値では
+  なく表示の構造で決まる（1 つの参照先にだけ属する番号 1 個ずつ。`typeset::lowering`）。読むのは `typeset::lowering` だけで、
+  `SemanticPolicy` には写さない。文献の `[reference]` とは別の表
 - **文献**: `[reference]` は `semantics::citation` が参照。`csl_path` / `locale_path` は `ProjectPath` で、
   相対は config と同じ `base_dir` 基準。ロケールは内蔵ロケールに overlay（同一言語コードはカスタム優先）
 - **巻末索引**: `[index]` は `enabled` を持たない（`\index` マーカーが 1 個以上あるときだけ自動出力）。
@@ -539,7 +545,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 ### `semantics`
 
-意味解析 `analyze` を持つ。`HirDocument` を 1 回走査して、ラベル宣言・`\ref` と `proof` の `[of=...]` の解決・
+意味解析 `analyze` を持つ。`HirDocument` を 1 回走査して、ラベル宣言・`\ref` / `\refs` / `\refrange` と `proof` の `[of=...]` の解決・
 カウンタ構造値・見出し・引用箇所を `NodeId` を主キーにした side table（`SemanticFacts`）へ確定し、引用箇所が
 あるときだけ CSL スタイル・ロケールを読んで表示と書誌を生成し、3 つをまとめた `SemanticDocument` を返す。
 **文書木は読み取り専用で、書き戻しは一切行わない**。
@@ -561,9 +567,11 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 - **表示側フィールドは走査が受け取れない**: 走査の入力は `SemanticPolicy`（各カウンタの `resets` と
   そのカウンタが進むと 0 に戻す定理の共有カウンタ名、各定理クラスの `counter` / `unnumbered`
   だけを写した投影。`reset_by` は前者の共有カウンタ名へ畳んで写す）で、`number_format` / `ref_format` /
-  `display_name` / `number_style` が型として存在しない。G3（内容は見た目から独立）はこれで型として保証
+  `ref_number_format` / `display_name` / `display_name_plural` / `number_style` と `[cross_reference]` の区切りが型として
+  存在しない。G3（内容は見た目から独立）はこれで型として保証
   される（規約や property test ではなく型で）。`analyze` 自身が `&Style` を取るのは `SemanticPolicy` の構築と CSL 整形のためで、
-  走査には渡らない
+  走査には渡らない。`\refrange` の範囲の妥当性も採番の構造（この投影）だけを読み、表示側の値では変わらない — 採番の構造は
+  style.toml に置かれていても内容の側に属する（`docs/language-design.md` の #1059）
 - カウンタの**値**（構造のみ。節 1.2 → 採番したカウンタ `section` + 採番時点の全 9 カウンタの値）はここで
   確定し、表示文字列は `typeset::lowering` が style と合わせて作る。値は全カウンタを名前で引けるので、表示側は
   `{chapter}` のような他カウンタ参照を名前で引くだけでよく、番号書式が参照できるカウンタは `resets` /
@@ -582,11 +590,15 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 （レジストリが持つのはカウンタだけで、ラベルの定義表は fact 側にある）。
 
 1. **走査**: ソースごとに HIR を文書順（preorder）で辿り、ラベル・カウンタを登録しながら fact を
-   side table へ書く。参照箇所も `refs` fact へ記録するが、参照先の存在はこの時点では検証しない
-   （前方参照を許すため）。数式は「行 → 環境」の順に採番する
-2. **検証**: 重複ラベル・未定義引用キー・未解決参照の 3 種を**全件**集め、**文書順**にマージして報告する。
-   未解決参照は `refs` fact とラベルの定義表だけから求め、1 件でもあれば fact 集合ごと返さない
-   （`ref_target` の不変条件はこれで成立する）。
+   side table へ書く。参照箇所も `refs` fact（`\refs` / `\refrange` はラベル群を持つ `ref_groups` fact）へ記録するが、
+   参照先の存在はこの時点では検証しない（前方参照を許すため）。数式は「行 → 環境」の順に採番する。`counters` fact は
+   採番の直後に挿入するので、挿入順が採番順になる
+2. **検証**: 重複ラベル・未定義引用キー・未解決参照・`\refs` の種類の混在・不正な `\refrange` の 5 種を**全件**集め、
+   **文書順**にマージして報告する。未解決参照は `refs` / `ref_groups` fact とラベルの定義表だけから求め（`ref_groups` は
+   未定義のラベル 1 個ごとに 1 件）、1 件でもあれば fact 集合ごと返さない（`ref_target` / `ref_group` の不変条件はこれで
+   成立する）。種類の混在と範囲は未定義のラベルを含まない箇所だけを 1 箇所 1 件まで調べる。範囲は `counters` fact を
+   両端の位置の間だけ採番順に走査し、同じ系列の項目の自番号が直前 + 1 でなければその手前でリセットされたと判定する
+   （判定が読む設定は `SemanticPolicy` だけ）。
    ソート鍵は span ではなく `NodeId` 由来の `(source.index(), local)` で、パースの実行順に依存しない。
    **重複ラベルで走査を打ち切らない** — 採番はラベル記録の前に済んでいるので走査を続けてもカウンタ値は
    ずれず、最初の定義が有効なまま残る（先勝ち）。ラベルの定義表は `SemanticFacts` の 1 つだけで、
@@ -992,7 +1004,7 @@ lowering へ与えて組み直し → 同じマップになれば不動点。上
   メタデータを受ける別入口）。lowering 側にビュー型を置かず（#349）、side table の raw な collection を直接
   受け取る形にも戻さない（collection 構造と完全性検証が消費側へ漏れる）。
   生成物（書誌）には `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」を保つ）
-- **`\ref` / `\cite` は 2 段階プレースホルダを使わない**: 参照先も引用表示も `SemanticDocument` の query で
+- **`\ref` / `\refs` / `\refrange` / `\cite` は 2 段階プレースホルダを使わない**: 参照先も引用表示も `SemanticDocument` の query で
   その場で解決してノードへ変換する（プレースホルダを発行して 2 パス目で書き換える走査へ戻さない）
 - **脚注のカウンタは特殊**: 9 種固定のカウンタとは独立した専用の出現 index（0 起点の同一性）で、ラベルに
   紐づかないため `semantics` の管轄外。表示番号の既定は `index + 1` だが、上書きマップ（出現 index 引き）が

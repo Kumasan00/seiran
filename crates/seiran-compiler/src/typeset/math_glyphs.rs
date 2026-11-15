@@ -177,6 +177,8 @@ impl Checker<'_> {
         | HirInlineKind::LineBreak
         | HirInlineKind::NoIndent
         | HirInlineKind::Ref { .. }
+        | HirInlineKind::RefList { .. }
+        | HirInlineKind::RefRange { .. }
         | HirInlineKind::Cite { .. }
         | HirInlineKind::Index { .. } => {},
       }

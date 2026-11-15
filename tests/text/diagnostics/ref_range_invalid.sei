@@ -1,0 +1,15 @@
+\chapter{一章}
+
+\begin{table}[label=tab:a, columns=left]
+\row{甲}
+\caption{表}
+\end{table}
+
+\chapter{二章}
+
+\begin{table}[label=tab:b, columns=left]
+\row{甲}
+\caption{表}
+\end{table}
+
+章をまたぐ範囲 \refrange{tab:a}{tab:b} は拒否される。

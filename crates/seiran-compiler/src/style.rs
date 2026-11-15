@@ -8,6 +8,7 @@ mod block_alignment;
 mod caption;
 mod columns;
 mod counter;
+mod cross_reference;
 mod error;
 mod figure;
 mod footnote;
@@ -48,8 +49,8 @@ pub(crate) use crate::style::{
   },
   running::RunningContentStyle,
   template::{
-    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefTemplate, RunningTemplate,
-    RunningValues, TheoremHeadingValues,
+    CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefNumberTemplate, RefTemplate,
+    RunningTemplate, RunningValues, TheoremHeadingValues,
   },
   theorem::TheoremStyle,
   title_page::TitlePageStyle,
@@ -62,10 +63,10 @@ use crate::{
   failures::Failures,
   project::{self, InFile, PathResolver, ProjectPath, ProjectSource, TomlErrorParts},
   style::{
-    columns::ColumnsStyle, counter::CounterStyles, error::StyleValidationError, figure::FigureStyle,
-    heading::HeadingStyles, hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle, math::MathStyle,
-    page::PageStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle, template::TheoremHeadingTemplate,
-    text::TextBlockStyle, theorem::TheoremStyles,
+    columns::ColumnsStyle, counter::CounterStyles, cross_reference::CrossReferenceStyle, error::StyleValidationError,
+    figure::FigureStyle, heading::HeadingStyles, hyperref::HyperrefStyle, index::IndexStyle, list::ListStyle,
+    math::MathStyle, page::PageStyle, quote::QuoteStyle, reference::ReferenceStyle, table::TableStyle,
+    template::TheoremHeadingTemplate, text::TextBlockStyle, theorem::TheoremStyles,
   },
 };
 
@@ -115,6 +116,9 @@ pub(crate) struct Style {
   /// 定理クラス定義テーブル（`[theorems.<class>]`、固定 10 種）
   #[garde(dive)]
   pub theorems: TheoremStyles,
+  /// 複数参照・範囲参照の番号の区切り（`[cross_reference]`）
+  #[garde(dive)]
+  pub cross_reference: CrossReferenceStyle,
   /// ページ番号のスタイル（前付け＝ローマ数字 / 本文＝算用数字）
   #[garde(dive)]
   pub page_numbering: PageNumberingStyle,

@@ -1,0 +1,3 @@
+\section{A}
+
+未定義のラベルを並べた \refs{missing1, missing2} は 1 個ずつ診断される。

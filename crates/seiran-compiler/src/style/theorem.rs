@@ -57,22 +57,27 @@ impl Default for TheoremStyles {
     return Self {
       theorem: TheoremStyle {
         display_name: "Theorem".to_string(),
+        display_name_plural: "Theorems".to_string(),
         ..TheoremStyle::default()
       },
       lemma: TheoremStyle {
         display_name: "Lemma".to_string(),
+        display_name_plural: "Lemmas".to_string(),
         ..TheoremStyle::default()
       },
       proposition: TheoremStyle {
         display_name: "Proposition".to_string(),
+        display_name_plural: "Propositions".to_string(),
         ..TheoremStyle::default()
       },
       corollary: TheoremStyle {
         display_name: "Corollary".to_string(),
+        display_name_plural: "Corollaries".to_string(),
         ..TheoremStyle::default()
       },
       definition: TheoremStyle {
         display_name: "Definition".to_string(),
+        display_name_plural: "Definitions".to_string(),
         counter: "definition".to_string(),
         presentation: TheoremPresentation {
           typeface: Typeface::Serif,
@@ -82,11 +87,13 @@ impl Default for TheoremStyles {
       },
       axiom: TheoremStyle {
         display_name: "Axiom".to_string(),
+        display_name_plural: "Axioms".to_string(),
         counter: "axiom".to_string(),
         ..TheoremStyle::default()
       },
       example: TheoremStyle {
         display_name: "Example".to_string(),
+        display_name_plural: "Examples".to_string(),
         counter: "example".to_string(),
         presentation: TheoremPresentation {
           typeface: Typeface::Serif,
@@ -96,6 +103,7 @@ impl Default for TheoremStyles {
       },
       remark: TheoremStyle {
         display_name: "Remark".to_string(),
+        display_name_plural: "Remarks".to_string(),
         counter: "remark".to_string(),
         presentation: TheoremPresentation {
           typeface: Typeface::Serif,
@@ -105,10 +113,12 @@ impl Default for TheoremStyles {
       },
       claim: TheoremStyle {
         display_name: "Claim".to_string(),
+        display_name_plural: "Claims".to_string(),
         ..TheoremStyle::default()
       },
       proof: TheoremStyle {
         display_name: "Proof".to_string(),
+        display_name_plural: "Proofs".to_string(),
         counter: "proof".to_string(),
         unnumbered: true,
         qed_mark: Some("□".to_string()),
@@ -149,9 +159,13 @@ impl Index<TheoremClass> for TheoremStyles {
 #[derive(Debug, Clone, Validate)]
 #[garde(allow_unvalidated)]
 pub(crate) struct TheoremStyle {
-  /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` から参照される
+  /// 表示名（例: `"Theorem"`、`"定理"`）。見出し書式の `{display_name}` と `\ref` の表示から参照される
   #[garde(custom(non_empty_text))]
   pub display_name: String,
+  /// 複数形の表示名（例: `"Theorems"`、`"定理"`）。`\refs` / `\refrange` の表示の種別名に入る。
+  /// `display_name` からは導出しないので、`display_name` だけを上書きしても既定のまま残る
+  #[garde(custom(non_empty_text))]
+  pub display_name_plural: String,
   /// 共有カウンタ名。同じ名前を指定したクラスは 1 つのカウンタを共有する
   /// （LaTeX の `\newtheorem{lemma}[theorem]{...}` 第 2 引数の明示化）
   #[garde(custom(non_empty_text))]
@@ -177,6 +191,7 @@ impl Default for TheoremStyle {
   fn default() -> Self {
     return Self {
       display_name: "Theorem".to_string(),
+      display_name_plural: "Theorems".to_string(),
       counter: "theorem".to_string(),
       reset_by: TheoremReset::None,
       number_format: CounterTemplate::parse("{n}"),
@@ -317,6 +332,8 @@ impl From<TheoremStylesTable> for TheoremStyles {
 struct TheoremStyleOverride {
   /// 表示名
   display_name: Option<String>,
+  /// 複数形の表示名
+  display_name_plural: Option<String>,
   /// 共有カウンタ名
   counter: Option<String>,
   /// カウンタのリセット先
@@ -339,6 +356,7 @@ impl TheoremStyleOverride {
   fn apply(self, base: TheoremStyle) -> TheoremStyle {
     let Self {
       display_name,
+      display_name_plural,
       counter,
       reset_by,
       number_format,
@@ -348,6 +366,7 @@ impl TheoremStyleOverride {
     } = self;
     return TheoremStyle {
       display_name: display_name.unwrap_or(base.display_name),
+      display_name_plural: display_name_plural.unwrap_or(base.display_name_plural),
       counter: counter.unwrap_or(base.counter),
       reset_by: reset_by.unwrap_or(base.reset_by),
       number_format: number_format.unwrap_or(base.number_format),
@@ -518,6 +537,46 @@ mod tests {
   }
 
   #[test]
+  fn default_classes_have_plural_display_names() {
+    let expected = [
+      (TheoremClass::Theorem, "Theorems"),
+      (TheoremClass::Lemma, "Lemmas"),
+      (TheoremClass::Proposition, "Propositions"),
+      (TheoremClass::Corollary, "Corollaries"),
+      (TheoremClass::Definition, "Definitions"),
+      (TheoremClass::Axiom, "Axioms"),
+      (TheoremClass::Example, "Examples"),
+      (TheoremClass::Remark, "Remarks"),
+      (TheoremClass::Claim, "Claims"),
+      (TheoremClass::Proof, "Proofs"),
+    ];
+    let theorems = TheoremStyles::default();
+
+    for (class, plural) in expected {
+      assert_eq!(theorems[class].display_name_plural, plural, "{class} の複数形");
+    }
+  }
+
+  #[test]
+  fn display_name_plural_override_keeps_other_class_defaults() {
+    let wrapper: TheoremStylesWrapper = toml::from_str("[theorems.lemma]\ndisplay_name_plural = \"補題\"\n").unwrap();
+
+    assert_eq!(wrapper.theorems.lemma.display_name_plural, "補題");
+    assert_eq!(wrapper.theorems.lemma.display_name, "Lemma", "単数形は書かれなければ既定のまま");
+    assert_eq!(wrapper.theorems.theorem.display_name_plural, "Theorems");
+  }
+
+  #[test]
+  fn validate_rejects_empty_display_name_plural() {
+    let style = TheoremStyle {
+      display_name_plural: String::new(),
+      ..TheoremStyle::default()
+    };
+
+    assert!(style.validate().is_err());
+  }
+
+  #[test]
   fn partial_override_keeps_other_class_defaults() {
     let toml = "
 [theorems.lemma]
@@ -551,10 +610,11 @@ typeface = \"sans_serif_bold\"
 
   #[test]
   fn full_override_replaces_every_field() {
-    // 6 キーとネスト `presentation` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
+    // 7 キーとネスト `presentation` の 8 キーを全部書いた形（同型のフィールド同士の取り違えを検出する）
     let toml = "
 [theorems.theorem]
 display_name = \"定理\"
+display_name_plural = \"定理群\"
 counter = \"main\"
 reset_by = \"chapter\"
 number_format = \"{chapter}.{n}\"
@@ -576,6 +636,7 @@ bottom_margin = \"8pt\"
     let theorem = wrapper.theorems.theorem;
 
     assert_eq!(theorem.display_name, "定理");
+    assert_eq!(theorem.display_name_plural, "定理群");
     assert_eq!(theorem.counter, "main");
     assert_eq!(theorem.reset_by, TheoremReset::Chapter);
     assert_eq!(theorem.number_format.as_str(), "{chapter}.{n}");

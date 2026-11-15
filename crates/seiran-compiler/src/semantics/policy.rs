@@ -1,7 +1,8 @@
 //! 意味解析（`crate::semantics`）が必要とする設定だけを抜き出した投影 [`SemanticPolicy`]。
 //!
-//! `style.toml` の表示側フィールド（`number_format` / `ref_format` / `display_name` /
-//! `number_style`）はここに写さない。意味解析が表示設定を読めないことを型として保証する境界。
+//! `style.toml` の表示側フィールド（`number_format` / `ref_format` / `ref_number_format` / `display_name` /
+//! `display_name_plural` / `number_style` と `[cross_reference]` の区切り）はここに写さない。
+//! 意味解析が表示設定を読めないことを型として保証する境界。
 
 use std::collections::HashMap;
 
@@ -98,7 +99,7 @@ impl SemanticPolicy {
 #[cfg(test)]
 mod tests {
   use super::SemanticPolicy;
-  use crate::style::{CounterName, CounterTemplate, NumberStyle, RefTemplate, Style, TheoremReset};
+  use crate::style::{CounterName, CounterTemplate, NumberStyle, RefNumberTemplate, RefTemplate, Style, TheoremReset};
 
   #[test]
   fn document_policy_ignores_display_only_style_fields() {
@@ -106,7 +107,12 @@ mod tests {
     let mut display_variant = Style::default();
     display_variant.counters.chapter.number_format = CounterTemplate::parse("第{n}章");
     display_variant.counters.chapter.ref_format = RefTemplate::parse("{display_name}（{number}）");
+    display_variant.counters.chapter.ref_number_format = RefNumberTemplate::parse("[{number}]");
     display_variant.counters.chapter.display_name = "章".to_string();
+    display_variant.counters.chapter.display_name_plural = "章".to_string();
+    display_variant.theorems.theorem.display_name_plural = "定理".to_string();
+    display_variant.cross_reference.list_separator = "、".to_string();
+    display_variant.cross_reference.range_separator = "〜".to_string();
     display_variant.counters.chapter.number_style = NumberStyle::RomanUpper;
 
     let base_policy = SemanticPolicy::from_style(&base);

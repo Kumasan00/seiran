@@ -278,6 +278,23 @@ impl<'a> LoweringState<'a> {
     return counter::format_ref_display(style, value);
   }
 
+  /// `\refs` / `\refrange` の箇所 `site` の表示を、文字列の断片の列にする（`Some` は番号の断片とそのリンク先）
+  ///
+  /// # Panics
+  ///
+  /// 次の場合にパニックします（どちらも `analyze` が確定した事実から引くため、通常は起こりません）。
+  /// - `site` が `\refs` / `\refrange` の箇所として登録されていない（`document.ref_group(site)`）
+  /// - 参照先のカウンタ値が事実に無い（`analyze` の存在検証を通過した `LabelId` しか到達しない）
+  pub(super) fn ref_group_pieces(&self, style: &ReadStyle, site: NodeId) -> Vec<(String, Option<&'a LabelId>)> {
+    let document = self.document;
+    return counter::format_ref_group(style, document.ref_group(site), |label| {
+      let Some(value) = document.counter_value_of_label(label) else {
+        unreachable!("参照先の存在は semantics::analyze が保証している: {label:?}")
+      };
+      return value;
+    });
+  }
+
   /// 採番対象ノードのカウンタ構造値を引く（採番対象でなければ `None`）
   pub(super) fn counter_value(&self, node: NodeId) -> Option<&'a CounterValue> {
     return self.document.counter_value(node);

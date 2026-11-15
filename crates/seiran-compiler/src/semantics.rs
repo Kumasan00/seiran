@@ -28,6 +28,7 @@ use citation::{
 pub(crate) use counter::{CounterValue, CounterValues};
 use error::SemanticFailures;
 pub(crate) use error::{AnalyzeError, SemanticError};
+pub(crate) use facts::RefGroup;
 pub(crate) use ids::{HeadingKey, LabelId};
 pub(crate) use policy::SemanticPolicy;
 pub(crate) use semantic_document::SemanticDocument;

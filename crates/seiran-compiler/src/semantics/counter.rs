@@ -68,6 +68,45 @@ pub(crate) enum CounterValue {
   },
 }
 
+impl CounterValue {
+  /// 自身の番号（`Counter` は採番したカウンタの値、`Theorem` は共有カウンタの値。採番済みなので 1 以上）
+  #[must_use]
+  pub(super) fn own(&self) -> u32 {
+    return match *self {
+      CounterValue::Counter { name, counters } => counters[name],
+      CounterValue::Theorem { own, .. } => own,
+    };
+  }
+
+  /// 同じ種類（同じカウンタ名、または同じ定理クラス）の項目か
+  ///
+  /// 共有カウンタが同じでも定理クラスが違えば別の種類。
+  #[must_use]
+  pub(super) fn same_kind(&self, other: &Self) -> bool {
+    return match (self, other) {
+      (CounterValue::Counter { name, .. }, CounterValue::Counter { name: other, .. }) => name == other,
+      (CounterValue::Theorem { class, .. }, CounterValue::Theorem { class: other, .. }) => class == other,
+      (CounterValue::Counter { .. }, CounterValue::Theorem { .. })
+      | (CounterValue::Theorem { .. }, CounterValue::Counter { .. }) => false,
+    };
+  }
+
+  /// 同じ系列（同じカウンタ名、または同じ共有カウンタ名）で採番された項目か
+  ///
+  /// カウンタ名と定理の共有カウンタ名は別の名前空間なので、`Counter` と `Theorem` は常に別の系列。
+  #[must_use]
+  pub(super) fn same_series(&self, other: &Self, policy: &SemanticPolicy) -> bool {
+    return match (self, other) {
+      (CounterValue::Counter { name, .. }, CounterValue::Counter { name: other, .. }) => name == other,
+      (CounterValue::Theorem { class, .. }, CounterValue::Theorem { class: other, .. }) => {
+        policy.theorem(*class).counter == policy.theorem(*other).counter
+      },
+      (CounterValue::Counter { .. }, CounterValue::Theorem { .. })
+      | (CounterValue::Theorem { .. }, CounterValue::Counter { .. }) => false,
+    };
+  }
+}
+
 /// カウンタ群の状態を保持するレジストリ
 #[derive(Debug)]
 pub(super) struct CounterRegistry<'p> {

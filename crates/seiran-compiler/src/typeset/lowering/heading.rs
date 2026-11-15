@@ -42,8 +42,9 @@ pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
 
 /// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
 ///
-/// 本文と同じノード・書体規則で組む。`\ref` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んでリンクとリンク色を付けず、
-/// 脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を進めない。
+/// 本文と同じノード・書体規則で組む。`\ref` / `\refs` / `\refrange` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んで
+/// リンクとリンク色を付けず、脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を
+/// 進めない。
 fn toc_title(
   ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
@@ -78,6 +79,9 @@ fn toc_title(
       },
       HirInlineKind::Ref { .. } => {
         out.push(InlineNode::Text(state.ref_display(ctx.style, state.ref_target(inline.id)), parent_style));
+      },
+      HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => {
+        out.push(InlineNode::Text(ref_group_text(ctx.style, state, inline.id), parent_style));
       },
       HirInlineKind::Cite { .. } => out.extend(generated_toc_title(state.citation_display(inline.id), parent_style)),
       HirInlineKind::LineBreak => out.push(InlineNode::Text(" ".to_string(), parent_style)),
@@ -147,9 +151,17 @@ fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &L
       },
       HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
       HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
+      HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => {
+        out.push_str(&ref_group_text(style, state, inline.id));
+      },
     }
   }
   return out;
+}
+
+/// `\refs` / `\refrange` の箇所 `site` の表示を、断片を繋いだ平文にする
+fn ref_group_text(style: &ReadStyle, state: &LoweringState<'_>, site: NodeId) -> String {
+  return state.ref_group_pieces(style, site).into_iter().map(|(text, _)| return text).collect();
 }
 
 /// HIR の見出しノードをレイアウトノードに変換する
@@ -648,6 +660,24 @@ mod tests {
     let joined: String = texts(label).iter().map(|(t, _)| return *t).collect();
     assert!(joined.ends_with("前の節を受けて"), "{joined}");
     assert_eq!(headings[1].title_plain, "前の節を受けて");
+  }
+
+  #[test]
+  fn refs_in_heading_is_plain_in_toc_and_bookmark() {
+    let mut style = ReadStyle::default();
+    style.hyperref.link_color = Some(Color::new(0x00, 0x00, 0xff));
+
+    let headings = heading_records(
+      &style,
+      "\\section[label=sec:a]{A}\n\n\\section[label=sec:b]{B}\n\n\\section{\\refs{sec:a, sec:b} と \\refrange{sec:a}{sec:b}}\n",
+    );
+
+    let label = &headings[2].toc_label;
+    assert!(!flatten(label).iter().any(|n| matches!(n, InlineNode::Link { .. })), "{label:?}");
+    assert!(texts(label).iter().all(|(_, s)| return s.color.is_none()), "リンク色を付けない: {label:?}");
+    let joined: String = texts(label).iter().map(|(t, _)| return *t).collect();
+    assert!(joined.ends_with("Sections 1, 2 と Sections 1\u{2013}2"), "{joined}");
+    assert_eq!(headings[2].title_plain, "Sections 1, 2 と Sections 1\u{2013}2");
   }
 
   #[test]

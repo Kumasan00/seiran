@@ -1,0 +1,65 @@
+\section{複数参照と範囲参照}
+
+// 複数参照 `\refs` と範囲参照 `\refrange`: 前方参照と後方参照・折り返し・表セル・脚注本体・見出しの中を 1 文書で通す。
+// golden ではリンクの矩形が番号 1 個ずつに分かれて各ラベルを指し、種別名と区切りには矩形が無く、
+// 見出しの中の `\refs` は目次の行でリンクにならないことを見る。
+
+前方参照として\refs{tab:b, tab:a}と\refrange{tab:a}{tab:c}を、式は\refs{eq:one, eq:three}と\refrange{eq:one}{eq:three}で参照する。
+定理は\refs{thm:a, thm:b}、節は\refs{sec:first, sec:second}と並べられる。
+
+\begin{table}[label=tab:a, columns=left left]
+\head{
+  \row{項目 & 値}
+}
+\row{\refs{tab:a, tab:b}の比較 & 1}
+\caption{最初の表}
+\end{table}
+
+\begin{table}[label=tab:b, columns=left left]
+\row{甲 & 乙}
+\caption{二番目の表}
+\end{table}
+
+\begin{table}[label=tab:c, columns=left left]
+\row{丙 & 丁}
+\caption{三番目の表}
+\end{table}
+
+後方参照として\refs{tab:a, tab:b, tab:c}と\refrange{tab:b}{tab:c}を使う。
+
+\begin{align}
+a &= b \label{eq:one} \\
+c &= d \\
+e &= f \label{eq:three} \\
+g &= h \label{eq:four}
+\end{align}
+
+\begin{align}
+i &= j \label{eq:five} \\
+k &= l \label{eq:six} \\
+m &= n \label{eq:seven}
+\end{align}
+
+ラベルなしの式を挟んだ\refrange{eq:one}{eq:three}も範囲として成り立つ。式 \refs{eq:three, eq:four}も同様である。
+
+\begin{theorem}[label=thm:a]
+一つ目の定理。
+\end{theorem}
+
+\begin{theorem}[label=thm:b]
+二つ目の定理。
+\end{theorem}
+
+定理は\refs{thm:a, thm:b}、\refrange{thm:a}{thm:b}で参照する。
+
+行末近くから始めて折り返す長い複数参照を置くために、文章を並べ、行の終わりが近づいたところで\refs{eq:one, eq:three, eq:four, eq:five, eq:six, eq:seven}と続ける。
+
+脚注の中からも参照できる\footnote{脚注から\refs{tab:a, tab:b}と\refrange{eq:one}{eq:three}へ移動する。}。
+
+\section[label=sec:first]{最初の節}
+
+最初の節。
+
+\section[label=sec:second]{\refs{tab:a, tab:b}の比較}
+
+見出しの中の複数参照は本文の見出しではリンクになり、目次の行としおりでは平文になる。

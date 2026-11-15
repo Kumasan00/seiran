@@ -8,7 +8,7 @@
 //! 書き込み口を [`SemanticFacts::declare_label`]（先勝ち）1 つに限る。同じ対応を別の勝ち方で
 //! 持つ表を作れないことを、呼び出し手順ではなく可視性で保証する。
 
-use std::collections::HashMap;
+use std::{collections::HashMap, slice};
 
 use crate::{
   document::{HeadingLevel, NodeId, NodeMap},
@@ -38,6 +38,31 @@ pub(crate) struct HeadingFacts {
   pub level: HeadingLevel,
 }
 
+/// 複数参照・範囲参照 1 箇所の参照先
+#[derive(Debug, Clone, PartialEq, Eq)]
+pub(crate) enum RefGroup {
+  /// `\refs` — ソース順のラベル列
+  List(Vec<LabelId>),
+  /// `\refrange` — 始点と終点のラベル
+  Range {
+    /// 始点のラベル
+    first: LabelId,
+    /// 終点のラベル
+    last: LabelId,
+  },
+}
+
+impl RefGroup {
+  /// 参照先のラベルをソース順に返す（`Range` は始点・終点の順）
+  pub(crate) fn labels(&self) -> impl Iterator<Item = &LabelId> {
+    let (head, tail) = match self {
+      Self::List(labels) => (labels.as_slice(), None),
+      Self::Range { first, last } => (slice::from_ref(first), Some(last)),
+    };
+    return head.iter().chain(tail);
+  }
+}
+
 /// 意味解析が確定した事実の集合
 #[derive(Debug, Default)]
 pub(super) struct SemanticFacts {
@@ -50,6 +75,9 @@ pub(super) struct SemanticFacts {
   /// 参照箇所（`\ref` / `proof` の `[of=...]`）→ 参照先のラベル（`collect_facts` が `Ok` を
   /// 返した後は、すべて実在するラベルを指す）
   pub(super) refs: NodeMap<LabelId>,
+  /// 複数参照・範囲参照の箇所（`\refs` / `\refrange`）→ 参照先のラベル群（`collect_facts` が `Ok` を返した後は、
+  /// すべて実在するラベルを指す）
+  pub(super) ref_groups: NodeMap<RefGroup>,
   /// 引用箇所（`\cite`）→ 引用先（挿入順 = 文書順。CSL の採番がこの順序に依存する）
   pub(super) citations: NodeMap<CitationSiteFacts>,
   /// 見出しノード → 見出しレベル（挿入順 = 文書順。位置がそのまま `HeadingKey`）

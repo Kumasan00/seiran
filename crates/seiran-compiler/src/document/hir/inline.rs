@@ -93,6 +93,20 @@ pub(crate) enum HirInlineKind {
     label: String,
   },
 
+  /// 複数参照 `\refs{…}`。ラベルはソース順で、2 個以上・空なし・重複なし（frontend が保証）
+  RefList {
+    /// 参照先のラベル名の列。解決済み `LabelId` ではない
+    labels: Vec<String>,
+  },
+
+  /// 範囲参照 `\refrange{…}{…}`。`first != last`（frontend が保証）
+  RefRange {
+    /// 始点のラベル名。解決済み `LabelId` ではない
+    first: String,
+    /// 終点のラベル名。解決済み `LabelId` ではない
+    last: String,
+  },
+
   /// リンク（`\url{uri}` / `\href{uri}{表示}` / `\hyperref{label}{表示}`）。表示は子のインライン要素
   Link {
     /// リンクの行き先
