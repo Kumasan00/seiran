@@ -1,4 +1,23 @@
-\section{参照のサンプル}
+// 単一参照 `\ref`: 種別ごとの ref_format（chapter・section・subsection・table・equation・theorem・lemma）、
+// 前方参照と後方参照、sources をまたぐ参照（2 本目は tests/text/ref/second.sei）、表示全体が 1 つのリンクになることを見る。
 
-ref コマンドの 2 パス評価は実装本体タスクで配線されるため、
-このフィクスチャでは見出しとプレーンテキストだけ含めます。
+\chapter[label=ch:first]{第一章}
+
+2 本目のソースへの前方参照: \ref{ch:second}、\ref{sec:second}、\ref{tab:second}、\ref{eq:second}、\ref{lem:second}。
+
+\section[label=sec:first]{第一節}
+
+\subsection[label=sec:first-sub]{第一小節}
+
+\begin{table}[label=tab:first]
+\row{A & B}
+\caption{第一の表}
+\end{table}
+
+\begin{equation}[label=eq:first]
+x = 1
+\end{equation}
+
+\begin{theorem}[label=thm:first]
+第一の定理。
+\end{theorem}
