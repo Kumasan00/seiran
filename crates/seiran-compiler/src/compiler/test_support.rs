@@ -599,10 +599,11 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       font_candidates(table, "japanese_serif").insert(0, japanese_monospace);
     },
     // sources をまたぐ \ref を見るため、2 本目のソースを足す
-    "ref" => {
-      let sources = ["tests/text/ref.sei", "tests/text/ref/second.sei"];
-      table.insert("sources".to_string(), toml::Value::Array(sources.into_iter().map(toml::Value::from).collect()));
-    },
+    "ref" => table
+      .get_mut("sources")
+      .and_then(toml::Value::as_array_mut)
+      .expect("golden_fixture は config 差分の前に sources を入れるはず")
+      .push("tests/text/ref/second.sei".into()),
     _ => {},
   }
 }
