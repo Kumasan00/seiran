@@ -1,0 +1,15 @@
+\chapter{一章}
+
+\begin{figure}[label=fig:a]
+\image[width=30mm]{./tests/image/testimage1.jpg}
+\caption{図}
+\end{figure}
+
+\chapter{二章}
+
+\begin{figure}[label=fig:b]
+\image[width=30mm]{./tests/image/testimage1.jpg}
+\caption{図}
+\end{figure}
+
+章をまたぐ範囲 \refrange{fig:a}{fig:b} は拒否される。

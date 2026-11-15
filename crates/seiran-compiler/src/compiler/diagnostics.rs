@@ -662,6 +662,42 @@ fn diagnostic_undefined_ref() {
 }
 
 #[test]
+fn diagnostic_refs_invalid_argument() {
+  // `\refs` の重複ラベルは frontend が拒否する
+  let failure = compile_err(&["tests/text/diagnostics/refs_invalid_argument.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::invalid_command_argument".to_string()]);
+  assert_matches_golden("refs_invalid_argument", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_refs_unresolved() {
+  // `\refs` の未定義ラベルは 1 個ごとに診断され、label はコマンド全体を指す
+  let failure = compile_err(&["tests/text/diagnostics/refs_unresolved.sei"]);
+
+  assert_eq!(codes(&failure), vec!["semantics::unresolved_ref".to_string(); 2]);
+  assert_matches_golden("refs_unresolved", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_refs_mixed_kinds() {
+  // `\refs` に図と表を混ぜると拒否される
+  let failure = compile_err(&["tests/text/diagnostics/refs_mixed_kinds.sei"]);
+
+  assert_eq!(codes(&failure), vec!["semantics::mixed_ref_kinds".to_string()]);
+  assert_matches_golden("refs_mixed_kinds", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_ref_range_invalid() {
+  // 章をまたぐ図の `\refrange` は番号がリセットされるので拒否される
+  let failure = compile_err(&["tests/text/diagnostics/ref_range_invalid.sei"]);
+
+  assert_eq!(codes(&failure), vec!["semantics::invalid_ref_range".to_string()]);
+  assert_matches_golden("ref_range_invalid", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_undefined_hyperref() {
   // `\hyperref` の未定義ラベルは `\ref` と同じ診断で、label は呼び出し全体を指す
   let failure = compile_err(&["tests/text/diagnostics/undefined_hyperref.sei"]);

@@ -1,0 +1,15 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+semantics::invalid_ref_range
+
+  × 範囲参照が不正です: 始点 `fig:a` から終点 `fig:b` までの間で番号がリセットされています
+    ╭─[tests/text/diagnostics/ref_range_invalid.sei:15:23]
+ 14 │ 
+ 15 │ 章をまたぐ範囲 \refrange{fig:a}{fig:b} は拒否される。
+    ·                ───────────┬───────────
+    ·                           ╰── この範囲は成り立ちません
+    ╰────
+  help: \refrange の 2 つのラベルには、同じ種類で番号が途切れずに続く項目の始点と終点を、始点を先
+        にして指定してください

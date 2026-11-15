@@ -1,0 +1,13 @@
+\section{A}
+
+\begin{figure}[label=fig:a]
+\image[width=30mm]{./tests/image/testimage1.jpg}
+\caption{図}
+\end{figure}
+
+\begin{table}[label=tab:a, columns=left]
+\row{甲}
+\caption{表}
+\end{table}
+
+図と表を混ぜた \refs{fig:a, tab:a} は拒否される。

@@ -268,12 +268,13 @@ impl TestProjectBuilder {
     return self;
   }
 
-  /// golden fixture 名に対応する既定の入力（`sources` と機能有効化の差分）を適用する。
+  /// golden fixture 名に対応する既定の入力（`sources` と機能有効化の差分）を適用する。画像を使う fixture（`refs` の図）のため `FIGURE_IMAGE_ASSETS` を登録する。
   pub(super) fn golden_fixture(self, name: &str) -> Self {
     let name = name.to_string();
     let fixture = name.clone();
     return self
       .sources(&[&format!("tests/text/{name}.sei")])
+      .assets(FIGURE_IMAGE_ASSETS)
       .config_toml(move |table| apply_fixture_config_overrides(&fixture, table))
       .style_toml(move |table| apply_fixture_style_overrides(&name, table));
   }
@@ -446,6 +447,13 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
     "hyperref_internal" => {
       set(table, "toc", "enabled", true);
       set(table, "hyperref", "link_color", "#0000ff");
+    },
+    // 番号ごとのリンクにだけリンク色が付き、目次の行にはリンクが無いことを見る
+    "refs" => {
+      set(table, "toc", "enabled", true);
+      set(table, "hyperref", "link_color", "#0000ff");
+      set(table, "page", "margin_left", "190mm");
+      set(table, "page", "margin_right", "190mm");
     },
     // 題目に数式・装飾・リンクを含む目次。本文のリンク色との対比で、目次の行にリンク色が付かないことを見る
     "toc_inline" => {
