@@ -598,6 +598,11 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       let japanese_monospace = font_candidate(table, "japanese_monospace", 0);
       font_candidates(table, "japanese_serif").insert(0, japanese_monospace);
     },
+    // sources をまたぐ \ref を見るため、2 本目のソースを足す
+    "ref" => {
+      let sources = ["tests/text/ref.sei", "tests/text/ref/second.sei"];
+      table.insert("sources".to_string(), toml::Value::Array(sources.into_iter().map(toml::Value::from).collect()));
+    },
     _ => {},
   }
 }

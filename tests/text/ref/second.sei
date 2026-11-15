@@ -1,0 +1,22 @@
+// tests/text/ref.sei の 2 本目のソース。単独では golden にしない（tests/text/ 直下に置かない）。
+
+\chapter[label=ch:second]{第二章}
+
+1 本目のソースへの後方参照: \ref{ch:first}、\ref{sec:first}、\ref{sec:first-sub}、\ref{tab:first}、\ref{eq:first}、\ref{thm:first}。
+
+\section[label=sec:second]{第二節}
+
+\begin{table}[label=tab:second]
+\row{C & D}
+\caption{第二の表}
+\end{table}
+
+\begin{equation}[label=eq:second]
+y = 2
+\end{equation}
+
+\begin{lemma}[label=lem:second]
+第二の補題。
+\end{lemma}
+
+同じソースの中の後方参照: \ref{lem:second}。
