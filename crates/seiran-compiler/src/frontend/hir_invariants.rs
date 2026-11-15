@@ -502,6 +502,44 @@ mod tests {
     walk_inlines(&inlines, None, InlinePolicy::RejectIndex, &mut Vec::new());
   }
 
+  /// 走査で `\index` を拒否する文脈の検査に掛ける索引マーカー
+  fn index_marker() -> HirInline {
+    return HirInline::new(
+      NodeId::for_test(SourceId::new(0), 1000),
+      HirInlineKind::Index {
+        word: "x".to_string(),
+        reading: None,
+      },
+    );
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
+  fn index_in_heading_title_breaks_the_invariant() {
+    // 見出しタイトルが `RejectIndex` で走査されること（評価器を通らない HIR で固定する）
+    let mut hir = parse_for_test(r"\section{見出し}", SourceId::new(0)).unwrap();
+    let HirNodeKind::Heading(heading) = &mut hir.nodes[0].kind else {
+      panic!("見出しのはず: {:?}", hir.nodes[0]);
+    };
+    heading.title.push(index_marker());
+
+    visit_source(&hir);
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
+  fn index_in_table_head_cell_breaks_the_invariant() {
+    // ヘッダ行のセルが `RejectIndex` で走査されること（本体行の `Allow` と取り違えない）
+    let source = "\\begin{table}\n\\head{\n  \\row{a & b}\n}\n\\row{c & d}\n\\end{table}";
+    let mut hir = parse_for_test(source, SourceId::new(0)).unwrap();
+    let HirNodeKind::Table(table) = &mut hir.nodes[0].kind else {
+      panic!("表のはず: {:?}", hir.nodes[0]);
+    };
+    table.head[0].cells[0].content.push(index_marker());
+
+    visit_source(&hir);
+  }
+
   #[test]
   fn every_fixture_satisfies_hir_invariants() {
     for (name, content) in fixture_sources() {
