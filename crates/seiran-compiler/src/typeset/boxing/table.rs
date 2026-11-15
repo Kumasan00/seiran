@@ -479,7 +479,7 @@ fn resolve_column_widths(
 fn text_alignment(align: ColumnAlign) -> TextAlignment {
   return match align {
     ColumnAlign::Left => TextAlignment::Left,
-    ColumnAlign::Center => TextAlignment::Center,
+    ColumnAlign::Center | ColumnAlign::Decimal => TextAlignment::Center,
     ColumnAlign::Right => TextAlignment::Right,
   };
 }
@@ -522,7 +522,9 @@ fn layout_row_cells(
       let content_width = measure_items_width(&cell.items)?;
       let content_x = match align {
         ColumnAlign::Left => cell_x.try_add(frame.cell_padding)?,
-        ColumnAlign::Center => cell_x.try_add(band_width.try_sub(content_width)?.try_div(2.0)?)?,
+        ColumnAlign::Center | ColumnAlign::Decimal => {
+          cell_x.try_add(band_width.try_sub(content_width)?.try_div(2.0)?)?
+        },
         ColumnAlign::Right => cell_x.try_add(band_width)?.try_sub(frame.cell_padding)?.try_sub(content_width)?,
       };
       let mut line = unwrapped_line(&cell.items)?;

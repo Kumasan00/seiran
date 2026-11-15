@@ -6,7 +6,10 @@ use std::{collections::HashSet, path::Path};
 
 use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
-  frontend::{self, ParseError, evaluator::InlinePolicy},
+  frontend::{
+    self, ParseError,
+    evaluator::{InlinePolicy, column_value_violation, value_cells},
+  },
   project::PathResolver,
   source::{SourceId, Span},
 };
@@ -84,6 +87,13 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
               walk_inlines(&cell.content, Some(cell.id), policy, out);
             }
           }
+        }
+        for cell in value_cells(&table.columns, &table.rows) {
+          assert!(
+            column_value_violation(&cell.content).is_none(),
+            "decimal 列の値のセルは数値要素の形のはず: {:?}",
+            cell.content
+          );
         }
         if let Some(caption) = &table.caption {
           walk_inlines(caption, here, InlinePolicy::Allow, out);
@@ -513,6 +523,11 @@ mod tests {
     );
   }
 
+  /// 本文の字だけを持つインライン
+  fn text_x() -> HirInline {
+    return HirInline::new(NodeId::for_test(SourceId::new(0), 1001), HirInlineKind::Text("x".to_string()));
+  }
+
   #[test]
   #[should_panic(expected = "`\\index` を拒否する文脈に索引マーカーは無いはず")]
   fn index_in_heading_title_breaks_the_invariant() {
@@ -536,6 +551,19 @@ mod tests {
       panic!("表のはず: {:?}", hir.nodes[0]);
     };
     table.head[0].cells[0].content.push(index_marker());
+
+    visit_source(&hir);
+  }
+
+  #[test]
+  #[should_panic(expected = "decimal 列の値のセルは数値要素の形のはず")]
+  fn text_in_decimal_value_cell_breaks_the_invariant() {
+    let source = "\\begin{table}[columns=decimal]\n\\row{\\num{1}}\n\\end{table}";
+    let mut hir = parse_for_test(source, SourceId::new(0)).unwrap();
+    let HirNodeKind::Table(table) = &mut hir.nodes[0].kind else {
+      panic!("表のはず: {:?}", hir.nodes[0]);
+    };
+    table.rows[0].cells[0].content.push(text_x());
 
     visit_source(&hir);
   }

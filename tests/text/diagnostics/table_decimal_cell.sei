@@ -1,0 +1,5 @@
+\begin{table}[columns=left decimal]
+\head{\row{項目 & 値}}
+\row{長さ & \num{1.5}}
+\row{重さ & 2.25}
+\end{table}

@@ -60,7 +60,7 @@ pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Resu
     return EvalError::InvalidOptArgValue {
       name: "table".to_string(),
       key: "columns".to_string(),
-      expected: "left / center / right の空白区切り".to_string(),
+      expected: "left / center / right / decimal の空白区切り".to_string(),
       span: view.span().into(),
     };
   };

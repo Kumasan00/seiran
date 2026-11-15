@@ -4,10 +4,13 @@
 
 mod body;
 mod cell;
+mod decimal;
 mod grid;
 mod opt_args;
 
 use body::{resolve_column_count, scan_table_body};
+use decimal::check_column_values;
+pub(in crate::frontend) use decimal::{column_value_violation, value_cells};
 pub(super) use opt_args::SIGNATURE;
 use opt_args::{parse_columns_spec, parse_widths_spec, table_opt_args};
 
@@ -49,6 +52,7 @@ pub(super) fn table(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &Op
 
   let columns = columns_tokens.unwrap_or_else(|| vec![ColumnAlign::Left; column_count]);
   let widths = widths_tokens.unwrap_or_else(|| vec![ColumnWidth::Auto; column_count]);
+  check_column_values(&columns, &body.rows, ctx)?;
 
   return Ok(HirNode::new(
     id,
@@ -709,5 +713,91 @@ mod tests {
     assert!(matches!(with_separator, Err(EvalError::TableRuleBelowWithSeparator { .. })), "{with_separator:?}");
     assert!(inside.is_ok(), "{inside:?}");
     assert!(beside.is_ok(), "{beside:?}");
+  }
+
+  #[test]
+  fn table_parses_decimal_column() {
+    let source = r"\begin{table}[columns=left decimal]\row{a & \num{1.5}}\end{table}";
+    let nodes = eval_table(source).unwrap();
+    let HirNodeKind::Table(table) = &nodes[0].kind else {
+      panic!("表のはず");
+    };
+
+    assert_eq!(table.columns, &[ColumnAlign::Left, ColumnAlign::Decimal]);
+  }
+
+  #[test]
+  fn decimal_column_accepts_value_cells() {
+    // 空・\num・\qty・\color 1 段・末尾の脚注と索引
+    for value in [
+      "",
+      r"\num{-1.5e3}",
+      r"\qty{9.81}{m.s^{-2}}",
+      r"\color[color=#cc0000]{\num{0.25}}",
+      r"\num{2.5}\footnote{概数}",
+      r"\color[color=#cc0000]{\num{7}}\index{七}\footnote{注}",
+    ] {
+      let source = format!("\\begin{{table}}[columns=decimal]\\row{{{value}}}\\end{{table}}");
+
+      assert!(eval_table(&source).is_ok(), "{source}");
+    }
+  }
+
+  #[test]
+  fn decimal_column_rejects_other_value_cells() {
+    for value in [
+      "1.5",
+      "abc",
+      r"$\num{1.5}$",
+      r"\unit{m}",
+      r"\bold{\num{1}}",
+      r"\color[color=#cc0000]{\color[color=#00cc00]{\num{1}}}",
+      r"\color[color=#cc0000]{\num{1}\footnote{注}}",
+      r"\num{1} \footnote{注}",
+      r"\num{1}x\footnote{注}",
+      r"\num{1}\num{2}",
+      r"\footnote{注}\num{1}",
+      r"\footnote{注}",
+    ] {
+      let source = format!("\\begin{{table}}[columns=decimal]\\row{{{value}}}\\end{{table}}");
+
+      assert!(matches!(eval_table(&source), Err(EvalError::TableDecimalCell { .. })), "{source}");
+    }
+  }
+
+  #[test]
+  fn decimal_column_skips_head_and_span_cells() {
+    let source = r"\begin{table}[columns=left decimal decimal]
+\head{\row{名前 & 値 (mm) & 誤差}}
+\row{a & \cell[span=2]{合計は下} }
+\row{\cell[span=2]{左から始まる} & \num{1}}
+\end{table}";
+
+    assert!(eval_table(source).is_ok());
+  }
+
+  #[test]
+  fn decimal_column_accepts_row_span_values_and_covered_slots() {
+    let source = r"\begin{table}[columns=decimal left]
+\row{\cell[rowspan=2]{\num{1.5}} & a}
+\row{ & b}
+\end{table}";
+
+    assert!(eval_table(source).is_ok());
+  }
+
+  #[test]
+  fn decimal_cell_label_guides_bare_numbers_and_math() {
+    let label = |value: &str| {
+      let source = format!("\\begin{{table}}[columns=decimal]\\row{{{value}}}\\end{{table}}");
+      let Err(EvalError::TableDecimalCell { label, .. }) = eval_table(&source) else {
+        panic!("{source}");
+      };
+      return label;
+    };
+
+    assert!(label("1.5").contains(r"\num{…}"));
+    assert!(label(r"$\num{1.5}$").contains('$'));
+    assert!(label("abc").contains("decimal 列の値"));
   }
 }
