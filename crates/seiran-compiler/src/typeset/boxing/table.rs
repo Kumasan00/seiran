@@ -415,7 +415,7 @@ fn decimal_blocks(
 /// 2. `decimal` の塊（L + R + 左右 padding）が大きければ、その列の自然幅と下限を塊の幅にする
 /// 3. 全列 `Auto` の結合セルは、自然幅の不足分を跨ぐ列の自然幅へ sp 単位で均等に足す
 /// 4. `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は `max(自然幅, 左右 padding)`
-/// 5. `Flex`（`*`）は `max(available − 3 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
+/// 5. `Flex`（`*`）は `max(available − 4 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
 ///    残りから引くことを、違反が無くなるまで繰り返す
 /// 6. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ
 ///    `Flex` 列へ、無ければ跨ぐ `Auto` 列へ均等に足す（`Fixed` / `Ratio` は書き換えず、はみ出しは配置が
@@ -2520,12 +2520,12 @@ mod tests {
 
   #[test]
   fn decimal_flex_floor_includes_the_block() {
-    // 残り 10 ではなく、塊 35 + 余白 4 = 39 が下限
+    // セルごとの下限は 24 / 19 で、塊 35 + 余白 4 = 39 が下限（残り 10 ではない）
     let columns = [fixed(190.0), flex(ColumnAlign::Decimal)];
-    let rows = [row(vec![
-      cell(vec![word_box(5.0)]),
-      decimal_cell(20.0, 15.0),
-    ])];
+    let rows = [
+      row(vec![cell(vec![word_box(5.0)]), decimal_cell(20.0, 0.0)]),
+      row(vec![cell(vec![word_box(5.0)]), decimal_cell(5.0, 15.0)]),
+    ];
 
     let widths = resolve_column_widths_in_range(&frame(&columns, 2.0), &[], &rows, pt(200.0));
 
@@ -2537,7 +2537,8 @@ mod tests {
     // 塊込みの自然幅は [39, 4]、2 列にまたがる 56 + 4 = 60 の不足 17 を sp 単位で等分して [47.5, 12.5]
     let columns = [auto(ColumnAlign::Decimal), auto(ColumnAlign::Left)];
     let rows = [
-      row(vec![decimal_cell(20.0, 15.0), blank()]),
+      row(vec![decimal_cell(20.0, 0.0), blank()]),
+      row(vec![decimal_cell(5.0, 15.0), blank()]),
       row(vec![span_cell(vec![word_box(56.0)], 2)]),
     ];
 
