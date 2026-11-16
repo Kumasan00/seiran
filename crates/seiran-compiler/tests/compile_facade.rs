@@ -602,6 +602,24 @@ fn compile_warns_when_unbreakable_code_overflows_a_fixed_column() {
 }
 
 #[test]
+fn compile_warns_when_decimal_values_overflow_a_fixed_column() {
+  let body = "\\begin{table}[columns=decimal, widths=10pt]\n\\row{\\num{12345.678}}\n\\end{table}\n";
+
+  let compilation = compile_with_style("", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
+}
+
+#[test]
+fn compile_does_not_warn_for_decimal_values_in_an_auto_column() {
+  let body = "\\begin{table}[columns=decimal]\n\\row{\\num{12345.678}}\n\\row{\\num{1}}\n\\end{table}\n";
+
+  let compilation = compile_with_style("", body);
+
+  assert_eq!(warning_codes(&compilation.warnings), Vec::<String>::new());
+}
+
+#[test]
 fn compile_warns_on_every_row_when_padding_leaves_no_content_width() {
   let body = "\\begin{table}[widths=5pt]\n\\row{a}\n\\row{b}\n\\end{table}\n";
 
