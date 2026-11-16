@@ -399,7 +399,8 @@ LaTeX（amssymb 等）の標準名があればそれを使い、unicode-math の
 展開する（`vysmwhtsquare` → `tinysquare`、`tona` → `nwnearrows`）。大きさは tiny / small / mediumsmall / medium /
 無印 / large、塗りは black を付け、白は付けない（無印の名前が使用済みか LaTeX の別コマンドと同じ綴りになるときだけ
 `white` — `whitediamond`、`whitecircle`）。`math` 接頭辞は字体コマンド（`\mathbold` 等）と紛れるので付けない
-（`\sterling` `\ratio`）。LaTeX の既存コマンドと同じ綴りは避ける（⧾ ⧿ は `\tiny` を避けて `\tplus` `\tminus`）。
+（`\sterling` `\ratio`）。`text` 接頭辞も数式の文章コマンド `\text` と紛れるので付けない（textcomp の
+`\textperthousand` `\textpertenthousand` → `\perthousand` `\pertenthousand`。#1096）。LaTeX の既存コマンドと同じ綴りは避ける（⧾ ⧿ は `\tiny` を避けて `\tplus` `\tminus`）。
 
 LaTeX と同じ綴りの名前は、unicode-math がその LaTeX 名に対応づける字を指す（偽の友を作らない。G1）。このため
 `\preceq` は ⪯（≼ は `\preccurlyeq`）、`\perp` は U+27C2、`\models` は ⊧（⊨ は `\vDash`）、`\blacktriangle` は ▴
@@ -425,6 +426,12 @@ NFC で U+00C5 になる正準等価な字なので、どちらを直接書い�
   `\pagebreak` 事例の `\newpage` と同じ判定
 - **恒久不採用** ASCII の記号名（`\lparen` `\equal` `\vert` 等）— 字を呼ぶだけの名前が直接入力と同じ結果になる
   第 2 の書き方（§2 の判定）。`\vert` は unicode-math の名前のまま残っていたのを #1014 で外した
+- **恒久不採用** Ω U+2126・K U+212A の名前（`\ohm` 等）— NFC で U+03A9 / U+004B になる正準等価な字で、直接入力は
+  すでに `\Omega` / `K` と同じ記号になる。別名は同じ字への第 2 の書き方（`\angstrom` と U+212B の扱いと同じ。#1096）
+- **恒久不採用** 単位名の記号コマンド（siunitx の `\ohm` `\celsius` `\micro`）— `\unit` の単位ごとのコマンドの不採用と
+  同じ判定で、siunitx の単位コマンドの綴りなので偽の友にもなる（#1096）
+- **見送り** 互換字 ℃ U+2103・℉ U+2109・µ U+00B5 の ASCII 名 — 再検討トリガーは「互換字そのものを ASCII で書きたい」
+  という具体要求。推奨形（`\degree C`・`\degree F`・`\mu`）を記号コマンドで書け、互換字は直接入力のまま組める（#1096）
 
 #### 数式の演算子名は名前で limits を完結させる 32 個の組み込みで、字体コマンドに写されない（2026-10、#937）— P2, G1, G3, P6
 
