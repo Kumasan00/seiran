@@ -1,0 +1,27 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::ineffective_typeface
+
+  × \bold の書体が届く字が引数にありません
+   ╭─[tests/text/diagnostics/ineffective_typeface_a.sei:1:11]
+ 1 │ 本文の \bold{\num{1}} です。
+   ·        ───────┬──────
+   ·               ╰── 数値・単位・量の書体は [quantity].typeface が決めるので、この書体は届きません
+   ╰────
+  help: 書体コマンドを外してください。数値・単位・量の書体は style.toml の [quantity].typeface が
+        決め、\code は等幅に固定です。書体を組み合わせるなら \sansbold・\mathsansbold のような 1
+        つのコマンドで書いてください
+
+Error: frontend::eval::ineffective_typeface
+
+  × \mathbold の書体が届く字が引数にありません
+   ╭─[tests/text/diagnostics/ineffective_typeface_b.sei:1:9]
+ 1 │ 数式 $\mathbold{\mathitalic{x}}$ です。
+   ·       ────────────┬────────────
+   ·                   ╰── 内側の書体コマンドが書体を上書きするので、この書体は届きません
+   ╰────
+  help: 書体コマンドを外してください。数値・単位・量の書体は style.toml の [quantity].typeface が
+        決め、\code は等幅に固定です。書体を組み合わせるなら \sansbold・\mathsansbold のような 1
+        つのコマンドで書いてください

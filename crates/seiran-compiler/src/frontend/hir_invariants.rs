@@ -8,7 +8,7 @@ use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   frontend::{
     self, ParseError,
-    evaluator::{InlinePolicy, column_value_violation, value_cells},
+    evaluator::{InlinePolicy, column_value_violation, math_typeface_violation, typeface_violation, value_cells},
   },
   project::PathResolver,
   source::{SourceId, Span},
@@ -124,7 +124,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
 /// # Panics
 ///
 /// `policy` が禁じるリンクを作る要素・索引マーカーがあるとき、複数参照のラベルが 2 個未満・空・重複を含むとき、
-/// または範囲参照の両端が同じラベルのとき。
+/// 範囲参照の両端が同じラベルのとき、または書体コマンドの中身に書体が届く要素が無いとき。
 fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePolicy, out: &mut Vec<Visited>) {
   let (index_allowed, links_allowed) = match policy {
     InlinePolicy::Allow => (true, true),
@@ -148,9 +148,17 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePol
     });
     let here = Some(inline.id);
     match &inline.kind {
-      HirInlineKind::Styled { children, .. }
-      | HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, policy, out),
+      HirInlineKind::Styled { children, .. } => {
+        assert!(
+          typeface_violation(children).is_none(),
+          "書体コマンドの中身には書体が届く要素があるはず: {:?}",
+          inline.id
+        );
+        walk_inlines(children, here, policy, out);
+      },
+      HirInlineKind::Colored { children, .. } | HirInlineKind::Footnote { body: children, .. } => {
+        walk_inlines(children, here, policy, out);
+      },
       HirInlineKind::Link { children, .. } => walk_inlines(children, here, InlinePolicy::RejectIndexAndLinks, out),
       HirInlineKind::Math(math) => walk_math(math, here, out),
       HirInlineKind::RefList { labels } => {
@@ -204,6 +212,10 @@ fn creates_link(kind: &HirInlineKind) -> bool {
 }
 
 /// 数式ノードを親子関係つきで走査する
+///
+/// # Panics
+///
+/// 字体コマンドの中身に字体が届く要素が無いとき。
 fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) {
   for node in nodes {
     out.push(Visited {
@@ -212,7 +224,15 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
     });
     let here = Some(node.id);
     match &node.kind {
-      HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => walk_math(children, here, out),
+      HirMathKind::Group(children) => walk_math(children, here, out),
+      HirMathKind::Styled { children, .. } => {
+        assert!(
+          math_typeface_violation(children).is_none(),
+          "字体コマンドの中身には字体が届く要素があるはず: {:?}",
+          node.id
+        );
+        walk_math(children, here, out);
+      },
       HirMathKind::Superscript(child)
       | HirMathKind::Subscript(child)
       | HirMathKind::Accent { base: child, .. }

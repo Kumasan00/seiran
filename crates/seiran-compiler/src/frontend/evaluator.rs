@@ -22,6 +22,8 @@ pub(super) use error::EvalError;
 pub(super) use inline::InlinePolicy;
 #[cfg(test)]
 use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) use typeface_reach::{math_typeface_violation, typeface_violation};
 
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
