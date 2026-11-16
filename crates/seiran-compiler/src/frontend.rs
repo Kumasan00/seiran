@@ -1945,6 +1945,28 @@ mod tests {
   }
 
   #[test]
+  fn per_mille_symbol_commands_and_direct_input_are_the_same_ord_symbol() {
+    for (name, ch) in [("perthousand", '\u{2030}'), ("pertenthousand", '\u{2031}')] {
+      let command_text = evaluate_source(&format!("\\{name}"));
+      let command_math = math_kinds(&format!("$\\{name}$\n"));
+      let direct_math = math_kinds(&format!("${ch}$\n"));
+      let direct_text = evaluate_source(&ch.to_string());
+
+      let HirNodeKind::Paragraph(inlines) = &command_text[0].kind else {
+        panic!("Paragraph が期待されます: \\{name}");
+      };
+      assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol(c) if *c == ch), "\\{name}: {inlines:?}");
+      assert_eq!(command_math, vec![math_symbol(&ch.to_string(), MathClass::Ord)], "\\{name}");
+      assert_eq!(direct_math, vec![math_symbol(&ch.to_string(), MathClass::Ord)], "{ch:?}");
+      // 本文の直接入力はテキストのまま
+      let HirNodeKind::Paragraph(inlines) = &direct_text[0].kind else {
+        panic!("Paragraph が期待されます: {ch:?}");
+      };
+      assert!(matches!(&inlines[0].kind, HirInlineKind::Text(_)), "{ch:?}: {inlines:?}");
+    }
+  }
+
+  #[test]
   fn doublestruck_pi_symbol_is_unknown() {
     for source in [r"\doublestruckpi", r"$\doublestruckpi$"] {
       let error = evaluate_error(source);
