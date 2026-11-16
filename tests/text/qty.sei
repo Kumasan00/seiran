@@ -7,9 +7,9 @@
 
 重力加速度は \qty{9.8}{m.s^{-2}}、質量は \qty{1.2e3}{kg}、比熱は \qty{-40}{J.kg^{-1}.K^{-1}}、周波数は \qty{5}{s^{-1}}。
 角度は \qty{30}{\degree}・\qty{15}{\prime}・\qty{20}{\doubleprime}、温度 \qty{25}{\degree C}、割合 \qty{50}{%}、角速度 \qty{3}{\degree.s^{-1}}、立体角 \qty{2}{\degree^{2}}。
-長さ\qty{3}{m}の棒。装飾の中でも書体は変わらない: \bold{\qty{5}{N.m}} と \color[color=#ff0000]{\qty{1}{Pa}}。
+長さ\qty{3}{m}の棒。装飾の中でも書体は変わらない: \bold{太字の \qty{5}{N.m}} と \color[color=#ff0000]{\qty{1}{Pa}}。
 
-数式の中では $v = \qty{3}{m.s^{-1}} + \mathbold{\qty{2}{m.s^{-1}}}$ と $x^{\qty{1}{m}}$ になる。脚注にも書ける\footnote{脚注の \qty{0.5}{mol.L^{-1}}。}。
+数式の中では $v = \qty{3}{m.s^{-1}} + \mathbold{b\qty{2}{m.s^{-1}}}$ と $x^{\qty{1}{m}}$ になる。脚注にも書ける\footnote{脚注の \qty{0.5}{mol.L^{-1}}。}。
 
 \begin{equation}
 E = \qty{13.6}{eV}
