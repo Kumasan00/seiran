@@ -1958,11 +1958,13 @@ mod tests {
       assert!(matches!(&inlines[0].kind, HirInlineKind::Symbol(c) if *c == ch), "\\{name}: {inlines:?}");
       assert_eq!(command_math, vec![math_symbol(&ch.to_string(), MathClass::Ord)], "\\{name}");
       assert_eq!(direct_math, vec![math_symbol(&ch.to_string(), MathClass::Ord)], "{ch:?}");
-      // 本文の直接入力はテキストのまま
       let HirNodeKind::Paragraph(inlines) = &direct_text[0].kind else {
         panic!("Paragraph が期待されます: {ch:?}");
       };
-      assert!(matches!(&inlines[0].kind, HirInlineKind::Text(_)), "{ch:?}: {inlines:?}");
+      assert!(
+        matches!(&inlines[0].kind, HirInlineKind::Text(_)),
+        "本文の直接入力はテキストのまま: {ch:?}: {inlines:?}"
+      );
     }
   }
 
