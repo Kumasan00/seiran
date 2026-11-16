@@ -701,6 +701,22 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// decimal 列の値のセル（本体行の span 1 のセル）の中身が数値要素の形でない場合
+  #[error("decimal 列のセルには数値（\\num / \\qty）しか書けません")]
+  #[diagnostic(
+    code(frontend::eval::table_decimal_cell),
+    help(
+      "decimal 列の本体のセルは、空か、\\num{{…}} / \\qty{{…}}{{…}} 1 個（\\color[color=…]{{…}} で 1 段包むのは可）と、その直後に続く \\footnote / \\index だけです（例: `\\num{{-1.5}}`、`\\color[color=#cc0000]{{\\num{{0.25}}}}`、`\\qty{{9.81}}{{m.s^{{-2}}}}\\footnote{{概数}}`）。見出しは \\head に、列をまたぐ内容は \\cell[span=N]{{…}} に書いてください"
+    )
+  )]
+  TableDecimalCell {
+    /// 列の値のセルのソース位置
+    #[label("{label}")]
+    span: SourceSpan,
+    /// ラベルの文言（裸の数字列・数式の中の数値要素・それ以外で変わる）
+    label: String,
+  },
+
   /// `\image` のパスの拡張子が対応形式のどれでもない場合
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(

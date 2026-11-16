@@ -14,6 +14,8 @@ mod signature;
 mod string_arg;
 
 pub(super) use context::EvalContext;
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) use environment::{column_value_violation, value_cells};
 pub(super) use error::EvalError;
 #[cfg(any(test, feature = "fuzzing"))]
 pub(super) use inline::InlinePolicy;

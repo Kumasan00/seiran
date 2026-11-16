@@ -1,0 +1,29 @@
+\section{小数点で揃える列}
+
+// decimal 列の値（本体行の span 1 のセル）は小数点の位置で、整数は整数部の右端で揃う。見出しと結合セルは中央。
+
+\begin{table}[columns=left decimal decimal]
+\head{\row{試料 & 長さ & 測定値}}
+\row{A & \num{-1.5} & \qty{9.81}{m.s^{-2}}}
+\row{B & \num{12.25} & \qty{30}{\degree}}
+\row{C & \num{3} & \color[color=#cc0000]{\num{0.5}}}
+\row{D & \num{1.2e3} & \num{2.5}\footnote{概数}}
+\row{E & \cell[rowspan=2]{\num{7}} & \num{7}}
+\row{F &  & }
+\row{G & \cell[span=2]{結合セルは中央}}
+\end{table}
+
+見出しが塊より広い列: 列幅は見出しで決まり、塊は見出しの下の中央に来る。
+
+\begin{table}[columns=decimal]
+\head{\row{とても長い見出しの列}}
+\row{\num{1.5}}
+\row{\num{10}}
+\end{table}
+
+残り幅の列: 塊は帯の中央。
+
+\begin{table}[columns=left decimal, widths=auto *]
+\row{x & \num{0.125}}
+\row{y & \num{100}}
+\end{table}

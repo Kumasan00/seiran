@@ -16,6 +16,8 @@ mod table;
 mod theorem;
 
 use phf::phf_map;
+#[cfg(any(test, feature = "fuzzing"))]
+pub(in crate::frontend) use table::{column_value_violation, value_cells};
 
 use crate::{
   document::{GridLayout, HirMath, HirNode, QuoteKind, TextAlignment, TheoremClass},

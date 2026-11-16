@@ -22,8 +22,38 @@ const PLANE_ANGLE_SYMBOLS: [&str; 3] = ["\u{00B0}", "\u{2032}", "\u{2033}"];
 /// 負号は U+2212。指数があれば `仮数 × 10^指数` の形にし、積の記号の前後は中アキ。
 pub(in crate::typeset) fn number_pieces(numeral: &Numeral, style: &QuantityStyle) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
-  push_number(&mut pieces, numeral, style);
+  push_integer(&mut pieces, numeral, style);
+  push_after_integer(&mut pieces, numeral, style);
   return pieces;
+}
+
+/// 数値を符号 + 整数部（桁区切り込み）の左と、小数点 + 小数部 + 指数の右に分ける
+///
+/// 分けるのは数値の構造（`Numeral` の部分）で、出力した字は探さない（`decimal_marker = comma` と
+/// `digit_group_separator = period` の組でも `.` は左に入る）。つなぐと [`number_pieces`] と同じ字になる。
+pub(in crate::typeset) fn split_number_pieces(
+  numeral: &Numeral,
+  style: &QuantityStyle,
+) -> (Vec<QuantityPiece>, Vec<QuantityPiece>) {
+  let mut left = Vec::new();
+  push_integer(&mut left, numeral, style);
+  let mut right = Vec::new();
+  push_after_integer(&mut right, numeral, style);
+  return (left, right);
+}
+
+/// 量を [`split_number_pieces`] と同じ左と、数値の残り + 数値と単位の間のアキ + 単位の右に分ける
+///
+/// アキは [`quantity_pieces`] と同じ規則（平面角の例外を含む）。つなぐと [`quantity_pieces`] と同じ字になる。
+pub(in crate::typeset) fn split_quantity_pieces(
+  numeral: &Numeral,
+  unit: &[UnitFactor],
+  style: &QuantityStyle,
+) -> (Vec<QuantityPiece>, Vec<QuantityPiece>) {
+  let (left, mut right) = split_number_pieces(numeral, style);
+  push_number_unit_gap(&mut right, unit, style);
+  push_unit(&mut right, unit, style);
+  return (left, right);
 }
 
 /// 単位の式を `style` の表記の部品列にする（指数は負号を U+2212 にした上付き）
@@ -46,29 +76,40 @@ pub(in crate::typeset) fn quantity_pieces(
   style: &QuantityStyle,
 ) -> Vec<QuantityPiece> {
   let mut pieces = Vec::new();
-  push_number(&mut pieces, numeral, style);
-  let plane_angle =
-    matches!(unit, [UnitFactor { symbol, exponent: None }] if PLANE_ANGLE_SYMBOLS.contains(&symbol.as_str()));
-  if !plane_angle {
-    match style.number_unit_separator {
-      NumberUnitSeparator::None => {},
-      NumberUnitSeparator::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
-      NumberUnitSeparator::Medium => pieces.push(QuantityPiece::Space(MathSpace::Medium)),
-      NumberUnitSeparator::Thick => pieces.push(QuantityPiece::Space(MathSpace::Thick)),
-    }
-  }
+  push_integer(&mut pieces, numeral, style);
+  push_after_integer(&mut pieces, numeral, style);
+  push_number_unit_gap(&mut pieces, unit, style);
   push_unit(&mut pieces, unit, style);
   return pieces;
 }
 
-/// 数値を `style` の書式で部品列 `pieces` に積む
-fn push_number(pieces: &mut Vec<QuantityPiece>, numeral: &Numeral, style: &QuantityStyle) {
+/// 数値と単位の間の `number_unit_separator` のアキを部品列 `pieces` に積む（単位が平面角 ° ′ ″ の 1 因子だけなら積まない）
+fn push_number_unit_gap(pieces: &mut Vec<QuantityPiece>, unit: &[UnitFactor], style: &QuantityStyle) {
+  let plane_angle =
+    matches!(unit, [UnitFactor { symbol, exponent: None }] if PLANE_ANGLE_SYMBOLS.contains(&symbol.as_str()));
+  if plane_angle {
+    return;
+  }
+  match style.number_unit_separator {
+    NumberUnitSeparator::None => {},
+    NumberUnitSeparator::Thin => pieces.push(QuantityPiece::Space(MathSpace::Thin)),
+    NumberUnitSeparator::Medium => pieces.push(QuantityPiece::Space(MathSpace::Medium)),
+    NumberUnitSeparator::Thick => pieces.push(QuantityPiece::Space(MathSpace::Thick)),
+  }
+}
+
+/// 数値の符号と整数部（桁区切り込み）を部品列 `pieces` に積む
+fn push_integer(pieces: &mut Vec<QuantityPiece>, numeral: &Numeral, style: &QuantityStyle) {
   match numeral.sign {
     Some(NumberSign::Plus) => push_text(pieces, "+"),
     Some(NumberSign::Minus) => push_text(pieces, "\u{2212}"),
     None => {},
   }
   push_grouped(pieces, &numeral.integer, true, style);
+}
+
+/// 数値の小数点・小数部・指数（整数部より後ろ）を部品列 `pieces` に積む
+fn push_after_integer(pieces: &mut Vec<QuantityPiece>, numeral: &Numeral, style: &QuantityStyle) {
   if let Some(fraction) = &numeral.fraction {
     push_text(
       pieces,
@@ -160,7 +201,7 @@ pub(super) fn plain_text(pieces: &[QuantityPiece]) -> String {
       },
       QuantityPiece::Superscript(text) => out.extend(text.chars().map(|ch| {
         return math::superscript_char(ch).expect(
-          "指数の字は frontend の数値・単位の文法を通った ASCII 数字と、push_number / push_unit が負号にした U+2212 だけで、どれも上付き字の表にある",
+          "指数の字は frontend の数値・単位の文法を通った ASCII 数字と、push_after_integer / push_unit が負号にした U+2212 だけで、どれも上付き字の表にある",
         );
       })),
     }
@@ -214,7 +255,7 @@ fn push_grouped(pieces: &mut Vec<QuantityPiece>, digits: &str, from_right: bool,
 
 #[cfg(test)]
 mod tests {
-  use super::{number_pieces, plain_text, quantity_pieces, unit_pieces};
+  use super::{number_pieces, plain_text, quantity_pieces, split_number_pieces, split_quantity_pieces, unit_pieces};
   use crate::{
     document::{MathSpace, NumberSign, Numeral, UnitFactor},
     style::{
@@ -510,5 +551,117 @@ mod tests {
     assert_eq!(plain(NumberUnitSeparator::Thin), "5\u{202F}m");
     assert_eq!(plain(NumberUnitSeparator::Medium), "5\u{205F}m");
     assert_eq!(plain(NumberUnitSeparator::Thick), "5\u{2004}m");
+  }
+
+  /// L と R をつなぎ、隣り合う字を 1 つに畳む
+  fn joined(left: Vec<QuantityPiece>, right: Vec<QuantityPiece>) -> Vec<QuantityPiece> {
+    let mut pieces: Vec<QuantityPiece> = Vec::new();
+    for piece in left.into_iter().chain(right) {
+      match (pieces.last_mut(), piece) {
+        (Some(QuantityPiece::Text(last)), QuantityPiece::Text(next)) => last.push_str(&next),
+        (_, piece) => pieces.push(piece),
+      }
+    }
+    return pieces;
+  }
+
+  #[test]
+  fn split_number_pieces_puts_sign_and_integer_on_the_left() {
+    let value = numeral(Some(NumberSign::Minus), "1234", Some("5"), Some("-3"));
+
+    let grouped = QuantityStyle {
+      group_four_digits: true,
+      ..QuantityStyle::default()
+    };
+
+    let (left, right) = split_number_pieces(&value, &grouped);
+
+    assert_eq!(left, [text("\u{2212}1"), THIN, text("234")]);
+    assert_eq!(
+      right,
+      [
+        text(".5"),
+        MEDIUM,
+        text("\u{00D7}"),
+        MEDIUM,
+        text("10"),
+        sup("\u{2212}3")
+      ]
+    );
+  }
+
+  #[test]
+  fn split_number_pieces_of_an_integer_has_an_empty_right() {
+    let (left, right) = split_number_pieces(&int("42"), &QuantityStyle::default());
+
+    assert_eq!(left, [text("42")]);
+    assert_eq!(right, []);
+  }
+
+  #[test]
+  fn split_number_pieces_splits_by_structure_not_by_glyph() {
+    let european = QuantityStyle {
+      decimal_marker: DecimalMarker::Comma,
+      digit_group_separator: DigitGroupSeparator::Period,
+      ..QuantityStyle::default()
+    };
+
+    let (left, right) = split_number_pieces(&numeral(None, "1234567", Some("5"), None), &european);
+
+    assert_eq!(left, [text("1.234.567")]);
+    assert_eq!(right, [text(",5")]);
+  }
+
+  #[test]
+  fn split_pieces_join_back_to_the_unsplit_pieces() {
+    let style = QuantityStyle::default();
+    let european = QuantityStyle {
+      decimal_marker: DecimalMarker::Comma,
+      digit_group_separator: DigitGroupSeparator::Period,
+      ..QuantityStyle::default()
+    };
+    let numerals = [
+      numeral(Some(NumberSign::Minus), "1234", Some("5"), Some("-3")),
+      int("42"),
+      numeral(None, "1234567", Some("5"), None),
+      numeral(None, "1", None, Some("3")),
+      numeral(Some(NumberSign::Plus), "0", Some("5"), None),
+    ];
+    for value in &numerals {
+      for style in [&style, &european] {
+        let (left, right) = split_number_pieces(value, style);
+        assert_eq!(joined(left, right), number_pieces(value, style), "{value:?}");
+      }
+    }
+    let quantities = [
+      (numeral(None, "9", Some("81"), None), vec![factor("m", None), factor("s", Some("-2"))]),
+      (int("30"), vec![factor("\u{00B0}", None)]),
+    ];
+    for (value, unit) in &quantities {
+      let (left, right) = split_quantity_pieces(value, unit, &style);
+      assert_eq!(joined(left, right), quantity_pieces(value, unit, &style), "{value:?} {unit:?}");
+    }
+    let slash = QuantityStyle {
+      negative_exponent: NegativeExponent::Slash,
+      ..QuantityStyle::default()
+    };
+    let unit = [factor("m", None), factor("s", Some("-2"))];
+    let (left, right) = split_quantity_pieces(&numeral(None, "9", Some("81"), None), &unit, &slash);
+    assert_eq!(left, [text("9")]);
+    assert!(right.contains(&text("m/s")) || right.contains(&sup("2")), "右側にスラッシュ形の単位: {right:?}");
+    assert_eq!(
+      joined(left, right),
+      quantity_pieces(&numeral(None, "9", Some("81"), None), &unit, &slash),
+      "スラッシュ形でも連結すると分けない場合と一致する"
+    );
+  }
+
+  #[test]
+  fn split_quantity_pieces_puts_the_unit_on_the_right() {
+    let (left, right) =
+      split_quantity_pieces(&numeral(None, "9", Some("81"), None), &[factor("m", None)], &QuantityStyle::default());
+
+    assert_eq!(left, [text("9")]);
+    assert_eq!(right, [text(".81"), THIN, text("m")]);
   }
 }

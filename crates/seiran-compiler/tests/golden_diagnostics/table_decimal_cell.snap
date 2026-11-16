@@ -1,0 +1,18 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::table_decimal_cell
+
+  × decimal 列のセルには数値（\num / \qty）しか書けません
+   ╭─[tests/text/diagnostics/table_decimal_cell.sei:4:14]
+ 3 │ \row{長さ & \num{1.5}}
+ 4 │ \row{重さ & 2.25}
+   ·            ───┬──
+   ·               ╰── 裸の数字は数値として読みません。\num{…} で書いてください
+ 5 │ \end{table}
+   ╰────
+  help: decimal 列の本体のセルは、空か、\num{…} / \qty{…}{…} 1 個（\color[color=…]{…} で 1 段包む
+        のは可）と、その直後に続く \footnote / \index だけです（例: `\num{-1.5}`、
+        `\color[color=#cc0000]{\num{0.25}}`、`\qty{9.81}{m.s^{-2}}\footnote{概数}`）。見出しは
+        \head に、列をまたぐ内容は \cell[span=N]{…} に書いてください

@@ -166,6 +166,15 @@ fn diagnostic_table_separator_on_frame_boundary() {
 }
 
 #[test]
+fn diagnostic_table_decimal_cell() {
+  // 裸の数字列は数値の 2 つ目の綴りになるので拒否し、\num での書き方を案内する
+  let failure = compile_err(&["tests/text/diagnostics/table_decimal_cell.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::table_decimal_cell".to_string()]);
+  assert_matches_golden("table_decimal_cell", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_table_rule_below_on_frame_boundary() {
   // G1: 表の最後の行の下は枠罫の持ち場なので、部分罫を重ねない
   let failure = compile_err(&["tests/text/diagnostics/table_rule_below_on_frame_boundary.sei"]);

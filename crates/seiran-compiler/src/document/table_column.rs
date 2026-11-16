@@ -19,11 +19,13 @@ pub(crate) enum ColumnAlign {
   Center,
   /// 右揃え
   Right,
+  /// 小数点揃え（`decimal`）。列の値（本体行の span 1 のセル）は小数点の位置で揃え、それ以外のセルは中央揃えとして扱う
+  Decimal,
 }
 
 /// [`ColumnAlign`] の `FromStr` が受理しないキーワードを渡されたときのエラー。
 #[derive(Debug, Error)]
-#[error("列の揃えは left / center / right のいずれかである必要があります")]
+#[error("列の揃えは left / center / right / decimal のいずれかである必要があります")]
 pub(crate) struct ParseColumnAlignError;
 
 impl FromStr for ColumnAlign {
@@ -37,6 +39,7 @@ impl FromStr for ColumnAlign {
       "left" => Ok(ColumnAlign::Left),
       "center" => Ok(ColumnAlign::Center),
       "right" => Ok(ColumnAlign::Right),
+      "decimal" => Ok(ColumnAlign::Decimal),
       _ => Err(ParseColumnAlignError),
     };
   }
