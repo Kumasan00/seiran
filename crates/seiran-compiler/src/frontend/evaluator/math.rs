@@ -21,6 +21,7 @@ use crate::{
       inline::{self, TokenInline},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::{Bound, Signature},
+      typeface_reach,
     },
     syntax::{
       self, ArgMode, CstElement, CstNode, SyntaxKind,
@@ -531,6 +532,13 @@ impl MathUnary {
       Self::Styled(variant) => {
         let id = ctx.alloc(view.span());
         let children = evaluate_math_children(source, ctx, arg)?;
+        if let Some(label) = typeface_reach::math_typeface_violation(&children) {
+          return Err(EvalError::IneffectiveTypeface {
+            name: format!("\\{}", view.name()),
+            span: view.span().into(),
+            label: label.to_string(),
+          });
+        }
         return Ok(HirMath::new(id, HirMathKind::Styled { variant, children }));
       },
       Self::Sqrt => {

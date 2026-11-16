@@ -562,7 +562,7 @@ mod tests {
 
   #[test]
   fn inline_math_styled_nests_inner_overrides_outer() {
-    let result = evaluate_source(r"$\mathbold{\mathitalic{x}}$");
+    let result = evaluate_source(r"$\mathbold{a\mathitalic{x}}$");
 
     let HirNodeKind::Paragraph(inlines) = &result[0].kind else {
       panic!("Paragraph が期待されます");
@@ -581,9 +581,9 @@ mod tests {
     let HirMathKind::Styled {
       variant: inner,
       children: inner_children,
-    } = &outer_children[0].kind
+    } = &outer_children[1].kind
     else {
-      panic!("内側 Styled が期待されます: {:?}", outer_children[0]);
+      panic!("内側 Styled が期待されます: {:?}", outer_children[1]);
     };
     assert_eq!(*inner, MathVariant::Italic);
     assert!(matches!(&inner_children[0].kind, HirMathKind::Text(t) if t == "x"));
@@ -2137,12 +2137,12 @@ mod tests {
 
   #[test]
   fn text_inside_math_variant_stays_prose() {
-    let math = inline_math_nodes(r"$\mathbold{\text{if}}$");
+    let math = inline_math_nodes(r"$\mathbold{a\text{if}}$");
 
     let HirMathKind::Styled { children, .. } = &math[0].kind else {
       panic!("Styled が期待されます: {math:?}");
     };
-    assert_eq!(children[0].kind, prose("if"));
+    assert_eq!(children[1].kind, prose("if"));
   }
 
   #[test]
