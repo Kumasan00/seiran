@@ -168,6 +168,8 @@ static SYMBOLS: phf::Map<&'static str, MathSymbol> = phf_map! {
   "horizontalbar" => MathSymbol::new('\u{2015}', MathClass::Ord),
   "doublelowline" => MathSymbol::new('\u{2017}', MathClass::Ord),
   "twodotleader" => MathSymbol::new('\u{2025}', MathClass::Ord),
+  "perthousand" => MathSymbol::new('\u{2030}', MathClass::Ord),
+  "pertenthousand" => MathSymbol::new('\u{2031}', MathClass::Ord),
   "doubleprime" => MathSymbol::new('\u{2033}', MathClass::Ord),
   "tripleprime" => MathSymbol::new('\u{2034}', MathClass::Ord),
   "backdoubleprime" => MathSymbol::new('\u{2036}', MathClass::Ord),
@@ -1475,6 +1477,10 @@ mod tests {
     assert_eq!(ord("adots"), Some(('\u{22F0}', MathClass::Ord)), "vdots ddots と同じ Ord");
     assert_eq!(ord("degree"), Some(('\u{00B0}', MathClass::Ord)), "gensymb の \\degree と同じ字");
     assert_eq!(direct_input_class('\u{00B0}'), Some(MathClass::Ord));
+    assert_eq!(ord("perthousand"), Some(('\u{2030}', MathClass::Ord)), "数値に後置する記号で ° ′ と同じ Ord");
+    assert_eq!(ord("pertenthousand"), Some(('\u{2031}', MathClass::Ord)));
+    assert_eq!(direct_input_class('\u{2030}'), Some(MathClass::Ord));
+    assert_eq!(direct_input_class('\u{2031}'), Some(MathClass::Ord));
   }
 
   #[test]
