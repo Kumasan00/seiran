@@ -57,7 +57,8 @@ pub(in crate::frontend) fn column_value_violation(content: &[HirInline]) -> Opti
   if is_value_shape(content) {
     return None;
   }
-  if let [only] = content
+  let marks = content.iter().rev().take_while(|inline| return is_trailing_mark(inline)).count();
+  if let [only] = &content[..content.len() - marks]
     && let HirInlineKind::Text(text) = &only.kind
     && text.chars().all(|c| return NUMERIC_CHARS.contains(c))
     && text.chars().any(|c| return c.is_ascii_digit())

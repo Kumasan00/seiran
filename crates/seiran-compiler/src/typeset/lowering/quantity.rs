@@ -641,6 +641,19 @@ mod tests {
       let (left, right) = split_quantity_pieces(value, unit, &style);
       assert_eq!(joined(left, right), quantity_pieces(value, unit, &style), "{value:?} {unit:?}");
     }
+    let slash = QuantityStyle {
+      negative_exponent: NegativeExponent::Slash,
+      ..QuantityStyle::default()
+    };
+    let unit = [factor("m", None), factor("s", Some("-2"))];
+    let (left, right) = split_quantity_pieces(&numeral(None, "9", Some("81"), None), &unit, &slash);
+    assert_eq!(left, [text("9")]);
+    assert!(right.contains(&text("m/s")) || right.contains(&sup("2")), "右側にスラッシュ形の単位: {right:?}");
+    assert_eq!(
+      joined(left, right),
+      quantity_pieces(&numeral(None, "9", Some("81"), None), &unit, &slash),
+      "スラッシュ形でも連結すると分けない場合と一致する"
+    );
   }
 
   #[test]

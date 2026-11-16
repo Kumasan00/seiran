@@ -798,6 +798,7 @@ mod tests {
     };
 
     assert!(label("1.5").contains(r"\num{…}"));
+    assert!(label(r"1.5\footnote{x}").contains(r"\num{…}"), "脚注マークの前の裸の数字も案内する");
     assert!(label(r"$\num{1.5}$").contains('$'));
     assert!(label("abc").contains("decimal 列の値"));
   }

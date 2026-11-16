@@ -13,7 +13,7 @@ use crate::{
   length::{Length, ParseLengthError},
 };
 
-/// `table[columns=left center right]`（列の揃え）
+/// `table[columns=left center right decimal]`（列の揃え）
 const COLUMNS: OptKey<String> = opt_args::string("columns");
 /// `table[widths=auto 5cm *]`（列幅）
 const WIDTHS: OptKey<String> = opt_args::string("widths");
@@ -54,7 +54,7 @@ pub(super) fn table_opt_args(opts: &OptArgs) -> TableOptArgs {
   };
 }
 
-/// `columns=left center right` の値を [`ColumnAlign`] の列に変換する
+/// `columns=left center right decimal` の値を [`ColumnAlign`] の列に変換する
 pub(super) fn parse_columns_spec(spec: &str, view: &EnvironmentView<'_>) -> Result<Vec<ColumnAlign>, EvalError> {
   let invalid = || {
     return EvalError::InvalidOptArgValue {

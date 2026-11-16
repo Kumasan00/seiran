@@ -69,17 +69,23 @@ fn lower_decimal_cell(
   let Some((head, trailing)) = content.split_first() else {
     return Ok(TableCellContent::Inline(Vec::new()));
   };
-  let (value, style) = match &head.kind {
-    HirInlineKind::Colored { color, children } => match children.as_slice() {
-      [value] => (value, colored(cell_style, *color)),
-      _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
-    },
-    HirInlineKind::Number(_) | HirInlineKind::Quantity { .. } => (head, cell_style),
-    _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
+  let (inner, style) = match &head.kind {
+    HirInlineKind::Colored { color, children } => (children.as_slice(), colored(cell_style, *color)),
+    _ => (std::slice::from_ref(head), cell_style),
   };
-  let (left, right) = match &value.kind {
-    HirInlineKind::Number(numeral) => split_number_pieces(numeral, &ctx.style.quantity),
-    HirInlineKind::Quantity { numeral, unit } => split_quantity_pieces(numeral, unit, &ctx.style.quantity),
+  let (left, right) = match inner {
+    [
+      HirInline {
+        kind: HirInlineKind::Number(numeral),
+        ..
+      },
+    ] => split_number_pieces(numeral, &ctx.style.quantity),
+    [
+      HirInline {
+        kind: HirInlineKind::Quantity { numeral, unit },
+        ..
+      },
+    ] => split_quantity_pieces(numeral, unit, &ctx.style.quantity),
     _ => unreachable!("decimal 列の値のセルの中身は frontend（TableDecimalCell）が数値要素の形に限る"),
   };
   let integer = quantity_node(ctx, left, style);
@@ -550,10 +556,15 @@ mod tests {
     assert_eq!(pieces, &[QuantityPiece::Text("7".to_string())]);
     assert!(style.color.is_some(), "色は整数部に付く");
     assert!(
-      rest.iter().all(|node| return !matches!(node, InlineNode::Quantity { .. })),
-      "R の数量ノードは作らない: {rest:?}"
+      matches!(
+        rest.as_slice(),
+        [
+          InlineNode::Link { .. },
+          InlineNode::Footnote { number: 1, .. }
+        ]
+      ),
+      "R は脚注マーカーのリンクと脚注本体の 2 ノードだけ（数量ノードは作らない）: {rest:?}"
     );
-    assert!(rest.iter().any(|node| return matches!(node, InlineNode::Footnote { number: 1, .. })), "{rest:?}");
   }
 
   #[test]
