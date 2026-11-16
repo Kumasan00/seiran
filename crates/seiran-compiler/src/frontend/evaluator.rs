@@ -286,6 +286,21 @@ mod test_support {
     return syntax::parse_cst(source, arena, mode_resolver());
   }
 
+  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
+  ///
+  /// # Panics
+  ///
+  /// 構文解析に失敗した場合に panic します（テスト入力の誤りで、評価の結果ではない）。
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
+  )]
+  pub(crate) fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let cst = parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
+    return evaluate_children_to_hir(source, cst);
+  }
+
   /// スニペットを CST へ構文解析し、最初の `CommandCall` ノードを取り出す
   ///
   /// # Panics

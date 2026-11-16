@@ -367,10 +367,11 @@ pub(super) fn parse_checked(source: &str) -> Result<HirSource, ParseError> {
 mod tests {
   use std::{fs, path::PathBuf};
 
-  use super::{parse_checked, visit_source, walk_inlines};
+  use super::{parse_checked, visit_source, walk_inlines, walk_math};
   use crate::{
     document::{
-      HirDocument, HirInline, HirInlineKind, HirNode, HirNodeKind, HirSource, LinkDestination, NodeId, Typeface,
+      HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, LinkDestination,
+      MathVariant, NodeId, Typeface,
     },
     frontend::{
       ParseError,
@@ -509,6 +510,44 @@ mod tests {
     )];
 
     walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "書体コマンドの中身には書体が届く要素があるはず")]
+  fn styled_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、`\code` だけを包む装飾を作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Styled {
+        font: Typeface::SerifBold,
+        children: vec![HirInline::new(id(1), HirInlineKind::Code("x".to_string()))],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "字体コマンドの中身には字体が届く要素があるはず")]
+  fn math_styled_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、演算子名だけを包む字体コマンドを作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let nodes = [HirMath::new(
+      id(0),
+      HirMathKind::Styled {
+        variant: MathVariant::Bold,
+        children: vec![HirMath::new(
+          id(1),
+          HirMathKind::OperatorName {
+            text: "sin".to_string(),
+            limits: false,
+          },
+        )],
+      },
+    )];
+
+    walk_math(&nodes, None, &mut Vec::new());
   }
 
   #[test]

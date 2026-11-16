@@ -34,13 +34,19 @@ pub(in crate::frontend) fn typeface_violation(children: &[HirInline]) -> Option<
 /// 書体の届き方を決める葉を集める
 ///
 /// 外側の書体を中身へそのまま渡す容器（`\color`・リンクの表示・脚注の本文）は開き、字を持たない要素（空白だけの文字列・
-/// `\index`・`\noindent`・`\\`）は集めない。脚注のマークは外側の書体を継がないので、脚注は本文だけを見る。
+/// `\index`・`\noindent`・`\\`）は集めない。脚注のマークは外側の書体を継がないので、脚注は本文だけを見る。本文から葉が
+/// 出ない脚注は、見えるマークを持つので脚注そのものを届かない葉にする（引数が空とは言えない）。
 fn push_leaves<'a>(children: &'a [HirInline], out: &mut Vec<&'a HirInline>) {
   for inline in children {
     match &inline.kind {
-      HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Link { children, .. }
-      | HirInlineKind::Footnote { body: children } => push_leaves(children, out),
+      HirInlineKind::Colored { children, .. } | HirInlineKind::Link { children, .. } => push_leaves(children, out),
+      HirInlineKind::Footnote { body } => {
+        let before = out.len();
+        push_leaves(body, out);
+        if out.len() == before {
+          out.push(inline);
+        }
+      },
       HirInlineKind::Text(text) if text.trim().is_empty() => {},
       HirInlineKind::LineBreak | HirInlineKind::NoIndent | HirInlineKind::Index { .. } => {},
       HirInlineKind::Text(_)
@@ -62,8 +68,9 @@ fn push_leaves<'a>(children: &'a [HirInline], out: &mut Vec<&'a HirInline>) {
 
 /// 葉に外側の書体が届くか
 ///
-/// 数値・単位・量は `[quantity].typeface`、`\code` は等幅、インライン数式は数式フォント、内側の装飾は自分の書体で組むので
-/// 届かない。参照・引用の表示は外側の書体で組む（引用の書体を CSL が決めても、style の値は見ないので届く側に数える）。
+/// 数値・単位・量は `[quantity].typeface`、`\code` は等幅、インライン数式は数式フォント、内側の装飾は自分の書体で組み、
+/// 葉になった脚注はマークだけで、マークは書体を継がないので届かない。参照・引用の表示は外側の書体で組む（引用の書体を CSL が
+/// 決めても、style の値は見ないので届く側に数える）。
 fn is_reached(leaf: &HirInline) -> bool {
   return match &leaf.kind {
     HirInlineKind::Text(_)
@@ -77,13 +84,15 @@ fn is_reached(leaf: &HirInline) -> bool {
     | HirInlineKind::Math(_)
     | HirInlineKind::Number(_)
     | HirInlineKind::Unit(_)
-    | HirInlineKind::Quantity { .. } => false,
+    | HirInlineKind::Quantity { .. }
+    | HirInlineKind::Footnote { .. } => false,
     HirInlineKind::Colored { .. }
     | HirInlineKind::Link { .. }
-    | HirInlineKind::Footnote { .. }
     | HirInlineKind::LineBreak
     | HirInlineKind::NoIndent
-    | HirInlineKind::Index { .. } => unreachable!("push_leaves は容器を開き、字を持たない要素を葉に集めない"),
+    | HirInlineKind::Index { .. } => {
+      unreachable!("push_leaves は `\\color` とリンクを開き、字を持たない要素を葉に集めない")
+    },
   };
 }
 
@@ -104,16 +113,17 @@ pub(in crate::frontend) fn math_typeface_violation(children: &[HirMath]) -> Opti
 /// 字体の届き方を決める数式の葉を集める
 ///
 /// 字体を中身へ透過させる構造（グループ・上付き下付き・分数・二項係数・根号・アクセント・伸縮括弧・上下線・行列・場合分け）は
-/// 開く。括弧・根号・線・アクセントの記号は字体コマンドの対象ではないので葉にならない。字を持たない要素（明示アキ・空白だけの
-/// 字・空白だけの文章）は集めない。
+/// 開く。括弧・根号・線・アクセントの記号は字体コマンドの対象ではないので葉にならないが、中身から葉が出ないときは、見える
+/// 記号を持つのでその構造そのものを届かない葉にする（引数が空とは言えない）。グループと上付き下付きは記号を持たない。字を
+/// 持たない要素（明示アキ・空白だけの字・空白だけの文章）は集めない。
 fn push_math_leaves<'a>(children: &'a [HirMath], out: &mut Vec<&'a HirMath>) {
   for node in children {
     match &node.kind {
       HirMathKind::Group(children) => push_math_leaves(children, out),
-      HirMathKind::Superscript(inner)
-      | HirMathKind::Subscript(inner)
-      | HirMathKind::Accent { base: inner, .. }
-      | HirMathKind::Bar { body: inner, .. } => push_math_leaves(slice::from_ref(inner), out),
+      HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) => push_math_leaves(slice::from_ref(inner), out),
+      HirMathKind::Accent { base: inner, .. } | HirMathKind::Bar { body: inner, .. } => {
+        push_structure_leaves(node, out, |out| push_math_leaves(slice::from_ref(inner), out));
+      },
       HirMathKind::Frac {
         numer: first,
         denom: second,
@@ -121,26 +131,26 @@ fn push_math_leaves<'a>(children: &'a [HirMath], out: &mut Vec<&'a HirMath>) {
       | HirMathKind::Binom {
         top: first,
         bottom: second,
-      } => {
+      } => push_structure_leaves(node, out, |out| {
         push_math_leaves(slice::from_ref(first), out);
         push_math_leaves(slice::from_ref(second), out);
-      },
-      HirMathKind::Sqrt { index, radicand } => {
+      }),
+      HirMathKind::Sqrt { index, radicand } => push_structure_leaves(node, out, |out| {
         if let Some(index) = index {
           push_math_leaves(slice::from_ref(index), out);
         }
         push_math_leaves(slice::from_ref(radicand), out);
-      },
-      HirMathKind::Fenced { segments, .. } => {
+      }),
+      HirMathKind::Fenced { segments, .. } => push_structure_leaves(node, out, |out| {
         for segment in segments {
           push_math_leaves(segment, out);
         }
-      },
-      HirMathKind::Matrix { rows, .. } | HirMathKind::Cases { rows } => {
+      }),
+      HirMathKind::Matrix { rows, .. } | HirMathKind::Cases { rows } => push_structure_leaves(node, out, |out| {
         for cell in rows.iter().flatten() {
           push_math_leaves(cell, out);
         }
-      },
+      }),
       HirMathKind::Text(text) | HirMathKind::Prose(text) if text.trim().is_empty() => {},
       HirMathKind::Space(_) => {},
       HirMathKind::Text(_)
@@ -152,6 +162,20 @@ fn push_math_leaves<'a>(children: &'a [HirMath], out: &mut Vec<&'a HirMath>) {
       | HirMathKind::Quantity { .. }
       | HirMathKind::Styled { .. } => out.push(node),
     }
+  }
+  return;
+}
+
+/// 見える記号を持つ構造 `node` の中身を `push_children` で集め、中身から葉が出なければ構造そのものを葉にする
+fn push_structure_leaves<'a>(
+  node: &'a HirMath,
+  out: &mut Vec<&'a HirMath>,
+  push_children: impl FnOnce(&mut Vec<&'a HirMath>),
+) {
+  let before = out.len();
+  push_children(out);
+  if out.len() == before {
+    out.push(node);
   }
   return;
 }
@@ -168,11 +192,7 @@ fn is_math_reached(leaf: &HirMath) -> bool {
     | HirMathKind::Number(_)
     | HirMathKind::Unit(_)
     | HirMathKind::Quantity { .. }
-    | HirMathKind::Styled { .. } => false,
-    HirMathKind::Space(_)
-    | HirMathKind::Group(_)
-    | HirMathKind::Superscript(_)
-    | HirMathKind::Subscript(_)
+    | HirMathKind::Styled { .. }
     | HirMathKind::Frac { .. }
     | HirMathKind::Binom { .. }
     | HirMathKind::Sqrt { .. }
@@ -180,7 +200,10 @@ fn is_math_reached(leaf: &HirMath) -> bool {
     | HirMathKind::Fenced { .. }
     | HirMathKind::Bar { .. }
     | HirMathKind::Matrix { .. }
-    | HirMathKind::Cases { .. } => unreachable!("push_math_leaves は構造を開き、字を持たない要素を葉に集めない"),
+    | HirMathKind::Cases { .. } => false,
+    HirMathKind::Space(_) | HirMathKind::Group(_) | HirMathKind::Superscript(_) | HirMathKind::Subscript(_) => {
+      unreachable!("push_math_leaves は構造を開き、字を持たない要素を葉に集めない")
+    },
   };
 }
 
@@ -200,24 +223,8 @@ fn label<T>(leaves: &[T], is_quantity: impl Fn(&T) -> bool, is_nested: impl Fn(&
 
 #[cfg(test)]
 mod tests {
-  use bumpalo::Bump;
-
   use super::*;
-  use crate::{
-    document::HirNode,
-    frontend::evaluator::{EvalError, evaluate_children_to_hir, test_support},
-  };
-
-  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
-  #[expect(
-    clippy::unwrap_in_result,
-    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
-  )]
-  fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
-    let arena = Bump::new();
-    let cst = test_support::parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
-    return evaluate_children_to_hir(source, cst);
-  }
+  use crate::frontend::evaluator::{EvalError, test_support};
 
   #[test]
   fn text_typeface_rejects_arguments_it_cannot_reach() {
@@ -225,6 +232,8 @@ mod tests {
       (r"\bold{\num{1}}", QUANTITY),
       (r"\bold{ \num{1} }", QUANTITY),
       (r"\bold{\num{1} \unit{m}}", QUANTITY),
+      (r"\bold{\num{1} \num{2}}", QUANTITY),
+      (r"\bold{\color[color=#ff0000]{\num{1}}}", QUANTITY),
       (r"\bold{\color[color=#ff0000]{\qty{1}{m}}}", QUANTITY),
       (r"\bold{\href{u}{\num{1}}}", QUANTITY),
       (r"\bold{\footnote{\num{1}}}", QUANTITY),
@@ -236,15 +245,26 @@ mod tests {
       (r"\bold{$x$}", OTHER),
       (r"\bold{\code{x}}", OTHER),
       (r"\bold{\num{1}$x$}", OTHER),
+      (r"\bold{\footnote{}}", OTHER),
       ("\\section{\\bold{\\num{1}}}", QUANTITY),
     ] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(&result, Err(EvalError::IneffectiveTypeface { name, label: found, .. }) if name == r"\bold" && found == label),
         "{source}: {result:?}"
       );
     }
+  }
+
+  #[test]
+  fn nested_typefaces_without_a_reached_element_are_rejected() {
+    // 内側も外側も届かない。どちらの診断が出るかは固定しない
+    let source = r"\bold{\sans{\num{1}}}";
+
+    let result = test_support::evaluate_document(source);
+
+    assert!(matches!(result, Err(EvalError::IneffectiveTypeface { .. })), "{source}: {result:?}");
   }
 
   #[test]
@@ -260,7 +280,7 @@ mod tests {
       r"\bold{\alpha}",
       r"\serif{x}",
     ] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(result.is_ok(), "{source}: {result:?}");
     }
@@ -279,9 +299,11 @@ mod tests {
       (r"$\mathbold{\text{ }}$", EMPTY),
       (r"$\mathbold{\sin}$", OTHER),
       (r"$\mathbold{\text{if}}$", OTHER),
+      (r"$\mathbold{\sqrt{}}$", OTHER),
+      (r"$\mathbold{\paren{}}$", OTHER),
       ("\\begin{equation}\n\\mathbold{\\num{1}}\n\\end{equation}", QUANTITY),
     ] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(&result, Err(EvalError::IneffectiveTypeface { name, label: found, .. }) if name == r"\mathbold" && found == label),
@@ -302,7 +324,7 @@ mod tests {
       r"$\mathbold{\paren{x}}$",
       r"$\mathbold{\hat{x}}$",
     ] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(result.is_ok(), "{source}: {result:?}");
     }
