@@ -14,11 +14,15 @@
 //! 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅で本文の段落と同じ行分割器
 //! （`BlockBuildInputs::breaker`）が折り返す。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く。
 //!
+//! decimal 列の値のセル（`MeasuredCell::decimal_split` が `Some`）は折り返さず、符号 + 整数部（L）と小数点以降（R）の
+//! 塊で揃える。塊は列ごとに本体行全体から 1 回だけ決め（[`decimal_blocks`]。改ページの断片で求め直さない）、列幅の
+//! 自然幅と下限に足す。各セルは整数部の右端を塊の境目に合わせ、塊は内容幅の中央に置く。
+//!
 //! 再掲ヘッダは初出ヘッダの断片から索引語と脚注を除いたもの（同じ語をページごとに積まず、脚注本体は初出の 1 回だけ
 //! 置く）。リンクは再掲先にもクリック矩形が要るので残す — 脚注マーカーのリンクも残るので、再掲ヘッダのマーカーは
 //! 初出の脚注本体へ飛ぶ。
 
-use std::{iter, ops::Range};
+use std::ops::Range;
 
 use crate::{
   document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
@@ -47,6 +51,8 @@ struct MeasuredCell {
   row_span: u32,
   /// 跨ぐ列の範囲の下に部分罫を引くか
   rule_below: bool,
+  /// decimal 列の値のセルで、`items` のうち符号 + 整数部の側（L）のアイテム数。`None` は小数点で揃えないセル
+  decimal_split: Option<usize>,
 }
 
 /// 計測済みの 1 行。行帯はセルの行組みと一緒に [`row_fragment`] が決める
@@ -165,24 +171,34 @@ impl Measurer<'_> {
       let cells = self.within(row_origin, |measurer| -> Result<Vec<MeasuredCell>, ElementOverflow> {
         let mut cells = Vec::with_capacity(row.cells.len());
         for cell in row.cells {
-          let mut list = HList::default();
-          match cell.content {
+          let (items, decimal_split) = match cell.content {
             TableCellContent::Inline(nodes) => {
+              let mut list = HList::default();
               for node in nodes {
                 measurer.collect_inline(node, &mut list)?;
               }
+              (list.into_items(), None)
             },
             TableCellContent::Decimal { integer, rest } => {
-              for node in iter::once(integer).chain(rest) {
-                measurer.collect_inline(node, &mut list)?;
+              // L と R は別の水平リストに組む（同じリストに積むと境目へアキの規則が入りうる）
+              let mut left = HList::default();
+              measurer.collect_inline(integer, &mut left)?;
+              let mut right = HList::default();
+              for node in rest {
+                measurer.collect_inline(node, &mut right)?;
               }
+              let mut items = left.into_items();
+              let split = items.len();
+              items.extend(right.into_items());
+              (items, Some(split))
             },
-          }
+          };
           cells.push(MeasuredCell {
-            items: list.into_items(),
+            items,
             column_span: cell.column_span,
             row_span: cell.row_span,
             rule_below: cell.rule_below,
+            decimal_split,
           });
         }
         return Ok(cells);
@@ -233,7 +249,8 @@ fn arrange(
       origin: Some(origin),
     };
   };
-  let col_widths = resolve_column_widths(frame, head, rows, available).map_err(table_overflow)?;
+  let decimal = decimal_blocks(frame.columns, rows).map_err(table_overflow)?;
+  let col_widths = resolve_column_widths(frame, head, rows, available, &decimal).map_err(table_overflow)?;
   let width = Length::try_sum(col_widths.iter().copied()).map_err(table_overflow)?;
   let rule = |gap_above: Length, thickness: Length, gap_below: Length| {
     return TableBoundary::rule(gap_above, thickness, gap_below, width, frame.rule_color);
@@ -254,7 +271,7 @@ fn arrange(
         } else {
           boundary_above(rows, index, &separator, frame, &col_widths).map_err(table_overflow)?
         };
-        let (fragment, merged) = row_fragment(row, frame, &col_widths, breaker)?;
+        let (fragment, merged) = row_fragment(row, frame, &col_widths, &decimal, breaker)?;
         return Ok((TableRowFragment { above, ..fragment }, merged));
       })
       .collect::<Result<Vec<_>, ElementOverflow>>()?;
@@ -357,14 +374,50 @@ fn wraps(columns: &[TableColumn]) -> bool {
   });
 }
 
+/// decimal 列ごとの塊（L の最大, R の最大）— decimal 列は `Some`（値が無ければ `(0, 0)`）、それ以外の列は `None`
+///
+/// `rows` は本体行全体（ヘッダは値のセルを持たない）。塊は表全体で 1 回だけ決め、改ページの断片では求め直さない。
+///
+/// # Errors
+///
+/// 幅の計算が長さの値域を超えたら [`LengthOverflow`]。
+fn decimal_blocks(
+  columns: &[TableColumn],
+  rows: &[MeasuredRow],
+) -> Result<Vec<Option<(Length, Length)>>, LengthOverflow> {
+  let mut blocks: Vec<Option<(Length, Length)>> = columns
+    .iter()
+    .map(|column| match column.align {
+      ColumnAlign::Decimal => return Some((Length::ZERO, Length::ZERO)),
+      ColumnAlign::Left | ColumnAlign::Center | ColumnAlign::Right => return None,
+    })
+    .collect();
+  for row in rows {
+    let mut column_index = 0usize;
+    for cell in &row.cells {
+      if let Some(split) = cell.decimal_split {
+        let (left, right) = cell.items.split_at(split);
+        let block = blocks[column_index]
+          .as_mut()
+          .expect("decimal_split は decimal 列の値のセルだけが持つ（lowering が decimal 列で始まる span 1 の本体セルにだけ付ける）");
+        block.0 = block.0.max(measure_items_width(left)?);
+        block.1 = block.1.max(measure_items_width(right)?);
+      }
+      column_index += cell.column_span as usize;
+    }
+  }
+  return Ok(blocks);
+}
+
 /// 列幅を解決する
 ///
 /// 1. `column_span = 1` のセルから、列ごとの自然幅（内容実測 + 左右 padding）と下限（最小内容幅 + 左右 padding）を取る
-/// 2. 全列 `Auto` の結合セルは、自然幅の不足分を跨ぐ列の自然幅へ sp 単位で均等に足す
-/// 3. `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は `max(自然幅, 左右 padding)`
-/// 4. `Flex`（`*`）は `max(available − 3 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
+/// 2. `decimal` の塊（L + R + 左右 padding）が大きければ、その列の自然幅と下限を塊の幅にする
+/// 3. 全列 `Auto` の結合セルは、自然幅の不足分を跨ぐ列の自然幅へ sp 単位で均等に足す
+/// 4. `Fixed` は指定値、`Ratio` は `available` 比、`Auto` は `max(自然幅, 左右 padding)`
+/// 5. `Flex`（`*`）は `max(available − 3 の合計, 0)` を開いている Flex 列で等分し、下限を下回る列を下限に固定して
 ///    残りから引くことを、違反が無くなるまで繰り返す
-/// 5. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ
+/// 6. `Auto` 以外を跨ぐ結合セルは、跨ぐ列の幅の合計が最小内容幅 + 左右 padding に足りなければ、不足分を跨ぐ
 ///    `Flex` 列へ、無ければ跨ぐ `Auto` 列へ均等に足す（`Fixed` / `Ratio` は書き換えず、はみ出しは配置が
 ///    warning にする）
 ///
@@ -374,6 +427,7 @@ fn resolve_column_widths(
   head: &[MeasuredRow],
   rows: &[MeasuredRow],
   available: Length,
+  decimal: &[Option<(Length, Length)>],
 ) -> Result<Vec<Length>, LengthOverflow> {
   let padding = frame.cell_padding;
   let column_count = frame.columns.len();
@@ -391,6 +445,14 @@ fn resolve_column_widths(
           floors[column_index].max(breaking::min_content_width(&cell.items)?.try_add(double_padding)?);
       }
       column_index += column_span;
+    }
+  }
+  // 結合セルの不足分はこの塊込みの自然幅から測る（先に足すと列が必要以上に広がる）
+  for (i, block) in decimal.iter().enumerate() {
+    if let Some((left, right)) = block {
+      let block_width = left.try_add(*right)?.try_add(double_padding)?;
+      naturals[i] = naturals[i].max(block_width);
+      floors[i] = floors[i].max(block_width);
     }
   }
   for row in head.iter().chain(rows) {
@@ -497,10 +559,12 @@ fn text_alignment(align: ColumnAlign) -> TextAlignment {
 ///
 /// 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅（0 で下止め）で `breaker` が開始列の
 /// 揃えで折り返し、行頭は帯左端 + 余白。全列 `Auto` のセルは [`unwrapped_line`] の 1 行を、開始列の揃えと余白で
-/// 帯の中に置く。
+/// 帯の中に置く。decimal 列の値のセルは折り返さず、塊（`decimal`。内容幅が塊より広ければ中央、狭ければ左端が
+/// 内容の左端）の中で整数部の右端を塊の境目に合わせた 1 行を置き、塊が内容幅を超えた量を下の超過量へ入れる。
 ///
 /// 戻り値の 2 つ目は、折り返すセルの行が内容幅（帯幅 − 左右の余白。0 で下止めしない）を超えた量の最大で、
-/// 折り返さないセルは寄与しない。内容幅が負なら空のセルでも正になる。収まれば 0。
+/// 折り返さないセルは寄与しない（decimal 列の値のセルは塊の超過量で寄与する）。内容幅が負なら空のセルでも正に
+/// なる。収まれば 0。
 ///
 /// # Errors
 ///
@@ -509,15 +573,30 @@ fn layout_row_cells(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
+  decimal: &[Option<(Length, Length)>],
   breaker: &dyn LineBreaker,
 ) -> Result<(Vec<Vec<Line>>, Length), LengthOverflow> {
   let double_padding = frame.cell_padding.try_mul(2)?;
   let mut overrun = Length::ZERO;
   let mut cells = Vec::with_capacity(row.cells.len());
   for (cell, spanned, cell_x, band_width) in cell_bands(&row.cells, col_widths)? {
+    let first_column = spanned.start;
     let spanned_columns = &frame.columns[spanned];
     let align = spanned_columns.first().map_or(ColumnAlign::Left, |column| return column.align);
-    let lines = if wraps(spanned_columns) {
+    let lines = if let Some(split) = cell.decimal_split {
+      let (max_left, max_right) = decimal[first_column]
+        .expect("decimal_split は decimal 列の値のセルだけが持ち、decimal_blocks はその列に Some を置く");
+      let block_width = max_left.try_add(max_right)?;
+      let content_width = band_width.try_sub(double_padding)?;
+      overrun = overrun.max(block_width.try_sub(content_width)?);
+      let block_x = cell_x
+        .try_add(frame.cell_padding)?
+        .try_add(content_width.try_sub(block_width)?.max(Length::ZERO).try_div(2.0)?)?;
+      let left_width = measure_items_width(&cell.items[..split])?;
+      let mut line = unwrapped_line(&cell.items)?;
+      line.shift_x(block_x.try_add(max_left)?.try_sub(left_width)?)?;
+      vec![line]
+    } else if wraps(spanned_columns) {
       let content_width = band_width.try_sub(double_padding)?;
       let mut lines = breaker.break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
@@ -590,9 +669,10 @@ fn row_fragment(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
+  decimal: &[Option<(Length, Length)>],
   breaker: &dyn LineBreaker,
 ) -> Result<(TableRowFragment, Vec<(u32, Length)>), ElementOverflow> {
-  return place_row(row, frame, col_widths, breaker).map_err(|LengthOverflow| {
+  return place_row(row, frame, col_widths, decimal, breaker).map_err(|LengthOverflow| {
     return ElementOverflow {
       origin: Some(row.origin),
     };
@@ -604,9 +684,10 @@ fn place_row(
   row: &MeasuredRow,
   frame: &TableFrame<'_>,
   col_widths: &[Length],
+  decimal: &[Option<(Length, Length)>],
   breaker: &dyn LineBreaker,
 ) -> Result<(TableRowFragment, Vec<(u32, Length)>), LengthOverflow> {
-  let (cells, overrun) = layout_row_cells(row, frame, col_widths, breaker)?;
+  let (cells, overrun) = layout_row_cells(row, frame, col_widths, decimal, breaker)?;
   let (ascent, descent) = cells.iter().filter_map(|lines| return lines.first()).fold(
     (Length::ZERO, Length::ZERO),
     |(ascent, descent), line| {
@@ -775,9 +856,11 @@ fn take_line(
 
 #[cfg(test)]
 mod tests {
-  use std::iter;
+  use std::{iter, slice};
 
-  use super::{MeasuredCell, MeasuredRow, TableFrame, arrange, resolve_column_widths, row_fragment, split_evenly};
+  use super::{
+    MeasuredCell, MeasuredRow, TableFrame, arrange, decimal_blocks, resolve_column_widths, row_fragment, split_evenly,
+  };
   use crate::{
     document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator},
     length::Length,
@@ -818,7 +901,14 @@ mod tests {
     rows: &[MeasuredRow],
     available: Length,
   ) -> Vec<Length> {
-    return resolve_column_widths(frame, head, rows, available).expect("テストの寸法は値域内");
+    return resolve_column_widths(
+      frame,
+      head,
+      rows,
+      available,
+      &decimal_blocks(frame.columns, rows).expect("テストの寸法は値域内"),
+    )
+    .expect("テストの寸法は値域内");
   }
 
   /// 値域内のテスト入力を `row_fragment` で組む
@@ -828,7 +918,14 @@ mod tests {
     col_widths: &[Length],
     breaker: &dyn LineBreaker,
   ) -> (TableRowFragment, Vec<(u32, Length)>) {
-    return row_fragment(row, frame, col_widths, breaker).expect("テストの寸法は値域内");
+    return row_fragment(
+      row,
+      frame,
+      col_widths,
+      &decimal_blocks(frame.columns, slice::from_ref(row)).expect("テストの寸法は値域内"),
+      breaker,
+    )
+    .expect("テストの寸法は値域内");
   }
 
   /// `Length` が pt 値 `expected` に一致するか
@@ -918,6 +1015,7 @@ mod tests {
       column_span: 1,
       row_span: 1,
       rule_below: false,
+      decimal_split: None,
     };
   }
 
@@ -1001,6 +1099,7 @@ mod tests {
       column_span: span,
       row_span: 1,
       rule_below: false,
+      decimal_split: None,
     };
   }
 
@@ -1008,6 +1107,19 @@ mod tests {
   fn merged_cell(items: Vec<HItem>, row_span: u32) -> MeasuredCell {
     return MeasuredCell {
       row_span,
+      ..cell(items)
+    };
+  }
+
+  /// decimal 列の値のセルを作る — 整数部の側（L）は幅 `integer` のボックス 1 つ、`rest` が正なら小数点以降の側（R）に
+  /// 幅 `rest` のボックス 1 つ
+  fn decimal_cell(integer: f32, rest: f32) -> MeasuredCell {
+    let mut items = vec![text_free_box(integer)];
+    if rest > 0.0 {
+      items.push(text_free_box(rest));
+    }
+    return MeasuredCell {
+      decimal_split: Some(1),
       ..cell(items)
     };
   }
@@ -2338,5 +2450,152 @@ mod tests {
 
     assert_eq!(boxes.len(), 2, "{boxes:?}");
     assert!(close(boxes[1].dy, -10.0), "{boxes:?}");
+  }
+
+  #[test]
+  fn decimal_cells_align_at_the_integer_boundary() {
+    // 塊 = (20, 15)、列幅 = 35 + 余白 2 × 2 = 39、塊の左端 2、境目 22
+    let columns = [auto(ColumnAlign::Decimal)];
+    let rows = [
+      row(vec![decimal_cell(10.0, 5.0)]),
+      row(vec![decimal_cell(20.0, 0.0)]),
+      row(vec![decimal_cell(5.0, 15.0)]),
+    ];
+
+    let table = arrange_in_range(origin(), &frame(&columns, 2.0), &[], &rows, pt(200.0), true, &KnuthPlassBreaker);
+
+    assert!(close(table.width, 39.0));
+    let first_dx: Vec<f32> = table.rows.iter().map(|f| return f.row.boxes[0].dx.to_pt()).collect();
+    assert_eq!(first_dx, vec![12.0, 2.0, 17.0]);
+  }
+
+  #[test]
+  fn wide_head_centers_the_block_under_it() {
+    // 見出し 50 が塊 35 より広い: 列幅 54、見出しは 2、塊の左端 2 + (50 − 35) / 2 = 9.5、(10, 5) の L は 19.5
+    let columns = [auto(ColumnAlign::Decimal)];
+    let head = [row(vec![cell(vec![text_free_box(50.0)])])];
+    let rows = [
+      row(vec![decimal_cell(20.0, 15.0)]),
+      row(vec![decimal_cell(10.0, 5.0)]),
+    ];
+
+    let table = arrange_in_range(origin(), &frame(&columns, 2.0), &head, &rows, pt(200.0), true, &KnuthPlassBreaker);
+
+    assert!(close(table.width, 54.0));
+    assert!(close(table.head[0].row.boxes[0].dx, 2.0));
+    assert!(close(table.rows[0].row.boxes[0].dx, 9.5));
+    assert!(close(table.rows[1].row.boxes[0].dx, 19.5));
+  }
+
+  #[test]
+  fn decimal_blocks_read_every_body_row() {
+    // 行結合の 1 行目にある値も最大に入る。値の無い decimal 列は (0, 0)、left 列は None
+    let columns = [
+      auto(ColumnAlign::Decimal),
+      auto(ColumnAlign::Decimal),
+      auto(ColumnAlign::Left),
+    ];
+    let rows = [
+      row(vec![
+        MeasuredCell {
+          row_span: 2,
+          ..decimal_cell(10.0, 5.0)
+        },
+        blank(),
+        cell(vec![word_box(99.0)]),
+      ]),
+      row(vec![blank(), blank(), cell(vec![word_box(99.0)])]),
+      row(vec![decimal_cell(3.0, 8.0), blank(), blank()]),
+    ];
+
+    let blocks = decimal_blocks(&columns, &rows).expect("テストの寸法は値域内");
+
+    assert_eq!(blocks.len(), 3);
+    let (left, right) = blocks[0].expect("decimal 列は Some");
+    assert!(close(left, 10.0) && close(right, 8.0), "{left:?} {right:?}");
+    let (left, right) = blocks[1].expect("decimal 列は Some");
+    assert!(close(left, 0.0) && close(right, 0.0));
+    assert!(blocks[2].is_none());
+  }
+
+  #[test]
+  fn decimal_flex_floor_includes_the_block() {
+    // 残り 10 ではなく、塊 35 + 余白 4 = 39 が下限
+    let columns = [fixed(190.0), flex(ColumnAlign::Decimal)];
+    let rows = [row(vec![
+      cell(vec![word_box(5.0)]),
+      decimal_cell(20.0, 15.0),
+    ])];
+
+    let widths = resolve_column_widths_in_range(&frame(&columns, 2.0), &[], &rows, pt(200.0));
+
+    assert!(close(widths[0], 190.0) && close(widths[1], 39.0), "{widths:?}");
+  }
+
+  #[test]
+  fn auto_span_shortfall_is_computed_after_the_block() {
+    // 塊込みの自然幅は [39, 4]、2 列にまたがる 56 + 4 = 60 の不足 17 を sp 単位で等分して [47.5, 12.5]
+    let columns = [auto(ColumnAlign::Decimal), auto(ColumnAlign::Left)];
+    let rows = [
+      row(vec![decimal_cell(20.0, 15.0), blank()]),
+      row(vec![span_cell(vec![word_box(56.0)], 2)]),
+    ];
+
+    let widths = resolve_column_widths_in_range(&frame(&columns, 2.0), &[], &rows, pt(200.0));
+
+    assert!(close(widths[0], 47.5) && close(widths[1], 12.5), "{widths:?}");
+  }
+
+  #[test]
+  fn narrow_fixed_decimal_column_starts_the_block_at_the_left_and_reports_overrun() {
+    // 内容幅 6、塊 15: L の dx は余白の 2、超過は 15 − 6 = 9
+    let columns = [fixed_aligned(10.0, ColumnAlign::Decimal)];
+    let row = row(vec![decimal_cell(10.0, 5.0)]);
+
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(10.0)], &KnuthPlassBreaker).0;
+
+    assert!(close(fragment.row.boxes[0].dx, 2.0));
+    assert!(close(fragment.overrun, 9.0), "{:?}", fragment.overrun);
+  }
+
+  #[test]
+  fn decimal_values_in_wide_fixed_column_report_no_overrun() {
+    // 内容幅 96、塊 15: 塊は帯の中央（左端 2 + 40.5）で、折り返しの分岐へ入らない
+    let columns = [fixed_aligned(100.0, ColumnAlign::Decimal)];
+    let row = row(vec![decimal_cell(10.0, 5.0)]);
+
+    let fragment = row_fragment_in_range(&row, &frame(&columns, 2.0), &[pt(100.0)], &KnuthPlassBreaker).0;
+
+    assert!(close(fragment.row.boxes[0].dx, 42.5));
+    assert!(close(fragment.overrun, 0.0), "{:?}", fragment.overrun);
+  }
+
+  #[test]
+  fn decimal_span_cell_is_centered_and_left_span_stays_left() {
+    // 幅 48 の帯に幅 10 の結合セル: decimal 列から始まれば中央（19）、left 列から始まれば左（余白 2）
+    let wide = || {
+      return row(vec![
+        cell(vec![text_free_box(20.0)]),
+        cell(vec![text_free_box(20.0)]),
+      ]);
+    };
+    let span = || return row(vec![span_cell(vec![text_free_box(10.0)], 2)]);
+
+    let decimal_first = [auto(ColumnAlign::Decimal), auto(ColumnAlign::Left)];
+    let table = arrange_in_range(
+      origin(),
+      &frame(&decimal_first, 2.0),
+      &[],
+      &[wide(), span()],
+      pt(200.0),
+      true,
+      &KnuthPlassBreaker,
+    );
+    assert!(close(table.rows[1].row.boxes[0].dx, 19.0));
+
+    let left_first = [auto(ColumnAlign::Left), auto(ColumnAlign::Decimal)];
+    let table =
+      arrange_in_range(origin(), &frame(&left_first, 2.0), &[], &[wide(), span()], pt(200.0), true, &KnuthPlassBreaker);
+    assert!(close(table.rows[1].row.boxes[0].dx, 2.0));
   }
 }
