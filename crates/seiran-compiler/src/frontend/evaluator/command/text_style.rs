@@ -9,6 +9,7 @@ use crate::{
       inline::{InlinePolicy, evaluate_inline_children},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
+      typeface_reach,
     },
     syntax::{ArgMode, CstNode, view::CommandView},
   },
@@ -28,7 +29,7 @@ pub(super) const COLORED: Signature<1> = Signature::new([ArgMode::Inherit], "テ
 ///
 /// # Errors
 ///
-/// 引数内の評価エラーをそのまま伝播します。
+/// 引数内の評価エラーをそのまま伝播します。引数に書体が届く要素が無いとき [`EvalError::IneffectiveTypeface`] を返します。
 pub(super) fn styled_text(
   view: &CommandView<'_>,
   arg: &CstNode<'_>,
@@ -38,6 +39,13 @@ pub(super) fn styled_text(
 ) -> Result<HirInline, EvalError> {
   let id = ctx.alloc(view.span());
   let children = evaluate_inline_children(view.source(), ctx, arg, inline_policy)?;
+  if let Some(label) = typeface_reach::typeface_violation(&children) {
+    return Err(EvalError::IneffectiveTypeface {
+      name: format!("\\{}", view.name()),
+      span: view.span().into(),
+      label: label.to_string(),
+    });
+  }
   return Ok(HirInline::new(id, HirInlineKind::Styled { font, children }));
 }
 
@@ -99,7 +107,7 @@ mod tests {
   #[test]
   fn nested_styled_commands_keep_inner_font() {
     let arena = Bump::new();
-    let source = r"\bold{\italic{x}}";
+    let source = r"\bold{a\italic{x}}";
     let node = test_support::command_call_node(source, &arena);
     let view = CommandView::new(node, source);
 
@@ -115,7 +123,7 @@ mod tests {
     assert_eq!(*font, Typeface::SerifBold);
     let HirInlineKind::Styled {
       font: inner_font, ..
-    } = &children[0].kind
+    } = &children[1].kind
     else {
       panic!("内側も Styled が期待されます: {children:?}");
     };

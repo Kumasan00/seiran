@@ -961,6 +961,7 @@ mod tests {
   /// インライン引数の中身 — 要素 1〜3 個を空白で連結する（記号コマンドの直後に字が続いて名前に吸われないように）
   ///
   /// 入れ子は書体・色指定だけで深さ 3 まで。`\index` とリンクを作る呼び出しは `policy` が許すときだけ葉に入れる。
+  /// 書体コマンドの引数は先頭を字にして、書体が届く要素を必ず持たせる。
   fn inline_content(policy: InlinePolicy) -> impl Strategy<Value = String> {
     let common_leaf = prop_oneof![
       text(),
@@ -985,7 +986,12 @@ mod tests {
     let element = leaf.prop_recursive(3, 16, 3, |inner| {
       let content = prop::collection::vec(inner, 1..=3).prop_map(|elements| return elements.join(" "));
       return prop_oneof![
-        (styled_name(), content.clone()).prop_map(|(name, body)| return Call::new(name, vec![], vec![body]).render()),
+        (styled_name(), text(), content.clone()).prop_map(|(name, lead, body)| return Call::new(
+          name,
+          vec![],
+          vec![format!("{lead} {body}")]
+        )
+        .render()),
         (color(), content).prop_map(|(color, body)| return Call::new(
           "color",
           vec![format!("color={color}")],
@@ -1008,13 +1014,13 @@ mod tests {
     ];
   }
 
-  /// 引数をインライン内容として再帰評価する呼び出し（書体・色指定・脚注）
+  /// 引数をインライン内容として再帰評価する呼び出し（書体・色指定・脚注）。書体コマンドの引数は先頭を字にする
   fn content_call() -> impl Strategy<Value = Call> {
     return prop_oneof![
-      (styled_name(), inline_content(InlinePolicy::Allow)).prop_map(|(name, body)| return Call::new(
+      (styled_name(), text(), inline_content(InlinePolicy::Allow)).prop_map(|(name, lead, body)| return Call::new(
         name,
         vec![],
-        vec![body]
+        vec![format!("{lead} {body}")]
       )),
       (color(), inline_content(InlinePolicy::Allow)).prop_map(|(color, body)| return Call::new(
         "color",

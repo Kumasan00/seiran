@@ -12,6 +12,7 @@ mod math;
 mod opt_args;
 mod signature;
 mod string_arg;
+mod typeface_reach;
 
 pub(super) use context::EvalContext;
 #[cfg(any(test, feature = "fuzzing"))]

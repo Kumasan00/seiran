@@ -717,6 +717,26 @@ pub(crate) enum EvalError {
     label: String,
   },
 
+  /// 書体コマンド（12 装飾・数式の字体コマンド）の引数に、その書体が届く要素が 1 つも無い場合
+  ///
+  /// どの style でも書体コマンドを外した書き方と同じ出力になる、同じ結果への第 2 の書き方。
+  #[error("{name} の書体が届く字が引数にありません")]
+  #[diagnostic(
+    code(frontend::eval::ineffective_typeface),
+    help(
+      "書体コマンドを外してください。数値・単位・量の書体は style.toml の [quantity].typeface が決め、\\code は等幅に固定です。書体を組み合わせるなら \\sansbold・\\mathsansbold のような 1 つのコマンドで書いてください"
+    )
+  )]
+  IneffectiveTypeface {
+    /// 書体コマンドの名前（例: `\bold`）
+    name: String,
+    /// 書体コマンド呼び出しのソース位置
+    #[label("{label}")]
+    span: SourceSpan,
+    /// ラベルの文言（引数の中身が数量だけ・内側の書体コマンドだけ・空・それ以外で変わる）
+    label: String,
+  },
+
   /// `\image` のパスの拡張子が対応形式のどれでもない場合
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(

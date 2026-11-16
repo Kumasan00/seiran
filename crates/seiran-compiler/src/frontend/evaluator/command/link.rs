@@ -406,7 +406,6 @@ mod tests {
     let cases = [
       r"\href{u}{}",
       r"\href{u}{ }",
-      r"\href{u}{\bold{ }}",
       r"\href{u}{\\}",
       r"\href{u}{$ $}",
       r"\href{u}{${}$}",
@@ -513,7 +512,7 @@ mod tests {
 
   #[test]
   fn hyperref_rejects_blank_display() {
-    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\bold{}}"] {
+    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\\}"] {
       let result = evaluate_document(source);
 
       assert!(
