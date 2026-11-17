@@ -1126,7 +1126,6 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 
 - インライン数式のトップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の
   隣の約物と本文の規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
-- 独立ブロックの matrix / cases は `MathBlockKind::Matrix` / `Cases` のまま残し、「行列 1 個を持つ表示数式」へはまとめていない
 
 #### 表エンジン（`boxing::table`）
 
@@ -1135,7 +1134,6 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 内容・セル余白・罫線の太さと空きと色・行の区切り（`document::RowSeparator`）まで解決した `TableLayout` で、HIR の表語彙と
 style は届かない。
 
-- decimal 列の値のセル（lowering が `TableCellContent::Decimal` にしたもの）は、列幅の種類によらず折り返さない
 - **列幅の基準幅**は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた利用幅
   （`boxes::usable_width`。段落の行の幅と同じ式で、字下げが段の幅を使い切ると 0）。段の幅は区画の
   `PageGeometry::column_width`（本文・前付けとも）で、`break_pages` がその区画の段を組む値そのもの
