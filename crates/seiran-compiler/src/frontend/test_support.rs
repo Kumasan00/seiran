@@ -1,4 +1,4 @@
-//! frontend 配下と後段（semantics / typeset）の test module が共有する、**空の `base_dir`**（相対パスが
+//! frontend 配下と後段（semantics / typeset / compiler）の test module が共有する、**空の `base_dir`**（相対パスが
 //! そのまま残る）の resolver を注入した入口。
 
 use std::{path::Path, sync::LazyLock};

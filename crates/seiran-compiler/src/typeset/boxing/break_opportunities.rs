@@ -1,4 +1,4 @@
-//! (b) 純粋な行分割可能点の探索
+//! 純粋な行分割可能点の探索
 
 use icu_segmenter::{LineSegmenter, options::LineBreakOptions};
 

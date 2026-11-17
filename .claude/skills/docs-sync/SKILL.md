@@ -23,7 +23,7 @@ description: >-
 | `docs/language-design.md` | 言語設計の目的・原則の全文（導出・根拠・適合例）と判断事例集。CLAUDE.md の原則表の詳細版 |
 | `docs/coding-conventions.md` | コーディング規約の全文・根拠・lint との対応。CLAUDE.md の規約節の詳細版 |
 | `docs/error-handling.md` | エラー型・診断 `code`・ソース位置・集約・warning と tracing・内部不変条件違反・garde の規約。CLAUDE.md のエラーハンドリング節の詳細版 |
-| `docs/architecture.md` | 2 つ以上の module（crate・段を含む）にまたがる取り決め — 依存の向き・公開範囲・段間プロトコル・module をまたぐガード・style.toml のキーの意味（判定は本書冒頭「この文書の役割」）。1 つの module に閉じる挙動・内部構造・目録、style のキー一覧・既定値は `//!` / doc コメント / テストが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
+| `docs/architecture.md` | 2 つ以上の module（crate・段を含む）にまたがる取り決め — 依存の向き・公開範囲・段間プロトコル・共有語彙の型の形・module をまたぐガード・style.toml のキーの意味（判定は本書冒頭「この文書の役割」）。1 つの module に閉じる挙動・内部構造・目録、style のキー一覧・既定値は `//!` / doc コメント / テストが正典で、ここへは複製しない。CLAUDE.md の表の詳細版 |
 | `README.md` | ユーザ向け（インストール・コマンド・設定例） |
 | `fuzz/README.md` | frontend の fuzz（実行・失敗入力の再現と最小化・corpus・CI） |
 | skill（`verify-typesetting` / `add-language-feature` / `issue-pr-ops`。`error-handling` は正典へのポインタのみ） | 組版検証手順 / 言語機能の実装経路 / GitHub 運用規約 |
