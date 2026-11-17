@@ -154,7 +154,8 @@ struct PageComposer {
   region_footnotes: Vec<PendingFootnote>,
   /// 次リージョンへ繰り越す脚注の残り（出現順）。
   carry: Vec<PendingFootnote>,
-  /// 収まらないまま配置した内容の記録（検出順＝ページ順）
+  /// 収まらないまま配置した内容の記録（検出順＝ページ順）。積むのは確定した配置だけで、段落の配置計画と脚注の
+  /// 詰め込みは widow / orphan 補正で立て直されるので、はみ出した事実を `bool` で返すだけにする
   overflows: Vec<Overflow>,
 }
 
@@ -230,7 +231,8 @@ impl PageComposer {
     return self.seed_carry();
   }
 
-  /// 繰越脚注（`carry`）を新しいリージョンの脚注エリアの先頭へ 1 リージョンぶん詰める。
+  /// 繰越脚注（`carry`）を新しいリージョンの脚注エリアの先頭へ 1 リージョンぶん詰める。本文を置く前のリージョン
+  /// 入口で詰めるので本文を追い出さず、先頭の脚注は収まらなくても 1 行以上置くので繰越は有限回で尽きる。
   fn seed_carry(&mut self) -> Result<(), ElementOverflow> {
     let page_level = |LengthOverflow| return ElementOverflow { origin: None };
     if self.carry.is_empty() {
@@ -719,7 +721,9 @@ fn plan_atomic(
 }
 
 /// keep グループを現在のカーソルから配置したとき、末尾の内容ブロックの先頭が見出しと別リージョンに
-/// 落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、孤立するなら `true`。
+/// 落ちる（= 見出しが孤立する）かを返す純粋関数。リージョン改は行わず、孤立するなら `true`。判定は実配置と同じ計画
+/// （段落は `plan_paragraph_lines`、それ以外は [`plan_atomic`]）を空回しして `starts_region` を読むだけで、実効下限や
+/// 行送りを自前で導き直さない（脚注予約のあるリージョンでも実配置と食い違わない）。
 fn keep_group_orphaned(
   mut cursor: RegionCursor,
   mut carry_pending: bool,
@@ -2976,6 +2980,17 @@ mod tests {
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert!(pages[0].blocks.is_empty());
+  }
+
+  #[test]
+  fn leading_page_break_does_not_create_blank_page() {
+    let geom = test_geometry();
+    let blocks = vec![Block::PageBreak, paragraph_of_lines(1)];
+
+    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+
+    assert_eq!(pages.len(), 1, "文書先頭の強制改ページは白紙ページを作らない: {pages:?}");
+    assert_eq!(pages[0].blocks.len(), 1);
   }
 
   #[test]

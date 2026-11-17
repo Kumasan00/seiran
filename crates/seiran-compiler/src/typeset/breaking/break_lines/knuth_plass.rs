@@ -143,7 +143,8 @@ enum Edge {
   Overflow,
 }
 
-/// 強制改行を含まない 1 サブ段落を最適分割する
+/// 強制改行を含まない 1 サブ段落を最適分割する。溢れる行を避けられない（末尾まで実現可能な分割が無い）サブ段落だけを
+/// `GreedyBreaker` で組む
 fn break_subparagraph(
   items: &[HItem],
   text_width: Length,

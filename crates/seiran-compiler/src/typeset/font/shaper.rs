@@ -80,7 +80,8 @@ pub(super) fn build_harfrust_shapers(
   });
 }
 
-/// スクリプト段 1 つぶんの、`ssty` を足したシェイピング設定
+/// スクリプト段 1 つぶんの、`ssty` を足したシェイピング設定。harfrust のプランはユーザ指定フィーチャを構築時に
+/// コンパイルするので、`ssty` は段ごとのプランに入れる（キャッシュしたプランへ実行時にだけ渡しても効かない）
 struct ScriptShaping {
   /// 設定のフィーチャーの後ろに、その段の `ssty` を足したもの
   features: Vec<Feature>,
