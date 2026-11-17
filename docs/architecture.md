@@ -97,7 +97,8 @@ module・出口・構築子は明示したものだけが対象である。
 不変条件:
 
 - どちらも HIR より前（字句解析の時点）から存在する概念で、文書木の語彙ではない。「複数段が共有するから」は
-  共有置き場へ移す理由にならない（共有は所有の理由にならない）
+  共有置き場へ移す理由にならない（共有は所有の理由にならない）。`frontend` の lexer / parser / CST も独自の Span 型を
+  持たず `source::Span` を直接使う
 - 診断型は持たない。miette への依存は `miette::SourceSpan` への変換 `impl From<Span> for SourceSpan` 1 つだけで、
   `frontend` / `semantics` の診断構築点はこれを呼ぶ。変換を `Span` の所有者に置くのは、共有コードは操作対象の
   型の所有者に置く規約による（各段が自前で持つと重複し、`semantics` が `frontend` の変換を借りると
@@ -116,7 +117,9 @@ module・出口・構築子は明示したものだけが対象である。
 - `config` は `pub(crate) mod` で公開し、入口が `project::config::load` と読めることで `style::load` と
   取り違えようがなくする
 - `SourceSet` は `SourceId` の唯一の発行元で、`SourceId::index()` は `config.sources` の宣言順に一致する。
-  呼び出し元は発行された ID をそのまま運ぶだけで、別の場所で ID を作り直したり配列の並び順から推測したりしない
+  呼び出し元は発行された ID をそのまま運ぶだけで、別の場所で ID を作り直したり配列の並び順から推測したりしない。
+  読込失敗は `Diagnostic` を実装しない素のエラー（`ReadSourceError`）で返し、診断（`code(compiler::read_text_file)`）は
+  `compiler::input` が組み立てる
 - `font` は入力（分類・実体の鍵・検証済み設定・バイト列）までを持ち、**解析・検証・シェイピングという処理は持たない** —
   `typeset::font`。入力（実体）と処理を混ぜないため
 - **枠と実体を分ける**: 枠 `FontType`（19 種別）は style・言語・書体から選ぶ単位で、実体 `FontFace`（枠 × 候補の位置）は
@@ -239,7 +242,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   脚注本体・コードブロック・図表・タイトルページ・数式ブロック・表のセル・柱は従わない
 - **目次・索引の揃え**: `[toc].alignment`（エントリ行）・`[index].alignment`（エントリ行と区分見出し）・`[index].title_alignment` は
   `[math.block].alignment` と共有する 3 値 `BlockAlignment`（両端揃えは型に無い）。目次の題目行は `[toc]` にキーを持たず、
-  解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う
+  解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` の `left` 以外と
+  `[toc].leader`（既定 `None`、空文字列は不可）は、組版で効く組み合わせ（ページ番号を出す行は右端まで伸び、
+  リーダーはページ番号との間にだけ描く）だけを受理する — `left` 以外はページ番号なし、`leader` はページ番号ありのときだけ
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
