@@ -127,7 +127,8 @@ pub trait ProjectSource: Send + Sync {
   /// 読み込みに失敗した場合にエラーを返す。
   fn read_bytes(&self, path: &ProjectPath) -> Result<Arc<[u8]>, ProjectSourceError>;
 
-  /// パスが存在するかどうかを返す。
+  /// パスが存在するかどうかを返す。存在確認も seam を通るので、`MemoryProjectSource` でもパス検証が効き、
+  /// 設定に列挙されたパスの不在を全件まとめて報告できる。
   fn exists(&self, path: &ProjectPath) -> bool;
 }
 

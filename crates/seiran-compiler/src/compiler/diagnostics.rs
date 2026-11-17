@@ -1,6 +1,8 @@
 //! 診断（miette diagnostic）出力の golden スナップショット回帰テスト
 //!
 //! 幅と色を固定して診断をテキスト化し、insta のスナップショット `tests/golden_diagnostics/<name>.snap` と比較する。
+//! 外部資源の read error を `#[source]` に載せる診断の cause 行は `MemoryProjectSource` の文言で、実 adapter の
+//! 挙動は `project::filesystem` の単体テストが見る。
 
 use std::{
   fs,

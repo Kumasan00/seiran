@@ -1,6 +1,7 @@
-//! 数式中のフォントスタイル指定 [`MathVariant`]。
+//! 数式中の字形 variant [`MathVariant`]。
 
-/// 数式中のフォントスタイル指定
+/// 数式中の字形 variant（Unicode 数学英数字のどの系列で書くか）。style.toml の `[math]` 設定
+/// （`style::MathStyle`）とは別概念
 ///
 /// `\mathbold{...}` 等のコマンドで指定され、ローワリング層で
 /// Unicode Mathematical Alphanumeric Symbols（U+1D400–U+1D7FF）の

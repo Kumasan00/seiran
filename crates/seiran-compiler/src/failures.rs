@@ -10,7 +10,8 @@ use derive_more::Display;
 /// 構築経路は [`Failures::single`] と [`Failures::from_vec`]（空なら `None`）だけで、
 /// `Default` は実装しない。
 ///
-/// 表示（`Display`）は主の失敗そのもので、書式パラメータごと主へ委譲する。
+/// 表示（`Display`）は主の失敗そのもので、書式パラメータごと主へ委譲する。`Error::source` も主へ委譲するので、
+/// `#[error(transparent)]` で包んだ側の表示と cause chain は主の失敗のものになる。
 #[derive(Debug, Display)]
 #[display("{first}")]
 pub(crate) struct Failures<E> {
