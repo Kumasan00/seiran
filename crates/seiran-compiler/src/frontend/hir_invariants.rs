@@ -8,7 +8,7 @@ use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   frontend::{
     self, ParseError,
-    evaluator::{InlinePolicy, column_value_violation, value_cells},
+    evaluator::{InlinePolicy, column_value_violation, math_typeface_violation, typeface_violation, value_cells},
   },
   project::PathResolver,
   source::{SourceId, Span},
@@ -124,7 +124,7 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
 /// # Panics
 ///
 /// `policy` が禁じるリンクを作る要素・索引マーカーがあるとき、複数参照のラベルが 2 個未満・空・重複を含むとき、
-/// または範囲参照の両端が同じラベルのとき。
+/// 範囲参照の両端が同じラベルのとき、または書体コマンドの中身に書体が届く要素が無いとき。
 fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePolicy, out: &mut Vec<Visited>) {
   let (index_allowed, links_allowed) = match policy {
     InlinePolicy::Allow => (true, true),
@@ -148,9 +148,17 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePol
     });
     let here = Some(inline.id);
     match &inline.kind {
-      HirInlineKind::Styled { children, .. }
-      | HirInlineKind::Colored { children, .. }
-      | HirInlineKind::Footnote { body: children, .. } => walk_inlines(children, here, policy, out),
+      HirInlineKind::Styled { children, .. } => {
+        assert!(
+          typeface_violation(children).is_none(),
+          "書体コマンドの中身には書体が届く要素があるはず: {:?}",
+          inline.id
+        );
+        walk_inlines(children, here, policy, out);
+      },
+      HirInlineKind::Colored { children, .. } | HirInlineKind::Footnote { body: children, .. } => {
+        walk_inlines(children, here, policy, out);
+      },
       HirInlineKind::Link { children, .. } => walk_inlines(children, here, InlinePolicy::RejectIndexAndLinks, out),
       HirInlineKind::Math(math) => walk_math(math, here, out),
       HirInlineKind::RefList { labels } => {
@@ -204,6 +212,10 @@ fn creates_link(kind: &HirInlineKind) -> bool {
 }
 
 /// 数式ノードを親子関係つきで走査する
+///
+/// # Panics
+///
+/// 字体コマンドの中身に字体が届く要素が無いとき。
 fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) {
   for node in nodes {
     out.push(Visited {
@@ -212,7 +224,15 @@ fn walk_math(nodes: &[HirMath], parent: Option<NodeId>, out: &mut Vec<Visited>) 
     });
     let here = Some(node.id);
     match &node.kind {
-      HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => walk_math(children, here, out),
+      HirMathKind::Group(children) => walk_math(children, here, out),
+      HirMathKind::Styled { children, .. } => {
+        assert!(
+          math_typeface_violation(children).is_none(),
+          "字体コマンドの中身には字体が届く要素があるはず: {:?}",
+          node.id
+        );
+        walk_math(children, here, out);
+      },
       HirMathKind::Superscript(child)
       | HirMathKind::Subscript(child)
       | HirMathKind::Accent { base: child, .. }
@@ -347,10 +367,11 @@ pub(super) fn parse_checked(source: &str) -> Result<HirSource, ParseError> {
 mod tests {
   use std::{fs, path::PathBuf};
 
-  use super::{parse_checked, visit_source, walk_inlines};
+  use super::{parse_checked, visit_source, walk_inlines, walk_math};
   use crate::{
     document::{
-      HirDocument, HirInline, HirInlineKind, HirNode, HirNodeKind, HirSource, LinkDestination, NodeId, Typeface,
+      HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, LinkDestination,
+      MathVariant, NodeId, Typeface,
     },
     frontend::{
       ParseError,
@@ -489,6 +510,44 @@ mod tests {
     )];
 
     walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "書体コマンドの中身には書体が届く要素があるはず")]
+  fn styled_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、`\code` だけを包む装飾を作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Styled {
+        font: Typeface::SerifBold,
+        children: vec![HirInline::new(id(1), HirInlineKind::Code("x".to_string()))],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "字体コマンドの中身には字体が届く要素があるはず")]
+  fn math_styled_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、演算子名だけを包む字体コマンドを作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let nodes = [HirMath::new(
+      id(0),
+      HirMathKind::Styled {
+        variant: MathVariant::Bold,
+        children: vec![HirMath::new(
+          id(1),
+          HirMathKind::OperatorName {
+            text: "sin".to_string(),
+            limits: false,
+          },
+        )],
+      },
+    )];
+
+    walk_math(&nodes, None, &mut Vec::new());
   }
 
   #[test]

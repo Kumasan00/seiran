@@ -12,6 +12,7 @@ mod math;
 mod opt_args;
 mod signature;
 mod string_arg;
+mod typeface_reach;
 
 pub(super) use context::EvalContext;
 #[cfg(any(test, feature = "fuzzing"))]
@@ -21,6 +22,8 @@ pub(super) use error::EvalError;
 pub(super) use inline::InlinePolicy;
 #[cfg(test)]
 use test_support::{evaluate_children_to_hir, evaluate_inline_children_to_hir, run_handler};
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) use typeface_reach::{math_typeface_violation, typeface_violation};
 
 use crate::{
   document::{HirInline, HirInlineKind, HirNode, HirNodeKind, NodeId},
@@ -281,6 +284,21 @@ mod test_support {
   /// 構文解析に失敗した場合にエラーを返します。
   pub(crate) fn parse_cst<'a>(source: &'a str, arena: &'a Bump) -> Result<&'a CstNode<'a>, SyntaxError> {
     return syntax::parse_cst(source, arena, mode_resolver());
+  }
+
+  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
+  ///
+  /// # Panics
+  ///
+  /// 構文解析に失敗した場合に panic します（テスト入力の誤りで、評価の結果ではない）。
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
+  )]
+  pub(crate) fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let cst = parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
+    return evaluate_children_to_hir(source, cst);
   }
 
   /// スニペットを CST へ構文解析し、最初の `CommandCall` ノードを取り出す

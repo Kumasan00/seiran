@@ -577,9 +577,9 @@ mod tests {
 
   #[test]
   fn operator_names_are_queried_upright_without_the_word_space() {
-    let asked = queried("$\\mathbold{\\limsup}$");
+    let asked = queried("$\\mathbold{+\\limsup}$");
 
-    assert_eq!(asked, vec!['l', 'i', 'm', 's', 'u', 'p']);
+    assert_eq!(asked, vec!['+', 'l', 'i', 'm', 's', 'u', 'p']);
   }
 
   #[test]

@@ -2798,7 +2798,6 @@ fn ja_latin_aki_is_resolved_once_through_nested_and_adjacent_styles() {
     "日 [0.00] 本 [3.00] AB [0.00] C [3.00] 語"
   );
   assert_eq!(line_gaps("日本\\bold{語}ABC\n", true), "日 [0.00] 本 [0.00] 語 [3.00] ABC");
-  assert_eq!(line_gaps("日本\\bold{}ABC語\n", true), line_gaps("日本ABC語\n", true), "空の装飾は境界を切らない");
 }
 
 #[test]

@@ -751,7 +751,6 @@ mod tests {
       "abc",
       r"$\num{1.5}$",
       r"\unit{m}",
-      r"\bold{\num{1}}",
       r"\color[color=#cc0000]{\color[color=#00cc00]{\num{1}}}",
       r"\color[color=#cc0000]{\num{1}\footnote{注}}",
       r"\num{1} \footnote{注}",
@@ -764,6 +763,13 @@ mod tests {
 
       assert!(matches!(eval_table(&source), Err(EvalError::TableDecimalCell { .. })), "{source}");
     }
+  }
+
+  #[test]
+  fn decimal_value_cell_rejects_a_bold_number() {
+    let source = r"\begin{table}[columns=decimal]\row{\bold{\num{1}}}\end{table}";
+
+    assert!(matches!(eval_table(source), Err(EvalError::IneffectiveTypeface { .. })), "{source}");
   }
 
   #[test]

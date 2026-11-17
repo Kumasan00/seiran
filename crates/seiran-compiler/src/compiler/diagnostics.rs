@@ -729,7 +729,7 @@ fn diagnostic_link_in_link_display() {
 
 #[test]
 fn diagnostic_empty_link_display() {
-  // 空白だけの `\href` の表示と、中身の無い装飾だけの `\hyperref` の表示
+  // 空白だけの `\href` の表示と、強制改行だけの `\hyperref` の表示
   let failure = compile_err(&[
     "tests/text/diagnostics/empty_link_display_a.sei",
     "tests/text/diagnostics/empty_link_display_b.sei",
@@ -737,6 +737,18 @@ fn diagnostic_empty_link_display() {
 
   assert_eq!(codes(&failure), vec!["frontend::eval::empty_link_display".to_string(); 2]);
   assert_matches_golden("empty_link_display", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_ineffective_typeface() {
+  // 書体が届く字の無い書体コマンドは、外した書き方と同じ出力への第 2 の書き方なので拒否する
+  let failure = compile_err(&[
+    "tests/text/diagnostics/ineffective_typeface_a.sei",
+    "tests/text/diagnostics/ineffective_typeface_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::ineffective_typeface".to_string(); 2]);
+  assert_matches_golden("ineffective_typeface", &render_failure(failure));
 }
 
 #[test]

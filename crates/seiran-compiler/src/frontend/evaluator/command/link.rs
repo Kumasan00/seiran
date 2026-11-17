@@ -123,7 +123,7 @@ fn link_display(
 
 /// インライン列が字・数式・記号・数値を 1 つでも含むか
 ///
-/// 組版結果の幅ではなく内容で決める（空白・改行・空の装飾・空の数式は含まない扱い）。
+/// 組版結果の幅ではなく内容で決める（空白・改行・空の数式は含まない扱い）。
 fn has_visible_content(inlines: &[HirInline]) -> bool {
   return inlines.iter().any(|inline| {
     return match &inline.kind {
@@ -185,10 +185,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    document::HirNode,
-    frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support},
-  };
+  use crate::frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support};
 
   /// `\url{...}` を評価して（リンク先, 表示テキスト）を取り出す
   fn url_link(source: &str) -> (String, String) {
@@ -351,17 +348,6 @@ mod tests {
     assert!(matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "href"), "{result:?}");
   }
 
-  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
-  #[expect(
-    clippy::unwrap_in_result,
-    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
-  )]
-  fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
-    let arena = Bump::new();
-    let cst = test_support::parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
-    return evaluate_children_to_hir(source, cst);
-  }
-
   #[test]
   fn href_rejects_link_producers_in_display() {
     let cases = [
@@ -373,7 +359,7 @@ mod tests {
     ];
 
     for (source, expected) in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
@@ -391,7 +377,7 @@ mod tests {
     ];
 
     for (source, expected) in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
@@ -406,7 +392,6 @@ mod tests {
     let cases = [
       r"\href{u}{}",
       r"\href{u}{ }",
-      r"\href{u}{\bold{ }}",
       r"\href{u}{\\}",
       r"\href{u}{$ $}",
       r"\href{u}{${}$}",
@@ -417,7 +402,7 @@ mod tests {
     ];
 
     for source in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::EmptyLinkDisplay { ref what, .. }) if what == r"\href"),
@@ -436,7 +421,7 @@ mod tests {
     ];
 
     for source in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(result.is_ok(), "{source}: {result:?}");
     }
@@ -502,7 +487,7 @@ mod tests {
     ];
 
     for (source, expected) in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
@@ -513,8 +498,8 @@ mod tests {
 
   #[test]
   fn hyperref_rejects_blank_display() {
-    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\bold{}}"] {
-      let result = evaluate_document(source);
+    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\\}"] {
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::EmptyLinkDisplay { ref what, .. }) if what == r"\hyperref"),
@@ -525,28 +510,28 @@ mod tests {
 
   #[test]
   fn hyperref_rejects_index_in_display() {
-    let result = evaluate_document(r"\hyperref{x}{\index{語}}");
+    let result = test_support::evaluate_document(r"\hyperref{x}{\index{語}}");
 
     assert!(matches!(result, Err(EvalError::IndexNotAllowedHere { .. })), "{result:?}");
   }
 
   #[test]
   fn hyperref_rejects_options() {
-    let result = evaluate_document(r"\hyperref[k=v]{x}{y}");
+    let result = test_support::evaluate_document(r"\hyperref[k=v]{x}{y}");
 
     assert!(matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"), "{result:?}");
   }
 
   #[test]
   fn hyperref_rejects_extra_argument() {
-    let result = evaluate_document(r"\hyperref{x}{y}{z}");
+    let result = test_support::evaluate_document(r"\hyperref{x}{y}{z}");
 
     assert!(matches!(result, Err(EvalError::ExtraCommandArgument { .. })), "{result:?}");
   }
 
   #[test]
   fn hyperref_inside_math_is_rejected_as_an_unknown_command() {
-    let result = evaluate_document(r"$\hyperref{x}{y}$");
+    let result = test_support::evaluate_document(r"$\hyperref{x}{y}$");
 
     assert!(
       matches!(result, Err(EvalError::UnknownCommand { ref name, .. }) if name == "hyperref"),
@@ -556,7 +541,7 @@ mod tests {
 
   #[test]
   fn hyperref_inside_math_text_is_rejected() {
-    let result = evaluate_document(r"$\text{\hyperref{x}{y}}$");
+    let result = test_support::evaluate_document(r"$\text{\hyperref{x}{y}}$");
 
     assert!(matches!(result, Err(EvalError::UnsupportedInMathText { .. })), "{result:?}");
   }

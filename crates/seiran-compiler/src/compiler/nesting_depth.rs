@@ -28,7 +28,7 @@ fn deepest_paragraphs(levels: usize) -> Vec<String> {
     math("\\hat{", "}"),
     math("x^{", "}"),
     math("\\begin{matrix}", "\\end{matrix}"),
-    nested("\\bold{", "}", "x", levels),
+    nested("\\bold{a", "}", "x", levels),
     nested("\\begin{quote}", "\\end{quote}", "x", levels),
   ];
 }

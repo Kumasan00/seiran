@@ -792,11 +792,11 @@ mod tests {
     serif.quantity.typeface = Typeface::Serif;
     let one = vec![QuantityPiece::Text("1".to_string())];
 
-    let math = resolved("$\\mathbold{\\num{1}}$\n");
+    let math = resolved("$\\mathbold{x\\num{1}}$\n");
     let text = resolved_with(&serif, "$\\num{1}$\n");
 
     assert!(
-      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == one),
+      matches!(math.as_slice(), [MathNode::Char { .. }, MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == one),
       "{math:?}"
     );
     assert!(
@@ -809,10 +809,10 @@ mod tests {
   fn unit_ignores_the_glyph_variant() {
     let m = vec![QuantityPiece::Text("m".to_string())];
 
-    let math = resolved("$\\mathbold{\\unit{m}}$\n");
+    let math = resolved("$\\mathbold{x\\unit{m}}$\n");
 
     assert!(
-      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == m),
+      matches!(math.as_slice(), [MathNode::Char { .. }, MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == m),
       "{math:?}"
     );
   }
@@ -825,10 +825,10 @@ mod tests {
       QuantityPiece::Text("m".to_string()),
     ];
 
-    let math = resolved("$\\mathbold{\\qty{5}{m}}$\n");
+    let math = resolved("$\\mathbold{x\\qty{5}{m}}$\n");
 
     assert!(
-      matches!(math.as_slice(), [MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == five_metres),
+      matches!(math.as_slice(), [MathNode::Char { .. }, MathNode::Quantity { pieces, typeface: Typeface::Math }] if *pieces == five_metres),
       "{math:?}"
     );
   }

@@ -5,9 +5,9 @@
 // `num.sei` と同じ内容を、本文用の枠の書体（serif）・小数点 comma・桁区切り period・4 桁区切りで組む。
 
 長さ\num{3}の棒と、\num{-1.5e-3}・\num{+5}・\num{1234}・\num{0.12345}・\num{6.02e23} を並べる。
-装飾の中でも書体は変わらない: \bold{\num{1}} と \color[color=#ff0000]{\num{2}}。
+装飾の中でも書体は変わらない: \bold{太字の \num{1}} と \color[color=#ff0000]{\num{2}}。
 
-数式の中では $a\num{-5} + \mathbold{\num{2}}$ と $x^{\num{2e3}}$ になる。脚注にも書ける\footnote{脚注の \num{98765}。}。
+数式の中では $a\num{-5} + \mathbold{b\num{2}}$ と $x^{\num{2e3}}$ になる。脚注にも書ける\footnote{脚注の \num{98765}。}。
 
 \begin{equation}
 N_{A} = \num{6.02214076e23}

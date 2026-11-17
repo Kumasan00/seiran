@@ -521,9 +521,9 @@ mod tests {
 
   #[test]
   fn unit_takes_the_quantity_typeface() {
-    let nodes = lower_source(&ReadStyle::default(), "\\bold{\\unit{k\\Omega}}\n");
+    let nodes = lower_source(&ReadStyle::default(), "\\bold{a\\unit{k\\Omega}}\n");
 
-    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[1] else {
       panic!("Quantity が期待されます: {nodes:?}");
     };
     assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
@@ -532,9 +532,9 @@ mod tests {
 
   #[test]
   fn quantity_takes_the_quantity_typeface() {
-    let nodes = lower_source(&ReadStyle::default(), "\\bold{\\qty{5}{m}}\n");
+    let nodes = lower_source(&ReadStyle::default(), "\\bold{a\\qty{5}{m}}\n");
 
-    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[1] else {
       panic!("Quantity が期待されます: {nodes:?}");
     };
     assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");
@@ -552,9 +552,9 @@ mod tests {
   fn number_takes_the_quantity_typeface_and_the_outer_size_and_color() {
     let red = Color::new(0xff, 0x00, 0x00);
 
-    let nodes = lower_source(&ReadStyle::default(), "\\color[color=#ff0000]{\\bold{\\num{12345}}}\n");
+    let nodes = lower_source(&ReadStyle::default(), "\\color[color=#ff0000]{\\bold{a\\num{12345}}}\n");
 
-    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[0] else {
+    let InlineNode::Quantity { pieces, style } = &paragraph_layout(&nodes[0]).content[1] else {
       panic!("Number が期待されます: {nodes:?}");
     };
     assert_eq!(style.typeface, Typeface::Math, "外側の \\bold は効かない");

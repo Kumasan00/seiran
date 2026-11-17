@@ -110,36 +110,40 @@ keywords=["test", "seiran"]
   glyphs x=965.95 y=181.73 font=JapaneseSerif size=12.00 text="な" glyph_count=1
   glyphs x=708.66 y=198.98 font=JapaneseSerif size=12.00 text="い" glyph_count=1
   glyphs x=720.66 y=198.98 font=Serif size=12.00 text=":" glyph_count=1
-  glyphs x=726.42 y=198.98 font=Math size=12.00 text="5" glyph_count=1
-  glyphs x=734.36 y=198.98 font=Math size=12.00 text="N" glyph_count=1
-  glyphs x=745.27 y=198.98 font=Math size=12.00 text="m" glyph_count=1
-  glyphs x=758.31 y=198.98 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=773.13 y=198.98 font=Math size=12.00 text="1" glyph_count=1 color=Color([255, 0, 0])
-  glyphs x=781.07 y=198.98 font=Math size=12.00 text="Pa" glyph_count=2 color=Color([255, 0, 0])
-  glyphs x=793.66 y=198.98 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=726.42 y=198.98 font=JapaneseSerifBold size=12.00 text="太" glyph_count=1
+  glyphs x=738.42 y=198.98 font=JapaneseSerifBold size=12.00 text="字" glyph_count=1
+  glyphs x=750.42 y=198.98 font=JapaneseSerifBold size=12.00 text="の" glyph_count=1
+  glyphs x=765.24 y=198.98 font=Math size=12.00 text="5" glyph_count=1
+  glyphs x=773.18 y=198.98 font=Math size=12.00 text="N" glyph_count=1
+  glyphs x=784.09 y=198.98 font=Math size=12.00 text="m" glyph_count=1
+  glyphs x=797.13 y=198.98 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=811.95 y=198.98 font=Math size=12.00 text="1" glyph_count=1 color=Color([255, 0, 0])
+  glyphs x=819.89 y=198.98 font=Math size=12.00 text="Pa" glyph_count=2 color=Color([255, 0, 0])
+  glyphs x=832.48 y=198.98 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=708.66 y=223.58 font=JapaneseSerif size=12.00 text="数" glyph_count=1
-  glyphs x=720.98 y=223.58 font=JapaneseSerif size=12.00 text="式" glyph_count=1
-  glyphs x=733.29 y=223.58 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=745.60 y=223.58 font=JapaneseSerif size=12.00 text="中" glyph_count=1
-  glyphs x=757.92 y=223.58 font=JapaneseSerif size=12.00 text="で" glyph_count=1
-  glyphs x=770.23 y=223.58 font=JapaneseSerif size=12.00 text="は" glyph_count=1
-  glyphs x=785.79 y=223.58 font=Math size=12.00 text="𝑣" glyph_count=1
-  glyphs x=795.35 y=223.58 font=Math size=12.00 text="=" glyph_count=1
-  glyphs x=807.32 y=223.58 font=Math size=12.00 text="3" glyph_count=1
-  glyphs x=815.26 y=223.58 font=Math size=12.00 text="m" glyph_count=1
-  glyphs x=827.49 y=223.58 font=Math size=12.00 text="s" glyph_count=1
-  glyphs x=832.23 y=219.26 font=Math size=8.40 text="−1" glyph_count=2
-  glyphs x=845.66 y=223.58 font=Math size=12.00 text="+" glyph_count=1
-  glyphs x=856.96 y=223.58 font=Math size=12.00 text="2" glyph_count=1
-  glyphs x=864.90 y=223.58 font=Math size=12.00 text="m" glyph_count=1
-  glyphs x=877.13 y=223.58 font=Math size=12.00 text="s" glyph_count=1
-  glyphs x=881.87 y=219.26 font=Math size=8.40 text="−1" glyph_count=2
-  glyphs x=896.19 y=223.58 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=911.74 y=223.58 font=Math size=12.00 text="𝑥" glyph_count=1
-  glyphs x=918.57 y=219.26 font=Math size=8.40 text="1" glyph_count=1
-  glyphs x=924.13 y=219.26 font=Math size=8.40 text="m" glyph_count=1
-  glyphs x=935.32 y=223.58 font=JapaneseSerif size=12.00 text="に" glyph_count=1
-  glyphs x=947.64 y=223.58 font=JapaneseSerif size=12.00 text="な" glyph_count=1
+  glyphs x=720.66 y=223.58 font=JapaneseSerif size=12.00 text="式" glyph_count=1
+  glyphs x=732.66 y=223.58 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=744.66 y=223.58 font=JapaneseSerif size=12.00 text="中" glyph_count=1
+  glyphs x=756.66 y=223.58 font=JapaneseSerif size=12.00 text="で" glyph_count=1
+  glyphs x=768.66 y=223.58 font=JapaneseSerif size=12.00 text="は" glyph_count=1
+  glyphs x=783.07 y=223.58 font=Math size=12.00 text="𝑣" glyph_count=1
+  glyphs x=792.63 y=223.58 font=Math size=12.00 text="=" glyph_count=1
+  glyphs x=804.61 y=223.58 font=Math size=12.00 text="3" glyph_count=1
+  glyphs x=812.55 y=223.58 font=Math size=12.00 text="m" glyph_count=1
+  glyphs x=824.77 y=223.58 font=Math size=12.00 text="s" glyph_count=1
+  glyphs x=829.51 y=219.26 font=Math size=8.40 text="−1" glyph_count=2
+  glyphs x=842.94 y=223.58 font=Math size=12.00 text="+" glyph_count=1
+  glyphs x=854.24 y=223.58 font=Math size=12.00 text="𝐛" glyph_count=1
+  glyphs x=861.04 y=223.58 font=Math size=12.00 text="2" glyph_count=1
+  glyphs x=868.98 y=223.58 font=Math size=12.00 text="m" glyph_count=1
+  glyphs x=881.20 y=223.58 font=Math size=12.00 text="s" glyph_count=1
+  glyphs x=885.94 y=219.26 font=Math size=8.40 text="−1" glyph_count=2
+  glyphs x=899.11 y=223.58 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=913.52 y=223.58 font=Math size=12.00 text="𝑥" glyph_count=1
+  glyphs x=920.35 y=219.26 font=Math size=8.40 text="1" glyph_count=1
+  glyphs x=925.91 y=219.26 font=Math size=8.40 text="m" glyph_count=1
+  glyphs x=935.95 y=223.58 font=JapaneseSerif size=12.00 text="に" glyph_count=1
+  glyphs x=947.95 y=223.58 font=JapaneseSerif size=12.00 text="な" glyph_count=1
   glyphs x=959.95 y=223.58 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=971.95 y=223.58 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=708.66 y=240.82 font=JapaneseSerif size=12.00 text="脚" glyph_count=1

@@ -84,10 +84,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::{
-    document::HirNode,
-    frontend::evaluator::{evaluate_children_to_hir, run_handler, test_support},
-  };
+  use crate::frontend::evaluator::{run_handler, test_support};
 
   /// `\refs{...}` をハンドラ単体で評価する
   fn eval_refs(source: &str) -> Result<HirInline, EvalError> {
@@ -109,17 +106,6 @@ mod tests {
       panic!("InvalidCommandArgument が期待されます: {result:?}");
     };
     return (name, reason);
-  }
-
-  /// `.sei` ソースを文書として評価する（入れ子のコマンドも本番の dispatch を通る）
-  #[expect(
-    clippy::unwrap_in_result,
-    reason = "構文エラーはテスト入力の誤りで評価の結果ではないので、panic させてテストを失敗させる必要がある"
-  )]
-  fn evaluate_document(source: &str) -> Result<Vec<HirNode>, EvalError> {
-    let arena = Bump::new();
-    let cst = test_support::parse_cst(source, &arena).expect("テスト入力は構文として正しいはず");
-    return evaluate_children_to_hir(source, cst);
   }
 
   #[test]
@@ -184,7 +170,7 @@ mod tests {
   #[test]
   fn refs_and_ref_range_reject_options() {
     for source in [r"\refs[k=v]{a, b}", r"\refrange[k=v]{a}{b}"] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::UnknownOptArgKey { ref key, .. }) if key == "k"),
@@ -196,7 +182,7 @@ mod tests {
   #[test]
   fn refs_inside_math_text_is_rejected() {
     for source in [r"$\text{\refs{a, b}}$", r"$\text{\refrange{a}{b}}$"] {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(matches!(result, Err(EvalError::UnsupportedInMathText { .. })), "{source}: {result:?}");
     }
@@ -210,7 +196,7 @@ mod tests {
     ];
 
     for (source, expected) in cases {
-      let result = evaluate_document(source);
+      let result = test_support::evaluate_document(source);
 
       assert!(
         matches!(result, Err(EvalError::LinkInLinkDisplay { ref what, .. }) if what == expected),
