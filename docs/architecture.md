@@ -797,6 +797,8 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   renderer 側に未対応形式の診断を持たない根拠）
 - ラスタの EXIF の Orientation は適用しない — 描画側（krilla）も寸法ヘッダの値を使うため、適用すると組版時と
   描画時の解釈がずれる
+- PDF の版（PDF 2.0）はここで拒否し、描画側の版の不一致エラーへ到達させない。自然寸法は hayro の
+  `render_dimensions()`（pt）で、krilla の `draw_pdf_page` が拡大率の基準にする値そのもの
 - hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、
   図の矩形で切り抜く処理は描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める。図の矩形は辺が
   1pt 以上なら表示範囲と一致し、1pt 未満の辺は hayro の 1pt 基準に従うので表示範囲の外も 1pt までは見える
@@ -997,7 +999,7 @@ style は届かない。
 
 フォント非依存の純粋組版パス。`break_pages` の interface はフォント・シェーパーを引数に取らず、フォント
 非依存を型境界で固定する。版面の幾何は `geometry` が定義・構築し、この module は `&PageGeometry` を受け取って
-分割する側。
+分割する側。数式内分割点 `HItem::MathBreak`（数式エンジンが積む）は、行分割が他の分割点で組めないときだけ使う。
 
 **改ページ制御は glue と 2 つの制御**（強制改ページ `Block::PageBreak`・分割禁止 `Block::KeepWithNext`）で、widow / orphan・keep-with-next・下端揃え（`flush_bottom`）を扱う。
 
