@@ -434,8 +434,7 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
 異体字列の代替の警告は返す — はみ出しなど配置由来の警告は組版が成功したときにしか返さない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（数式フォントの字・数値・単位の上付きの指標の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
-前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
+段順序と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
 seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker を使うかを外へ出さない（Knuth–Plass を
@@ -504,8 +503,6 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査と、`emit` が描画資源へ載せる face 設定・
   メトリクスの取得に限る（数式のスクリプト段の縮小率は数式エンジンが `boxing` の中で読む）。
   backend のフォント構築・サブセット化は `seiran-pdf` が持つ
-- フォントの構築は**画像読込より前**。フォントと画像の両方が失敗する入力ではフォント側のエラーを報告する
-  （順序を入れ替えると診断が変わる）
 - 本文の枠の候補の切り替え（`fallback`）は改行機会・単語境界にならない: 分割点・和欧文の分類・約物アキは元の論理文字列のまま決まる
 
 #### `error`
@@ -651,7 +648,6 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   `MathBlockLayout` に載せる。段・cramped・大きさ・アキ・分割候補・計測は数式エンジン（`boxing::math` 節）が決める
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけ
-- 採番値・宣言ラベル・参照先は各 lowering が `NodeId` で `LoweringState` から引く
 - **HIR のブロック variant は payload struct**。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
   payload struct、1 つならタプル、0 ならユニット variant。
   インラインのフィールドを持つ variant は
@@ -766,8 +762,7 @@ style は届かない。
 **脚注のページ配置**も `break_pages` が担う。段組みでは脚注は段単位で独立する（ページ全幅で共有しない）が、
 `Page::footnotes` はページ単位でまとまるため、ページ単位採番の基準は段ではなくページになる。配置済み脚注は
 採番方式に依らない同一性として出現 index だけを運ぶ — 表示番号はマーカーのグリフとして焼き込み済みで、配置後に
-読む者はいない。脚注 1 個がその行のページの脚注エリアに収まらないときは、組版済みの行単位で分割して残りを
-次リージョンの脚注エリアへ繰り越す。繰越の断片は `continued` で区別し、ページ単位採番はこれを数えない。
+読む者はいない。次リージョンへ繰り越した脚注の断片は `continued` で区別し、ページ単位採番はこれを数えない。
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
@@ -825,8 +820,8 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
   facade に載る
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（資源配列の添字）。添字である以上、
   資源の並びは決定的でなければならないので、組版段が**（パス, ページ index）昇順**に並べた順で配列を組む
-- テスト用に `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て。
-  `Publication` 値は作らない）を持つ
+- テスト用の `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て）は
+  `typeset::image` のテストも使う
 - **SVG のパース設定 `SvgParser`**（子 module `svg`）は、facade に載る型のうち唯一 usvg の型（`usvg::Tree` /
   `usvg::Error`）を外へ出す。`PublicationResources` の外にある純データではなく、`svg_parser()` で全実体の
   フォントから都度作る。SVG 内の文字の照合規則（`font-family` の照合・generic の枠への読み替え・同じ系統の枠での
@@ -887,8 +882,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
 
 - **`CompilationInputs` は読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**。入力読込の
   外向き入口は `input::load` 1 つ。
-  **config.toml → style.toml → 横断検証・版面の構築 → {references・フォント・sources}** という順序とエラー
-  集約を知るのはこの module だけ（順序の根拠と集約の規則は `//!`）。CSL スタイル・ロケールはここでは
+  読込の順序とエラー集約を知るのはこの module だけ（順序とその根拠・集約の規則は `//!`）。CSL スタイル・ロケールはここでは
   読まない（遅延は `semantics::analyze` の内側）。
   `CompilationInputs` のフィールドは非公開 + アクセサで、構築経路は `load` だけ（テスト専用の
   コンストラクタも持たない —「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を型で保証）。
@@ -957,8 +951,8 @@ compiler 側の責務で、こちらは持たない。
 
 **「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ。
 compiler が構築時に検証済みの不変条件を再検査する variant（invalid page size / rule rect / link rect /
-image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性（保証点は
-`typeset::font::validation`））は持たない（保証点は `publication` 節の表。#378）。SVG と PDF 図版は
+image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性）は持たない（保証点は
+`publication` 節の表。#378）。SVG と PDF 図版は
 compiler が同じパーサ（SVG は同じ `SvgParser`）で検査を通したバイト列だが、パース結果は facade を越えないので backend が読み直し、その失敗を
 `ParseSvg` / `ParsePdf` として持つ。これは読み直しが `Result` を返すことの受け口で、2 つ目の保証点ではない。
 
@@ -1005,8 +999,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 - **構造は span、事実は event、工程の lifecycle は `Phase`、1 事象 1 オーナー**（3 crate 共通）。工程の入れ子は
   span が表し、event は件数などの事実だけを運ぶ。phase は INFO の span で、段の内部で同じ処理を複数回呼ぶ箇所は
   DEBUG の span で区別する（区画ごとの改ページ等）。span のレベルはその中の event の最上位レベルと同じに
-  し、既定（`warn`）では span も無効になる。工程の開始と結果付きの終了は `Phase` が INFO event として出し、
-  subscriber の `FmtSpan` は有効にしない（span は各行の prefix と行末のフィールドとしてだけ現れる）。
+  し、既定（`warn`）では span も無効になる。工程の開始と結果付きの終了は `Phase` が INFO event として出す。
   `render` / `write` の件数を持つ完了 event は callee（`seiran_pdf::render` / `pdf_output`）が
   出し、CLI は同じ工程の完了 event を重ねない（1 事象 1 行。compiler 側は span を開いた側が出す — `compiler`
   節）。所要時間を持つのは工程の終了 event と DEBUG の集計 event だけ。
