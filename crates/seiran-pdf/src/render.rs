@@ -113,7 +113,7 @@ fn add_page_links(page: &mut KrillaPage<'_>, links: &[PublicationLink]) {
   }
 }
 
-/// `PaintOp::DrawGlyphRun` を描画する
+/// `PaintOp::DrawGlyphRun` を描画する。`color` が `None` のグリフ列は塗り色を設定せず、backend の既定（黒）で描く
 fn draw_glyph_run(
   surface: &mut Surface<'_>,
   resources: &PublicationResources,
@@ -198,7 +198,9 @@ pub(crate) fn render_pages(
 /// 確定済みの矩形に画像資源を描画する。
 ///
 /// ラスタ画像が上限 DPI を超える場合は読み込み時に縮小する（超えるかは寸法ヘッダだけで判定する）。
-/// PDF は選んだ 1 ページをベクタのまま Form `XObject`（独立した透過グループ）として描く。
+/// PDF は選んだ 1 ページをベクタのまま Form `XObject`（独立した透過グループ）として描き、ラスタ化・色空間の変換・
+/// 中のラスタの再圧縮はしない。透過グループの色空間（`/CS`）は krilla が RGB で書くので、CMYK の図版でも透過・
+/// 描画モードの合成は RGB で行われる。
 /// krilla は同じバイト列の文書を同一視するので、描画ごとに開き直しても `XObject` は
 /// （文書, ページ）ごとに 1 個にまとまる。
 fn draw_image(

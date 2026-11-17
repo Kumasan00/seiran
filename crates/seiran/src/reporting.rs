@@ -90,7 +90,7 @@ impl Reporter {
   ///
   /// # Errors
   ///
-  /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。
+  /// `--log-file` のパスを開けないとき、subscriber を 1 つも設置せずに [`LogFileError`] を返す。
   pub(super) fn init(
     verbose: u8,
     quiet: bool,
