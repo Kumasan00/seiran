@@ -22,7 +22,7 @@ use crate::{
 /// シェイプしている字形の出どころ — 著者が書いた要素か、組版が生成した内容か
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(super) enum GlyphOrigin {
-  /// 要素（段落・見出し・表の行・脚注・ディスプレイ数式）
+  /// 要素（段落・見出し・表の行・脚注・ディスプレイ数式。目次の行の題目は元の見出し）
   Element(NodeId),
   /// 単一のソース要素に対応しない生成内容
   Generated(Generated),
