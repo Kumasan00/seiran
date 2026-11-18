@@ -1124,180 +1124,8 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 `push_inline_math` と、表示数式（`LayoutNode::MathBlock`）を `Block::Math` にする `build_math_block`。段落の行分割・配置は
 数式の内部構造を知らない。入力は lowering が内容だけを解決した `MathNode` で、HIR の数式語彙は届かない。
 
-2 段で組む:
-
-- **組み立て（子 `arrange`。純粋段）**: `MathNode` 列・数式本体の大きさ・開始段・縮小率から、段と cramped を伝播し、
-  Bin→Ord 変換とアキ表（子 `arrange::spacing`）でアキを決め、スクリプトを基底へ付け、インライン数式のトップレベルでは
-  分割候補を抜き出して、計測前の木（`ArrangedNode`。インラインのトップレベルは分割候補を含む `ArrangedInline`）にする。
-  フォントに触れない — 縮小率は配置段が `Shaper::script_scale`（数式フォントの MATH）で読んで渡すので、段・アキの
-  テストはフォント無しで書ける
-- **配置（この module 本体と構造ごとの子 module）**:
-  組み立てた木を計測し、MATH 定数とインクから構造ごとの内部配置を決めて閉じた `Atom` にする。インライン数式の
-  トップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の隣の約物と本文の
-  規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
-
-組み立て（段・アキ）と配置（構造ごと）の規則:
-
-- **数式のアキ**: `MathNode` 1 個（テキストは書記素クラスタ 1 つ — 結合文字は基底の字と同じアイテムで、スクリプトの基底も
-  結合文字を含めた字になる）をアイテムとし、記号コマンドと、NFC にした最初の字が記号表の非 ASCII の字である直接入力
-  （frontend が記号コマンドと同じ `HirMathKind::Symbol` にする）は `MathClass`、そのほかの直接入力の文字は plain TeX の
-  mathcode 相当の分類（クラスタの最初の字。表に無い字は Ord）でクラスを決める（クラスは lowering が解決して `MathNode` に載せる）。ソースの空白はアイテムにしない
-  （`$a+b$` と `$a + b$` は同じ出力）。明示アキ（`\thinspace` 等。HIR は量ではなく種類 `MathSpace` を持ち、量は
-  自動アキと同じ定数から決める）はクラスを持たないアイテムで、Bin→Ord 変換とアキ表の参照に透過し、幅を次のアトムの
-  前のアキへ足す（スクリプトの基底にも行分割点にもならず、分割点の境界にある明示アキは `MathBreak` のアキに入って
-  折り返しで消える）。TeXbook の Bin→Ord 変換を前方 1 パスで適用してから 7×7 のアキ表を
-  引き、1mu = font_size/18 の固定 kern を挟む。インライン数式のトップレベルに限り、括弧の外の Bin の直後、
-  および右がアキを持つ Rel の直後（右が Ord / Op / Open のときだけ。Bin / Rel / Close / Punct は
-  アキ 0 のセルか Bin→Ord 変換で現れない組み合わせなので割らない）のアキを行分割点
-  `ArrangedInline::Break`（段落のリストでは `HItem::MathBreak`）として出す（ディスプレイ数式のセルは
-  `ArrangedNode` の列で組むので型の上で入らない）。括弧の深さは数式クラスの Open / Close ではなく、対応する開き
-  括弧を持つ本物の区切り（`Fence`）だけで数える — `!` `?` は plain TeX の mathcode で Close クラスだが
-  区切りではないので深さに数えない。上付き・下付きは核のアトムに吸収され、`Group` / `Frac` / `Sqrt` /
-  `Accent` / `Bar` は 1 個の Ord なので `$a{+}b$` でアキを殺せる。伸縮括弧（`\paren` 等）は 1 個のアイテムで、左端を Open・
-  右端を Close として隣と組む（`\sum\paren{x}` は `\sum(x)` と同じアキ）。中身の中間の区切り（`\given`）は区画の間に置く
-  Rel のアイテムとして中身全体の 1 本の列でアキを決め、そのあと区画ごとに分ける（`\paren{a \given b}` は `(a \mid b)` と同じアキ）。二項係数（`\binom`）も、横罫の無い
-  `MathFraction` を `MathFenced` の `(` `)` で包んだ伸縮括弧と同じ 1 個のアイテム。中身ごと閉じた Atom なので内側では割らず、
-  括弧の深さにも数えない（外側の分割点は裸の括弧のときと同じ）。
-  数式内の文章（`\text`。HIR は空白をまとめ済みの文字列を `HirMathKind::Prose` に持つ）は Ord の 1 アイテムで、字形
-  variant を読まず `[text].typeface` で組む（大きさは段、色は外側から継ぐ）。`ArrangedNode::Prose` として
-  配置段へ渡り、配置段は本文の水平リスト生成（和欧文間アキ・約物アキは `[text].punctuation_spacing` に従う）を通して
-  glue を自然幅として 1 個の閉じた箱に並べる（インライン数式のトップレベルでも分割点を持たない）。空の文章は空のグループと
-  同じ中身の無い Ord。
-  数値・単位・量（`\num` / `\unit` / `\qty`。HIR は数字列のまま `Numeral` / 書いたままの字の `UnitFactor` を持ち（量はその両方）、lowering が style の書式で字・アキ・上付きの部品 `QuantityPiece` に整える）も
-  Ord の 1 アイテムで、字形 variant を読まず `[quantity].typeface` で組む（大きさは段、色は外側から継ぐ）。部品は数式の字
-  （`MathNode::Char`）にしないので、内側の `-` や積の記号は Bin にならない。箱は本文と同じ子 `boxing::quantity` が組む
-- **数式スタイルとスクリプト**: 数式の各部分は段（display / text / script / scriptscript）と cramped の有無を
-  持つ（TeX・MathML Core と同じ）。`equation` と align / gather / split / multiline 系のセルは display、
-  `cases` / `matrix` のセルとインライン数式は text で始まる（TeX の `\textstyle`、MathML Core の
-  `mtable { math-style: compact }`。行列・場合分けのセルは表示数式の中でも本文並みに詰める）。数式の中に埋め込んだ
-  `matrix` / `cases`（HIR の `HirMathKind::Matrix` / `Cases`）のセルは、display 段からは text 段、text 段以下では外側の段の
-  まま組み、添字の中で本文の大きさへ戻さない。cramped・字形 variant・文字色は外側から継ぐ。上付き・
-  下付きの中身は 1 段下（scriptscript より下へは縮めない）、根号の指数は scriptscript。アクセント記号は段を
-  下げず、基底と同じ段の大きさと `ssty` で組む（MathML Core の accent の上付け）。分子・分母は分数の段の
-  1 段下（display → text、text → script、それより下は scriptscript）。二項係数の上段・下段も分子・分母と同じ段と cramped。下付きの中身・分母・被根号・
-  アクセントの基底・上線の基底は cramped で、cramped は中身へ継承され解除されない（上付きの中身・分子・下線の基底は親を継承）。段のフォントサイズは数式本体の
-  サイズに MATH の縮小率を掛けた値（scriptscript も本体基準。縮小率は配置段が `Shaper::script_scale` で読んで渡す）。兄弟として並ぶ上付き・下付きは直前のアイテムを
-  基底にし、反対側だけを持つ基底へは重ね（`x_{i}^{2}` と `x^{2}_{i}` は同形）、同じ側を既に持つならスクリプト
-  付きのアイテム全体を新しい基底にする。グループは中のスクリプトごと 1 つの基底。シフト量は組み立てでは
-  決めず、構造ごとの型（`MathScripts` / `MathFraction` / `MathRadical` / `MathAccent` / `MathBar` / `MathFenced` /
-  `MathArray`）に段のサイズ・cramped・display かを載せて配置段へ渡す。埋め込んだ行列は閉じた
-  1 アトムで、括弧を持つもの（`delimiter` が none 以外の matrix と cases）は伸縮括弧と同じく左端 Open・右端 Close、括弧の
-  無い matrix は Ord として隣とアキを取る。行間・列間は `[math.block].row_gap` / `column_gap` を本文の大きさ（`[text].font_size`）基準として段のサイズに比例させた値。
-  インライン数式は外側の文字色（`\color`・リンク色）を `MathFormula` に持って全段へ継承し、テキストの
-  `TextStyle` と上の複合ノードの `color`（分数線・根号記号と横線・アクセント記号・区切り括弧・上下線の塗り色）に載せる。
-  表示数式は段落の外のブロックで文字色が効かないので既定色（`None`）。
-  大型演算子（数式クラス Op の記号のうち MathML Core の演算子辞書で largeop を持つもの）は display 段でだけ
-  `ArrangedNode::LargeOperator` にする（text 段以下は通常の演算子のテキスト。MathML Core の largeop は math-style が normal の
-  ときだけ効く）。largeop を持たない Op（`\bigslash` 等）は display 段でも Op のアキを取る通常の字。積分記号以外（MathML Core の演算子辞書の
-  movablelimits）の大型演算子に付く上付き・下付きは `MathScripts::limits` を立てて上下に積み、範囲の中身の段は上付き・
-  下付きと同じ。同じ側を重ねた外側の基底とグループの基底は演算子 1 つではないので肩・添字に戻す。
-  演算子名（`\lim` `\sin` 等。HIR は組む字と limits を取るかを `HirMathKind::OperatorName` に持つ）は Op の 1 アイテムで、
-  字は立体の ASCII のまま（字形 variant を読まない）、語の間（`\limsup`）は細アキの Kern。display 段でも
-  `ArrangedNode::LargeOperator` にせず拡大しないが、limits を取る名前は display 段でだけ大型演算子と同じく `MathScripts::limits`
-  を立てる
-- **区切り括弧付きのディスプレイ数式**（`matrix[delimiter=…]` / `cases`）は、本体グリッドの縦中央を数式フォントの
-  MATH `AxisHeight`（数式軸）に載せる。括弧はフォントサイズを変えずに MATH の伸縮グリフで縦にだけ伸ばし
-  （本体の高さ + 深さ以上で最小の size variant、足りなければ glyph assembly。選択は `typeset::font::stretch` が
-  MathML Core の算法で行う）、インクの縦中央を数式軸に合わせる。括弧の箱の高さ・深さはインクの範囲で、
-  glyph assembly のパーツは 1 本のグリフ列に `y_offset` で積み、全パーツを括弧 1 字のクラスタに属させる
-  （PDF のテキストは括弧 1 字）。箱の幾何中点や括弧箱の ascender / descender は使わない。環境単位の式番号は
-  本体の縦中央に揃える別規則。数式の中に埋め込んだ matrix / cases（`MathArray`）も同じグリッド組みと括弧の包み直しを
-  通るが、括弧の有無によらずグリッドの縦中央を数式軸に載せ、
-  括弧はその段のフォントサイズ・スクリプト段（`ssty`）・文字色で組む。独立ブロックの matrix / cases は
-  `MathBlockKind::Matrix` / `Cases` のまま残し、「行列 1 個を持つ表示数式」へはまとめていない（まとめると括弧なしの
-  独立 matrix の基準線が数式軸へ移り、見た目は同じでもレイアウトダンプの座標が変わる。再検討トリガーはその変化を
-  受け入れる判断）
-- **上付き・下付き**（`MathScripts`）は、基底と上付き・下付きを原点から仮に配置してインク（グリフの形の範囲。
-  `FontSystem::glyph_extents`）を測り、MATH 定数からシフト量を決める（片側だけのシフトは MathML Core の規則、上下付き同時のギャップは OpenType MATH の
-  `SuperscriptBottomMaxWithSubscript` の定義） — 箱の高さ・
-  深さ（フォント全体の ascender / descender）は使わない。横位置は基底の末尾の字（数式フォントのとき。テキストは基底と結合文字のクラスタで補正は構成字形の和、大型演算子は最後の字形）の MATH のイタリック補正で決め、上付きは基底の右端、下付きはそこから
-  補正ぶん戻した位置に置く。演算子でない数式フォントの run は、傾いたクラスタ（基底と結合文字。補正の和が 0 でない）の
-  補正を次のクラスタが傾いていないときと run の末尾でクラスタの末尾の字形の送り幅へ足してある（MathML Core の `mrow`。
-  演算子の記号は `TextStyle::math_operator` の `MathOperator::Symbol` で除く）ので、
-  これは MathML Core の `msub` / `msup`（演算子でない基底は上付きを補正ぶん前へ、演算子は下付きを補正ぶん手前へ。
-  補正を持つ演算子はすべて MathML Core の大型演算子と同じに扱う）と同じ位置になる。演算子名の語（`MathOperator::Name`）は
-  最後の字の補正を Ord のテキストと同じく送り幅に足し、核が 1 字ではないので補正を 0 として配置する（TeX の規則 13 の δ。
-  上付き・下付きとも語の右端、上下に積む範囲は補正でずらさない）。補正の扱いは MathML Core に従う — 複数の字からなる基底でも、
-  グループ（`mrow`）は末尾の字の補正を引き継ぎ、演算子名の語（複数の字形の `mi`）は補正を持たない。基底が 1 字（書記素
-  クラスタ 1 つのテキストか大型演算子のノード 1 個。`{f}` も 1 字）で、その字とスクリプトの先頭がともに数式フォントのグリフなら、それぞれの字の先頭の字形（結合文字ではなく基底の字）の
-  OpenType MATH の math kern（上付きは基底の右上と上付きの
-  左下を「上付きのその字形のインクの底」「基底のその字形のインクの頂」の 2 つの高さで、下付きは基底の右下と下付きの左上を
-  「下付きのその字形のインクの頂」「基底のその字形のインクの底」で足し、小さい方。高さは字形 1 つのインクで測り、ベースラインの
-  反対側の端も 0 に切らない（スクリプトのシフトが使う、基底・スクリプト全体の 0 で切ったインクとは別）。表はそれぞれの
-  グリフ自身のベースライン — 箱の `dy` にグリフの `y_offset` を足した位置 — からの高さで引く）だけ寄せる。複数の字・箱の
-  基底（演算子名・2 字以上のグループ・分数等）には math kern を効かせない（TeX / LuaTeX と同じく、math kern は字の核の値。
-  MathML Core には math kern が無い）。上下付き
-  同時でギャップが `SubSuperscriptGapMin` に足りなければ、上付きの底が `SuperscriptBottomMaxWithSubscript` を
-  超えない範囲で上付きを上げて残りを下付きを下げて埋める。後ろに `SpaceAfterScript` を空ける（閉じた Atom の幅は
-  末尾のアキを含む送り幅そのもので、末尾が負の明示アキなら子の箱の右端より狭い）
-- **分数**（`MathFraction`）は MathML Core §3.3.2.1 の規則で置く: 分子のシフトは `FractionNumeratorShiftUp` と
-  「`AxisHeight` + 罫の太さ/2 + `FractionNumeratorGapMin` + 分子のインクの深さ」の大きい方、分母のシフトは
-  `FractionDenominatorShiftDown` と「罫の太さ/2 + `FractionDenominatorGapMin` + 分母のインクの高さ − `AxisHeight`」の
-  大きい方（分数の段が display なら `*DisplayStyle*` の値。定数は分数の段のサイズで換算）。分子・分母は両者の送り幅の
-  最大の中で中央に置き、横罫（`HBoxContent::Rule`、太さ `FractionRuleThickness`）はその幅いっぱいに中心を数式軸に
-  合わせる。左右に 0.75pt ずつ空ける（MathML Core の UA スタイルシート `mfrac { padding-inline: 1px }`。隣り合う分数の
-  罫をつなげない）。分数は閉じた Atom 1 つ
-- **二項係数**（`\binom`。横罫の無い `MathFraction` を `MathFenced` の `(` `)` で包む）の積みは MathML Core §3.3.2.2 の
-  規則で置く: 上段のシフトは `StackTopShiftUp`、下段のシフトは `StackBottomShiftDown`、ギャップの下限は `StackGapMin`（積みの段が
-  display なら `StackTopDisplayStyleShiftUp` / `StackBottomDisplayStyleShiftDown` / `StackDisplayStyleGapMin`。定数は積みの段の
-  サイズで換算）。「(下段のシフト − 下段のインクの高さ) + (上段のシフト − 上段のインクの深さ)」が下限に足りなければ、不足分の半分を
-  上段のシフトへ、残りを下段のシフトへ足す。幅・中央揃え・左右 0.75pt ずつのアキは分数と同じで（UA スタイルシートのアキは線の
-  太さによらない）、横罫は置かない。括弧は伸縮括弧の規則で中身を覆い、全体は閉じた Atom 1 つ
-- **根号**（`MathRadical`）は MathML Core §3.3.3 の規則で置く: √ を「被根号のインクの高さ + 深さ + ギャップ
-  （`RadicalVerticalGap`、display なら `RadicalDisplayStyleVerticalGap`）+ `RadicalRuleThickness`」以上へ区切り括弧と
-  同じ伸縮で縦に伸ばし、インクの上端を横線（vinculum。`HBoxContent::Rule`）の上端に合わせる。伸ばした記号が目標より
-  高ければ余りの半分をギャップへ足す（TeX の Rule 11。MathML Core には無く、無いと size variant の段差ぶん記号が下へ
-  垂れる）。横線は記号の送り幅の位置から被根号の幅いっぱいに引き、上に `RadicalExtraAscender` を取る（Atom の高さに
-  含める）。指数は前に max(0, `RadicalKernBeforeDegree`)、後に max(−指数の幅, `RadicalKernAfterDegree`) の kern を置き、
-  インクの底を「根号の下端 + 根号の高さ × `RadicalDegreeBottomRaisePercent`」へ置く（根号の上端は横線の上端 +
-  `RadicalExtraAscender`、下端は被根号と記号のインクの深い方）。根号は閉じた Atom 1 つ
-- **アクセント**（`MathAccent`。`\hat` 等、unicode-math と同じ結合用ダイアクリティカルマーク 1 字）は、アクセント記号の
-  `MathTopAccentAttachment` を基底の取付点に揃える。基底が数式フォントの 1 グリフならそのグリフの登録値、それ以外の
-  基底（複数グリフ・スクリプト付き・分数等）は送り幅の中央、登録の無い基底のグリフも送り幅の中央（MATH の規定の既定値）。
-  ドット無し（`MathAccent` の `dotless`）なら、1 グリフの基底をテキストのまま OpenType `dtls` を足して組み直し、1 グリフの
-  まま字形が替わったときだけ差し替える（段の `ssty`・字体はそのまま。`dtls` に置換の無いグリフと 1 グリフでない基底は
-  そのまま）。以下の取付点・高さ・`flac` は差し替えた字形で決める。
-  登録の無いアクセント記号（ssty 字形など）は墨の横の中央を取付点にする（結合記号は送り幅 0
-  なので、送り幅の中央は原点＝墨の端になる）。
-  縦は数式フォントの設計に従う: OpenType の `AccentBaseHeight`（アクセントを上げずに済む基底のインクの最大の高さ）以下の
-  基底にはベースラインを揃え、超えた分だけ上げる（TeX の Rule 12 の x-height を置き換えたもの）。アクセント字形は
-  ベースラインを揃えるとインクの底が `AccentBaseHeight` より上に来るように作られていて、基底との隙間は字形自身が持つので
-  足さない。MathML Core §3.4.2.4 の本文は任意の要素を上付けにする一般化で、字形の隙間を前提にしないので従わない（同節の
-  ノートが、フォントの規則はベースラインを揃えるものだと述べる）。基底のインクの高さが `FlattenedAccentBaseHeight` を超えたら
-  アクセント記号を `flac` の平たい字形に替える。Atom の幅は基底の送り幅（記号の墨のはみ出しは数えない。TeX と同じ）で、
-  アクセントは閉じた Atom 1 つ。
-  広幅アクセント（`\widehat` 等・上の矢印。`MathAccent` の `wide`）は記号を基底の送り幅へ横にだけ伸ばす（元の字形 →
-  横方向の size variant → glyph assembly → 最大の size variant。縦の伸縮と同じ選択で、MathML Core の shape a stretchy glyph
-  どおり文字の cmap グリフから決める。元の字形はインクの幅（結合記号の送り幅は 0 や字形と無関係な値になりうる）、variant は
-  `advanceMeasurement` で比べる）。元の字形のままなら `ssty` / `flac` も固定幅と同じで、伸ばした字形は GSUB を通さない。
-  glyph assembly のパーツは左から並べ、送り幅の和は組み上がりの幅（MathML Core の glyph assembly stretch size。hmtx の
-  送り幅は使わない）、全パーツが 1 字のクラスタ。配置規則は固定幅と同じ（size variant とパーツ 1 つの assembly の取付点は登録値か墨の
-  中央、複数パーツの assembly は組み上がりの幅の中央）
-- **上線・下線**（`MathBar`。`\overline` / `\underline`）は OpenType MATH の `Overbar*` / `Underbar*` で、基底の送り幅
-  いっぱいの罫線（`HBoxContent::Rule`）を引く。上線は基底のインクの頂から `OverbarVerticalGap` 上に罫線の下端、太さ
-  `OverbarRuleThickness`、罫線の上に `OverbarExtraAscender`。下線は基底のインクの底から `UnderbarVerticalGap` 下に罫線の
-  上端、太さ `UnderbarRuleThickness`、罫線の下に `UnderbarExtraDescender`（TeX の Rule 9 / 10 の 3θ・θ をフォントの値に
-  置き換えたもの）。ギャップはインクで測り、余白は Atom の高さ・深さにだけ入れる（墨ではないので入れ子の外側の線・
-  アクセント・スクリプトは数えない）。Atom の幅は基底の送り幅で、上下線は閉じた Atom 1 つ
-- **伸縮括弧**（`MathFenced`。`\paren` 等）は、括弧を中身のインクの高さ h・深さ d と数式軸 a（`AxisHeight`）から
-  `2 × max(h − a, d + a)` 以上へ、区切り括弧と同じ伸縮で縦にだけ伸ばし（MathML Core の対称伸縮）、インクの縦中央を
-  数式軸に合わせる。中身が軸の上下に非対称でも、括弧は軸を中心に上下対称に伸びて両側を覆う。TeX の
-  `\delimiterfactor` / `\delimitershortfall` 相当の係数・不足許容量は置かない。中間の区切り（区画の間の縦棒 U+007C）は
-  全区画のインクで決めた同じ目標・同じ軸合わせで伸ばし、目標には寄与しない。括弧・区画・縦棒・区画…・括弧を隙間なく並べ
-  （cases / matrix の枠のアキは使わない）、閉じた Atom 1 つにする
-- **伸縮の上限**: 伸縮字形（区切り括弧・行列の枠・根号記号・display 段の大型演算子）は、どれも目標を本文領域の高さ
-  （本文下限 − 上余白）で止めてから伸ばす（`Measurer::stretch_vertically`）。それより高い字形はどのページにも収まらず、
-  止めることで、軸を中心に対称に伸ばす括弧の入れ子が段ごとに定数倍で大きくなるのを加算に抑える。上の各規則の
-  「〜以上へ伸ばす」はこの上限の内側で成り立つ
-- **大型演算子**（`ArrangedNode::LargeOperator`。display 段だけ）は MathML Core §3.2.4.3 の規則で、区切り括弧と同じ伸縮で
-  `DisplayOperatorMinHeight` 以上へ縦に伸ばし（覆う size variant も glyph assembly も無ければ最大の size variant）、インクの
-  縦中央を数式軸に合わせる。イタリック補正は選んだ字形のもの（glyph assembly で組んだときは最後のパーツのもので、
-  `GlyphAssembly` の補正は読まない）で、`Measurer::detach` が末尾のグリフとして、軸へ合わせたずれと一緒に拾う。上下に積む上付き・下付き
-  （`MathScripts::limits`。基底は大型演算子か演算子名）は TeX の規則 13a（limits を取る Op は基底の種類によらず同じ定数。
-  OpenType MATH の `UpperLimit*` / `LowerLimit*`）で、MathML Core §3.4.2 の largeop の基底の場合と同じく、上限のベースラインを基底のインクの頂から
-  max(`UpperLimitBaselineRiseMin`, `UpperLimitGapMin` + 上限のインクの深さ)、下限のベースラインを基底のインクの底から
-  max(`LowerLimitBaselineDropMin`, `LowerLimitGapMin` + 下限のインクの高さ) 離す。横は 3 つの送り幅の中央を揃え、上限を基底の
-  イタリック補正の半分だけ右、下限を半分だけ左へずらす。幅は 3 つの広がりの和集合で、後ろにアキを置かない
+- インライン数式のトップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の
+  隣の約物と本文の規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
 
 #### 表エンジン（`boxing::table`）
 
@@ -1306,28 +1134,12 @@ glue・`Penalty`・`Discretionary` の生成と、数式内の文章をその水
 内容・セル余白・罫線の太さと空きと色・行の区切り（`document::RowSeparator`）まで解決した `TableLayout` で、HIR の表語彙と
 style は届かない。
 
-- **折り返すかは列の種類だけで決まる** — 跨ぐ列のどれかが `Auto` 以外のセルは本文の段落と同じ行分割器
-  （`BlockBuildInputs::breaker`）で折り返し、両端揃えはしない。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く
-  （行分割器の行を通すと行末 glue の切り落としと行幅の取り方が変わり、`Auto` 列の中央・右揃えの位置が動くため）。
-  例外は decimal 列の値のセル（lowering が `TableCellContent::Decimal` にしたもの）で、列幅の種類によらず折り返さない。
-  内容幅と揃えの規則は `layout_row_cells` の doc
-- **decimal 列の値**は左（符号 + 整数部）と右（その後ろ全部）に分けて計測し、列ごとの塊（左の最大, 右の最大）を本体行全体から
-  1 回だけ決める（改ページの断片で求め直さない。`decimal_blocks`）。塊は列幅（自然幅と `Flex` 列の下限）と、帯の中での
-  値の配置の両方に使う
-- **列幅**は表全体で 1 回だけ決め、行分割の結果から列幅へ戻らない。計算は `Length`（sp 整数）で決定的に行い、合計が基準幅を
-  超えても縮めず、`Fixed` / `Ratio` の指定値は書き換えない（収まらない分は warning）。手順は `resolve_column_widths` の doc。
-  基準幅は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた利用幅
+- **列幅の基準幅**は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた利用幅
   （`boxes::usable_width`。段落の行の幅と同じ式で、字下げが段の幅を使い切ると 0）。段の幅は区画の
-  `PageGeometry::column_width`（本文・前付けとも）で、`break_pages` がその区画の段を組む値そのもの。
-  寸法を省略した画像の幅も同じ利用幅を基準にする
+  `PageGeometry::column_width`（本文・前付けとも）で、`break_pages` がその区画の段を組む値そのもの
 - **最小内容幅**（`breaking::min_content_width`。`Flex` 列の下限と結合セルの不足に使う）はハイフネーションでは行分割器の
   真の下限にならず、下限に止まった列でも稀に行がセルからはみ出し得る — 下限の計算を締めて直さず、行の warning を安全網に
   する（本文の ragged 段落と同じ制約）
-- **行帯**は行の組みと一緒に 1 回だけ確定する。全セルの先頭行がベースラインを共有し（上揃え。LaTeX の `p` 列と同じ）、
-  セルの箱（分数・根号の部品と続き行を含む）は自分の行の帯に収まる。1 行だけの行の行帯は折り返しの無い行帯の式
-  `max(ℓ, h + d)` と一致する。式は `row_fragment` の doc。行結合セルの続き行は始まりの行を伸ばさず、内容が結合した
-  領域より高ければ最後の行を伸ばす（`merge_row_group` の doc）
-- **リンク矩形は折り返した行ごと**に分かれ、縦範囲はリンクが乗る行の帯
 - **はみ出しの事実**はエンジンが出し、記録は配置が持つ — `TableBox` は起源（表環境の `NodeId`）、行断片は起源（`\row`）と
   横の超過量（`TableRowFragment::overrun`）を持つ。表の幅と行の縦のはみ出しは `break_pages` が着地点から測る（`breaking` 節）
 - **出力は行断片と境界**: `TableBox` は表の幅と、初出ヘッダ・再掲ヘッダ・本体行の `TableRowFragment` の列と、断片の
@@ -1335,18 +1147,17 @@ style は届かない。
   畳んだ 1 つで、表左端・行帯上端を原点とする確定済みの描画内容（`PlacedTableRow`：列揃え・セル余白・baseline を解決済み）と
   自分の上の境界と集まりの内側の境界の罫線（`TableRowFragment::rules`）と付随情報（リンク・索引語・脚注）を持つ。
   `row.height` は行帯の和 + 内側の境界の高さの和 + 結合セルを収めるための伸びで、`TableBox::height` と収まり判定はこの
-  前提で行の高さだけを足す。畳み込み規則は `merge_row_group` の doc。配置（`break_pages`）は
-  `TableRowFragment::place` / `TableBoundary::place` で着地点を足すだけ（内側の境界の罫線は行を積むときに足す）。
+  前提で行の高さだけを足す。配置（`break_pages`）は `TableRowFragment::place` / `TableBoundary::place` で着地点を
+  足すだけ（内側の境界の罫線は行を積むときに足す）。
   畳み込みは `Length`（sp 整数）のまま行い、pt の `f32` へ変換するのは描画命令を作る 1 回だけ。配置側に残る表固有の判断は分割してよいか（`breakable`）と断片の開閉 —
   断片を開くとき上端の枠罫（本体行ならさらに再掲ヘッダとヘッダ下の罫線）を積んで先頭に来た行の上の境界を捨て、
   どの行も下端の枠罫を予約して収まりを判定し、閉じるとき下端の枠罫を積む — で、列幅・セル余白・罫線の太さと空きの
   判断を持たない
-- **罫線は境界**（`TableBoundary`：高さと、境界上端原点の罫線の列）で、行の上に重ねず縦の場所を占める。太さ 0 の罫線は空きも
-  取らない（`TableBoundary` のコンストラクタが罫線・部分罫とも判定する）。表の最初の行（`head[0]`、ヘッダが無ければ `rows[0]`）の上は
-  何も無い境界、ヘッダがあるときの `rows[0]` の上はヘッダ下の罫線で、どちらも構造で決まり行の区切りを見ない（この 2 つの
+- **罫線は境界**（`TableBoundary`：高さと、境界上端原点の罫線の列）で、行の上に重ねず縦の場所を占める。表の最初の行
+  （`head[0]`、ヘッダが無ければ `rows[0]`）の上は何も無い境界、ヘッダがあるときの `rows[0]` の上はヘッダ下の罫線で、どちらも構造で決まり行の区切りを見ない（この 2 つの
   境界への `separator` は frontend が拒否する）。セルの `rule_below` は結合の最後の行（結合が無ければその行）の次の行の上の境界の部分罫として
   表エンジンが写す（結合の最後の行が行群の最後の行である旗と、次の行が `separator` を持つ行の旗は frontend が拒否する
-  ので、旗は行群の外へ写らず区切りと重ならない）。規則は `arrange` の doc
+  ので、旗は行群の外へ写らず区切りと重ならない）
 - **再掲ヘッダ**はエンジンが初出ヘッダの断片から索引語と脚注を除いて作る — リンクは再掲先にもクリック矩形が要るので
   残し（脚注マーカーのリンクも残るので、再掲ヘッダのマーカーは初出の脚注本体へ飛ぶ）、索引語は同じ語をページごとに
   積まず、脚注本体は初出の 1 回だけ置く（`\head` のセルの `\index` は frontend が拒否するので、初出ヘッダも実入力では
