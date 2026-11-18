@@ -19,7 +19,7 @@ root="$(cd "$(dirname "$0")/.." && pwd)"
 cd "$root"
 # root の release profile の LTO は ASan が参照する sancov の大域変数を落として link を壊し（Linux で
 # `undefined reference to __sancov_gen_.*`）、symbol の strip はクラッシュ時のスタックトレースを読めなくするので、
-# fuzz のビルドでだけ外す
+# fuzz のビルドでだけ外す。ASan は外さない（外すと stack overflow が素の SIGSEGV になり、libFuzzer が失敗入力を保存しない）
 export CARGO_PROFILE_RELEASE_LTO=false
 export CARGO_PROFILE_RELEASE_STRIP=false
 limits=(-timeout=10 -rss_limit_mb=2048 -max_len=8192)

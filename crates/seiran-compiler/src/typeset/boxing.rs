@@ -1,6 +1,6 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
-//! 本文の入口は (a) [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
+//! 本文の入口は [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
 //! 走り文）向けには [`Shaper`] と [`LineAccum`] と、インライン列を本文と同じ規則で自然幅の閉じた箱にする
 //! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
@@ -15,7 +15,7 @@
 //! `table`（表エンジン。後述）の 3 つ。`shaping` はシェーピングの部品 [`Shaper`] とシェーピング結果
 //! `ShapedRun`（グリフ列 + 確定寸法）を持ち、**箱の寸法を求める処理はここ 1 箇所**。`script`（スクリプト分類と
 //! フォント種別の解決）と `yakumono`（和文約物のクラスと前後アキ）は `text_run` とこの module 本体の両方が、
-//! `break_opportunities`（分割機会 (b)）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
+//! `break_opportunities`（分割機会）は `text_run` が使う規則。`hyphenation`（欧文語中の分割点）は
 //! `break_opportunities` が使い、言語の解決（`build_blocks`）だけこの module 本体も使う。`composed_line` は
 //! 生成コンテンツと表のセルが使う 1 行組み立ての仕組み（[`LineAccum`] / [`inline_atom`] と自然幅の 1 行）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・

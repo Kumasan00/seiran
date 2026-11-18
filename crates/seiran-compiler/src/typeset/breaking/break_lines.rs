@@ -1,4 +1,4 @@
-//! (c) 行分割
+//! 行分割
 
 mod greedy;
 mod knuth_plass;

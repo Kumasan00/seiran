@@ -303,7 +303,7 @@ atomic counter を使わないので、複数ソースをどの順序でパー�
 
 `lexer` → `parser` の字句・構文解析。`syntax` 層は HIR を知らない（HIR へ評価するのは `evaluator`）。
 
-- **結合文字**の判定は `lexer::is_combining` 1 箇所で、数式 lowering の書記素クラスタと同じ基準
+- **結合文字**の判定は数式 lowering の書記素クラスタと同じ基準
 - **どの環境・コマンドが verbatim か、どのコマンドの引数が `,` 区切りか、数式内のコマンドが必須引数を何個取るかという語彙は `syntax` が持たない**
   — `ModeResolver`（環境本体・コマンド引数・数式内の引数個数の 3 本の関数）経由で `evaluator` のレジストリが
   単一の真実源になる（ユーザは変更できない ＝ P1 ガード）
@@ -346,8 +346,7 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
 - **`\index` をまたぐテキストトークンは 1 つの `Text` ノードへ畳む**。テキストノードごとに 1 シェーピング
   run を作る `typeset::boxing` で run 境界のカーニング・合字・分割機会が失われるため。
   畳むのは**マーカーを取り除くと 1 つのテキストトークンになる場合だけ**（両隣がテキストトークン由来で、
-  ソース上でマーカーの span を挟んで連続しているとき）。畳みは既に積んだノードへの追記と span 延長で行う
-  ので `NodeId` の採番順は変わらず、畳んだ `Text` ノードの span は**兄弟の `Index` ノードの span を
+  ソース上でマーカーの span を挟んで連続しているとき）。畳んだ `Text` ノードの span は**兄弟の `Index` ノードの span を
   内包する**（兄弟 span の排他は不変条件ではない）。同じ不変条件を lowering 側で守るのは
   `typeset::lowering` のテキスト結合（`IndexMark` を透過にして結合を切らない）
 
@@ -386,9 +385,8 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
   採番時点の値を写して持つので、後から章・節が進んでも参照先の番号は変わらない。`TheoremReset` と見出しカウンタの
   対応は `style::TheoremReset::counter_name` 1 箇所が持ち、`SemanticPolicy::from_style` がそれを適用して
   `CounterName` へ写すので、走査は `TheoremReset` を読まない
-- 全ソースを 1 個のカウンタレジストリと 1 個の fact 集合で通しで走査する。カウンタの現在値もラベルの定義表も
-  ソース間で共有されるので、`\ref` は他ソースのラベルも参照できる（ソースの分け方で番号と参照先が変わらないことを
-  `splitting_into_sources_keeps_numbers_and_ref_targets` が固定する）
+- 番号と `\ref` の解決先はソースへの分け方に依存せず、`\ref` は他ソースのラベルも参照できる
+  （`splitting_into_sources_keeps_numbers_and_ref_targets` が固定する）
 
 #### エラー
 
@@ -436,8 +434,7 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
 異体字列の代替の警告は返す — はみ出しなど配置由来の警告は組版が成功したときにしか返さない）。`compiler` は警告型を名指しせず（`Vec<TypesetWarning>` を `Warnings` へ
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
-段順序（数式フォントの字・数値・単位の上付きの指標の検査 → 画像の収集 → 画像読込・PDF の検査とページの選択・自然寸法の検証 → lowering → boxing（計測・画像寸法と表の列幅とセルの折り返しの確定）→ 改ページ →
-前付け・後付け → ページラベル → 走り文 → outline → emit）と、その間に成立する不変条件（box 計測は
+段順序と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
 seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker を使うかを外へ出さない（Knuth–Plass を
@@ -506,8 +503,6 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
   計測を伴わない参照は、組版前の `math_glyphs` による字形の存在検査と、`emit` が描画資源へ載せる face 設定・
   メトリクスの取得に限る（数式のスクリプト段の縮小率は数式エンジンが `boxing` の中で読む）。
   backend のフォント構築・サブセット化は `seiran-pdf` が持つ
-- フォントの構築は**画像読込より前**。フォントと画像の両方が失敗する入力ではフォント側のエラーを報告する
-  （順序を入れ替えると診断が変わる）
 - 本文の枠の候補の切り替え（`fallback`）は改行機会・単語境界にならない: 分割点・和欧文の分類・約物アキは元の論理文字列のまま決まる
 
 #### `error`
@@ -549,7 +544,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 #### `image`
 
 画像資源の解決（ファイルと PDF のページの収集 → `ProjectSource` 経由の読込 → 自然寸法 → 表示寸法の確定）を閉じる子 module。
-収集はパスで決定的に重複除去し（1 ファイルにつき形式と、書かれた `page` ごとにそれを書いた `\image` の位置の列）、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
+収集はパスで決定的に重複除去し、形式 + 生バイト列は `LaidOutDocument` として描画へ渡す。
 図の単位は（パス, PDF のページ index）で、自然寸法・`PublicationImage` もこの単位ごとに 1 件、バイト列はファイルごとに
 1 つを `Arc<[u8]>` で共有する。
 
@@ -561,8 +556,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 - PDF の版（PDF 2.0）はここで拒否し、描画側の版の不一致エラーへ到達させない。自然寸法は hayro の
   `render_dimensions()`（pt）で、krilla の `draw_pdf_page` が拡大率の基準にする値そのもの
 - hayro-write は埋め込む Form XObject の BBox に CropBox をそのまま書く（MediaBox との共通部分ではない）ので、
-  図の矩形で切り抜く処理は描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める。図の矩形は辺が
-  1pt 以上なら表示範囲と一致し、1pt 未満の辺は hayro の 1pt 基準に従うので表示範囲の外も 1pt までは見える
+  図の矩形で切り抜く処理は描画側（`seiran-pdf` の `render`）が持つ。compiler は寸法だけを決める
 
 #### `math_glyphs`
 
@@ -595,9 +589,8 @@ context が持つ字の問題の収集器を `paginate` の後で読む。`glyph
   はみ出し記録は「そのセクション内の page index」を持つ純データとして返る。物理ページ index への写像と
   印字ラベルの解決、起源の `NodeId` から `SourceMap` でのソース位置の解決、`TypesetWarning` への変換は
   **全ページラベルを確定する段**がまとめて行う（目次・索引の行もはみ出しうるので、前付け・後付けの記録も同じ写像を通る）
-- 機能 module（目次 / 索引 / 走り文）は各 1 入口で、style の投影・行組み立てをそれぞれの内側に閉じる。
-  行組み立ての仕組み（計測済み箱を x 座標付きで積む累積器）とシェーピングの部品（`Shaper`）は `boxing` が
-  共有し、何を組むかは消費側が持つ。生成コンテンツは段落構築のポリシー（既定フォントサイズ・行高係数・
+- 機能 module（目次 / 索引 / 走り文）の行組み立ての仕組み（計測済み箱を x 座標付きで積む累積器）とシェーピングの
+  部品（`Shaper`）は `boxing` が共有し、何を組むかは消費側が持つ。生成コンテンツは段落構築のポリシー（既定フォントサイズ・行高係数・
   ハイフネーション）を持たないので、`Shaper` を構築する。**目次**の行の題目は lowering が見出しから作った
   インライン列（`HeadingRecord::toc_label`。外側の書体は lowering が `[toc]` から投影する）で、`boxing::inline_atom`
   （内部で `Measurer` を作る）が本文と同じ和欧文間アキ・約物アキで組む
@@ -647,9 +640,7 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   後。書誌に振る見出し index が「本文の見出し数」である前提は、`analyze` が本文の見出しをすべて確定してから
   書誌を扱う順序に依存する）。ソースの起源（`SourceId`）は診断のためのもので、検証を終えた後の lowering は読まない
 - **数式は内容だけを解決する**: `HirMath` を `MathNode` へ写す。字は書記素クラスタ 1 つか記号 1 つで、字形 variant
-  （`\mathbold` 等）の写し・数式クラス・区切り種別（`Fence`）を解決済み（記号コマンドと、NFC にした最初の字が記号表の
-  非 ASCII の字である直接入力は記号表の `MathClass`、そのほかの直接入力の文字は plain TeX の mathcode 相当の分類。
-  区切りはクラスタの最初の字か記号のクラスから決める）。文章の書体（`[text].typeface`）・アクセントのドット無し（ソースの
+  （`\mathbold` 等）の写し・数式クラス・区切り種別（`Fence`）を解決済み。文章の書体（`[text].typeface`）・アクセントのドット無し（ソースの
   `dotless`、無ければ `[math].accent_dotless`。広幅アクセントは常に偽）・埋め込んだ行列の区切り括弧と揃えと行間列間
   （`[math.block]` の値を本文の大きさ `[text].font_size` 基準として数式本体の大きさへ比例させた値）も解決する。インライン数式は
   `InlineNode::Math(MathFormula)`（本体の大きさと外側の文字色を添える）、表示数式の
@@ -657,7 +648,6 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   `MathBlockLayout` に載せる。段・cramped・大きさ・アキ・分割候補・計測は数式エンジン（`boxing::math` 節）が決める
 - 書式テンプレートの文法・許可リスト・置換順序は typeset 側に無い — `style::template` の解析済み
   テンプレートの展開を呼ぶだけ
-- 採番値・宣言ラベル・参照先は各 lowering が `NodeId` で `LoweringState` から引く
 - **HIR のブロック variant は payload struct**。`HirNodeKind` の variant の形は値の個数で決まる — 2 つ以上なら
   payload struct、1 つならタプル、0 ならユニット variant。
   インラインのフィールドを持つ variant は
@@ -716,7 +706,7 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
 数式の内部構造を知らない。入力は lowering が内容だけを解決した `MathNode` で、HIR の数式語彙は届かない。
 
 - インライン数式のトップレベルは、テキストを数式フォントの run ごとの箱、文章を端の約物の性質を添えた閉じた箱（段落の
-  隣の約物と本文の規則でアキを解決する）、アキをアキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
+  隣の約物と本文の規則でアキを解決する）、アキを、アキを打ち消す Kern として段落のリストへ積み、構造は閉じた箱 1 つにする
 
 #### 表エンジン（`boxing::table`）
 
@@ -772,8 +762,7 @@ style は届かない。
 **脚注のページ配置**も `break_pages` が担う。段組みでは脚注は段単位で独立する（ページ全幅で共有しない）が、
 `Page::footnotes` はページ単位でまとまるため、ページ単位採番の基準は段ではなくページになる。配置済み脚注は
 採番方式に依らない同一性として出現 index だけを運ぶ — 表示番号はマーカーのグリフとして焼き込み済みで、配置後に
-読む者はいない。脚注 1 個がその行のページの脚注エリアに収まらないときは、組版済みの行単位で分割して残りを
-次リージョンの脚注エリアへ繰り越す。繰越の断片は `continued` で区別し、ページ単位採番はこれを数えない。
+読む者はいない。次リージョンへ繰り越した脚注の断片は `continued` で区別し、ページ単位採番はこれを数えない。
 
 #### テスト用子 module（`#[cfg(test)]` 限定）
 
@@ -831,8 +820,8 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
   facade に載る
 - `PaintOp::DrawImage` が持つのはパス文字列ではなく不透明な `ImageRef`（資源配列の添字）。添字である以上、
   資源の並びは決定的でなければならないので、組版段が**（パス, ページ index）昇順**に並べた順で配列を組む
-- テスト用に `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て。
-  `Publication` 値は作らない）を持つ
+- テスト用の `#[cfg(test)] pub(crate) mod test_support`（描画資源 `PublicationResources` のダミー組み立て）は
+  `typeset::image` のテストも使う
 - **SVG のパース設定 `SvgParser`**（子 module `svg`）は、facade に載る型のうち唯一 usvg の型（`usvg::Tree` /
   `usvg::Error`）を外へ出す。`PublicationResources` の外にある純データではなく、`svg_parser()` で全実体の
   フォントから都度作る。SVG 内の文字の照合規則（`font-family` の照合・generic の枠への読み替え・同じ系統の枠での
@@ -893,8 +882,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
 
 - **`CompilationInputs` は読み込んで検証した入力だけを持ち、保存先のような派生値は持たない**。入力読込の
   外向き入口は `input::load` 1 つ。
-  **config.toml → style.toml → 横断検証・版面の構築 → {references・フォント・sources}** という順序とエラー
-  集約を知るのはこの module だけ（順序の根拠と集約の規則は `//!`）。CSL スタイル・ロケールはここでは
+  読込の順序とエラー集約を知るのはこの module だけ（順序とその根拠・集約の規則は `//!`）。CSL スタイル・ロケールはここでは
   読まない（遅延は `semantics::analyze` の内側）。
   `CompilationInputs` のフィールドは非公開 + アクセサで、構築経路は `load` だけ（テスト専用の
   コンストラクタも持たない —「読込・個別検証・横断検証をすべて通った値しか後段へ流れない」を型で保証）。
@@ -935,14 +923,14 @@ crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compil
   （網羅目的の fixture 追加はしない）と、エラー経路の報告順（画像欠落はパス昇順・ソース欠落は宣言順・
   診断 `code` 列が実行間で一致）を固定する（#306）
 - `tests/trace_events.rs`: 同じ入力で `typeset::breaking` / `typeset::boxing` の TRACE ログが実行間で一致する
-  こと（event の発行順の決定性）と、compiler の INFO（`-v` 相当）の工程構造（「tracing の phase 構造」）を
+  こと（event の発行順の決定性。比較できるよう、この 2 module の event には所要時間を載せない）と、compiler の INFO（`-v` 相当）の工程構造（「tracing の phase 構造」）を
   固定する（CLI が足す `render` / `write` は `seiran` の統合テスト）
 
 ## `seiran-pdf`
 
 ### 責務
 
-(e) 描画。`seiran-compiler` が確定させた `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。
+描画。`seiran-compiler` が確定させた `Publication` を PDF バイナリへ encode する（レイアウト判断ゼロ）。
 `krilla` / `krilla-svg` を使い、フォントのサブセット化は krilla が内部で実施する。公開 API は
 `render(&Publication) -> Result<Vec<u8>, PdfRenderError>` と `PdfRenderError` の 2 つだけ。
 
@@ -950,34 +938,21 @@ crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compil
 root facade に載っている leaf 値型だけを読む。「renderer は確定座標の描画のみ」という防火壁は、compiler の
 内部 module が非公開であること — facade に `ProjectConfig` / `Style` / `typeset::Page` が出ていないこと —
 が担っている（型の複製で作った独立性ではない）。`Vec<Page>` → `Publication` への変換と画像の自然寸法解決は
-compiler 側の責務で、こちらへ戻さない。
+compiler 側の責務で、こちらは持たない。
 
 ### 境界
 
-- `font`: krilla フォントの構築（軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
-  compiler の検証が保証する）とグリフの変換。フォントバイト列は `PublicationFont::shared_bytes` が `Arc<[u8]>` を
-  共有ハンドルにして返したものを krilla へ渡すので実バイト列は複製されない。構築は描画資源の全実体
-  （`PublicationResources::faces`。枠の宣言順 → 候補順）について行う — `HashMap` の反復順に任せると、複数フォントが同時に不正なときに返るエラーが実行のたびに変わる
-- `render`: `Publication` を krilla の描画呼び出しへ落とす。`GlyphRun` の `font_size`（`Length`）→ pt と
-  `color`（`Option<Color>`）→ RGB の変換もここで行う。`None` は塗り色を設定せず backend の既定（黒）に任せ、
-  render 側で黒へ置き換えない。ファイル I/O は発生しない
-- `image`: 描画に使う画像のデコード（PNG / JPEG / SVG）・PDF を開くこと（krilla の `pdf` feature）とラスタ画像の
-  ダウンサンプルのみ。SVG は `PublicationResources::svg_parser()`（compiler が検査に使ったのと同じ設定）で読み、
-  krilla-svg が文字を選択可能なテキストとして埋め込む。分岐は拡張子ではなく `PublicationImage.format`（compiler 側が判定済み）で行う。PDF は
-  `PublicationImage.page_index` のページを `draw_pdf_page` で独立した透過グループの Form XObject として描き、
-  ラスタ化・色空間の変換・中のラスタの再圧縮はしない。ただし Form XObject の透過グループの色空間（`/CS`）は krilla が
-  RGB（既定の設定では DeviceRGB）で書くので、CMYK の図版でも透過・描画モードの合成は RGB で行われる（内容のストリームは
-  変換しない）。描く前に図の矩形で切り抜く（hayro-write の BBox が CropBox の
-  ままでも、表示範囲を CropBox ∩ MediaBox に揃えるため）
-- `metadata` / `error`: PDF メタデータ構築 / `PdfRenderError`（診断 code の prefix は `pdf::`）
+- krilla フォントの構築（`font`）は軸の指定を渡すだけで、フォントを自分でパースしない — `fvar` との整合は
+  compiler の検証（`typeset::font::validation`）が保証する
+- 画像の形式・SVG のパース設定・PDF の図の切り抜きについての compiler との分担は、`typeset` 節の `image` と
+  `publication` 節の `SvgParser` が持つ
 
 ### `PdfRenderError` の範囲
 
 **「有効な `Publication` に対して backend が失敗しうるもの」だけ**を持つ。
 compiler が構築時に検証済みの不変条件を再検査する variant（invalid page size / rule rect / link rect /
-image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性（レコードが
-ファイル範囲外を指す破損を含む。保証点は `typeset::font::validation`。#681 / #725））は持たない — 同じ検査を
-2 箇所に持つと、どちらが真の保証点か読めなくなるため（保証点は `publication` 節の表。#378）。SVG と PDF 図版は
+image not in manifest / 未対応の画像拡張子・フォントの `fvar` と軸指定の整合・`fvar` の可読性）は持たない（保証点は
+`publication` 節の表。#378）。SVG と PDF 図版は
 compiler が同じパーサ（SVG は同じ `SvgParser`）で検査を通したバイト列だが、パース結果は facade を越えないので backend が読み直し、その失敗を
 `ParseSvg` / `ParsePdf` として持つ。これは読み直しが `Result` を返すことの受け口で、2 つ目の保証点ではない。
 
@@ -988,128 +963,46 @@ compiler が同じパーサ（SVG は同じ `SvgParser`）で検査を通した�
   `publication` module で行う）
 - **`Style` / `ProjectConfig` を読まない**（facade に出ていないので参照できない）。表のセル余白・罫線・
   ページ背景色は前段が解決済みの値として `Page` に載せ、本文の水平原点は `emit` が加算済み。ページサイズ・
-  `show_bookmarks`・文書メタデータも `emit` が `Publication` に前倒し解決してから渡す。`typeset::Page` /
-  `ProjectConfig` / `Style` を直接読む描画経路を復活させない
+  `show_bookmarks`・文書メタデータも `emit` が `Publication` に前倒し解決してから渡す
 - **描画命令の値を検査し直さない**（#378）。ページサイズ・矩形・画像参照・内部リンクとしおりの到達先は
   `Publication` の構築時に検証済みで、破れていれば compiler 側のバグなので renderer が診断を出す筋合いがない
-- 第 2 の描画バックエンド（HTML 等）が現れるまで `Renderer` trait も共有型だけの第三 crate も作らない —
-  backend が 1 つの間は浅い seam にしかならない（#372）
-- `tests/pdf_structure.rs`: `lopdf` による独立 reader での PDF 構造 golden テスト（`compile` → `render` という
-  公開 API だけを通す）。compiler 側の in-src テストに置けないのは、`#[cfg(test)]` のユニットテストビルドの
-  compiler と `seiran-pdf` がリンクする compiler が別コンパイルになり型が一致しないため
+- 第 2 の描画バックエンド（HTML 等）が現れるまで `Renderer` trait も共有型だけの第三 crate も作らない（#372）
 
 ## `seiran`
 
 ### 責務
 
 CLI エントリーポイント（package 名・binary 名とも `seiran`）。`seiran-compiler` と `seiran-pdf` の両方に
-依存し、`compile` → `render` → atomic write（一時ファイル + rename）→ 結果表示（確定済みの warning 診断を
-主エラーより先に、とビルドサマリ。失敗時は致命的エラー診断の `--log-file` への記録）の 4 手順に限定される（`build` の話。フォント調査 3 サブコマンドは「境界」の `subcommand`）。
+依存し、`build` は `compile` → `render` → atomic write → 結果表示の 4 手順に限定される（フォント調査 3
+サブコマンドは「境界」の `subcommand`）。
 段の呼び出し順序・組版の中間型は一切知らない。filesystem・ログ初期化（`tracing-subscriber`）・端末出力と
 いった実行環境の関心事はすべてこの crate に閉じ、カレントディレクトリも起動時に `main` が 1 回取得して
-（全サブコマンド共通。実行記録の基準ディレクトリと `build` の相対パス解決に同じ値を使う）`compile` へ明示する。
+`compile` へ `base_dir` として明示する。
 
 ### 境界
 
-- `cli`: clap derive による引数定義（サブコマンド `build` / `variation-axes` / `ttc-names` / `script-langs`、
-  全サブコマンド共通の `--verbose` / `--quiet` / `--log-file`）。`build` の `-c` を省略すると
-  `./config/config.toml`。サブコマンド名の対応表は全 variant を明示する（実行記録が何の実行かを示せなくなる
-  ため wildcard にしない）
-- `reporting`: warning 診断・成功サマリからなるユーザー向け報告と、開発者向け tracing subscriber の初期化。
-  フィルタ優先順位・Seiran 自身の target だけを詳細化する directive・target 表示の有無・端末装飾（`NO_COLOR`
-  が未設定か空で、かつ stderr が端末のときだけ。判定は 1 回でログとサマリが共有）をこの module に閉じる。subscriber は
-  stderr layer と（`--log-file` 指定時だけ）ファイル layer を重ね、出力先ごとに `EnvFilter` を持つ
-  （`EnvFilter` は `Clone` できないので共通の directive 文字列を出力先ごとに parse し直す。不正 directive を
-  黙って捨てる `EnvFilter::new` は使わない）。ログファイルを開けないと subscriber を 1 つも設置しないまま
-  `main` が止まる
-- `reporting::log_file`: `--log-file` の出力先。実行ごとに **`File::create_new` で新規作成**し（既存パスは
-  拒否 — ログの指定で入力を壊さないため。truncate へ戻さない）、tracing の layer と直接の報告が同じ sink を
-  共有する。flush 方針と失敗の保持は `//!`。`tracing-appender` の `non_blocking` は書き込み失敗を呼び出し元へ
-  返さないので使わない
 - `phase`: `render` / `write` 工程の RAII ガード。`seiran-compiler` の同名 leaf module とメッセージ・
-  フィールドを揃えるが、型は共有しない（event の target を各 crate に保つため）
-- `termination`: 本処理の結果とログの記録結果から、端末へ出す主診断・副次診断と `ExitCode` を決める純粋
-  関数。`main` は `miette::Result` ではなく `ExitCode` を返し、報告を終えてから終了する。報告の書き出し先は
-  引数で受け、書き込みに失敗しても同じ stderr へ報告し直さず、終了コードは本来のものを返す（`eprintln!` は
-  書き込み失敗で panic して終了 101 になるので使わない）
-- `pdf_output`: PDF の atomic write と、ログの出力先との衝突検査（保存先とログの出力先を canonicalize して
-  比較し、同じ実体なら保存前に拒否する）。保存（出力パスの解決・ログ出力先との衝突・出力ディレクトリ作成・
-  書き込み）のエラー型は子 module `error` が持ち、`pdf_output` の外へ出さない。`compile` の失敗とは型を分ける
+  フィールドを揃えるが、型は共有しない（event の target を各 crate に保つ）
 - `subcommand`: フォント調査 3 サブコマンド。`read-fonts` を直接使い、`seiran-compiler` のフォント処理には
-  依存しない（組版を伴わないため）。前段（ファイルの読込と、`--font-index` を取る 2 つでは face の選択）と
-  書き出しはそれぞれ 1 箇所を通る（`ttc-names` はコレクションの列挙を自分で持つ）。前段の失敗の診断（code・文言）は
-  失敗の意味ごとに 1 つで、呼び元のサブコマンドに依らない。書き出しは
-  `BrokenPipe` とそれ以外の分類を 1 つの関数に閉じ、失敗する writer を注入する in-src テストで覆う
-- 統合テスト（`tests/`）は binary を起動する（`CARGO_BIN_EXE_seiran`、依存追加なし）。`--log-file` への記録・
-  `-q` との組み合わせ・stderr と終了コードが `--log-file` の有無で変わらないこと・失敗した `build` でも
-  確定済みの警告が主エラーより先に出ること・工程の開始・終了と実行記録の出方・フォント調査の終了コードと
-  診断を確かめる。書き込み・flush の失敗はプロセス起動では移植可能な形で注入できない（`/dev/full` は Linux
-  のみ、FIFO や特殊ファイルは `create_new` が弾く）ので、失敗の保持と報告は in-src テストが覆う。
-  `/dev/full` を使うテストは Linux（CI）だけで走る
+  依存しない（組版を伴わない）。`variation-axes` の `fvar` の有無は compiler のフォント検証
+  （`typeset::font::validation`）と同じくテーブルディレクトリのレコードで判定し、「無い」と「壊れている」の区別が
+  ビルドとサブコマンドで食い違わない（#725。`cli_font_inspect` の
+  `variation_axes_rejects_an_fvar_record_whose_length_runs_past_the_file` と validation の
+  `fvar_record_past_the_file_without_axes_is_out_of_range`）
 
 ### 不変条件・注意点
 
 - **段順序の知識を持たない**。`main` が呼ぶのは `compile` と `render` の 2 つだけで、parse / 意味解析 /
-  typeset の各段を個別に呼ぶ経路は復活させない
-- **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を、`Report` の `Debug` と同じ既定 handler で
-  stderr へ 1 件ずつ出す。確定済みの警告は compile・render・保存のどこで失敗しても主エラーより先に出す
-  （成功時は render・保存の後、成功サマリの前）。`--quiet` では**端末に**出さないが、`--log-file` の記録からは
-  省かない。ログ（tracing）へは出さない — 同じ問題を診断と tracing の両方で見せないため。ファイルへ書く
-  ぶんは装飾も OSC 8 ハイパーリンクも持たない文字列にする（致命的エラー診断もこれを共有する）
-- **端末側の出力先は stderr だけ**。ユーザー向け報告も tracing のログも stderr へ出し、stdout はパイプできる
-  成果物のための経路として空けておく（stdout を使うのはフォント調査の一覧表示だけ）。subscriber は `fmt` の
-  既定（stdout）に任せず stderr を明示する
-- **フォント調査の終了コードと部分結果**。一覧を書き切った / 受け手が先に終了した（`BrokenPipe`）→ 0、
-  読み込み・解析の失敗 / `BrokenPipe` 以外の stdout 書き込み失敗 → 1、引数エラー（clap）→ 2。一覧は
-  **調べ終えてから 1 度に書き出す** — 調査に失敗したら一覧を 1 行も出さずに診断エラーにする。診断はすべて
-  対象パスを主メッセージに持ち、OS エラー文は cause に 1 回だけ載せる。**部分結果の規則**: 一覧の対象
-  そのものの構造の破損（`fvar` の軸・インスタンス配列、`FeatureList` の索引、name テーブル全体）は診断で
-  打ち切り、表示のために別のレコードを引く解決の失敗（Script / LangSys サブテーブル、個々の name 文字列）は
-  その行にマーカーを出して続ける（レコード同士は独立で、1 件の破損で残りのダンプまで失わせない）。
-  `variation-axes` の `fvar` の有無はテーブルディレクトリのレコードで判定する（`TableIsMissing` は範囲が
-  ファイル外を指す破損フォントでも返るので、エラーの種類では「無い」と「壊れている」を区別できない。
-  compiler のフォント検証も同じ判定で、ビルドとサブコマンドで食い違わない。#725）。
-  宣言件数と読めた件数を突き合わせる（read-fonts は切り詰めを空配列に畳む）
-- **`--log-file` は stderr を置き換えず、出力先を足す**。指定しても端末の見え方は 1 バイトも変わらない。
-  ファイルへ書くのは先頭の実行記録・tracing イベント（時刻付き）・warning 診断・成功サマリ・致命的エラー
-  診断・末尾の終了記録で、ANSI 装飾は常に無効。診断と成功サマリは端末と同じ体裁のまま時刻を付けずに書く
-  （複数行の診断ブロックの先頭行にだけ時刻が付く不揃いを避ける）。時刻はローカル時刻で、オフセットを取得
-  できない環境では UTC
-- **ログファイルは実行記録で始まり、終了記録で終わる**。先頭ブロック（開始時刻・バージョン・サブコマンド・
-  基準ディレクトリ・実効フィルタ）は subscriber を設置する**前**に、末尾ブロック（終了時刻・終了状態）は
-  flush の直前に、どちらも tracing を通さず書く — フィルタに依らず、`--log-file` だけの実行でも「何の記録か」
-  が分かる。基準ディレクトリは `main` が起動時に 1 回だけ取得した `current_dir()` で、`build` の相対パス解決も
-  同じ値。終了状態は本処理の成否で、ログ記録そのものの失敗は記録できない出力先へ書けないので含まない
-- **致命的エラー診断もファイルへ残す**。ビルドを止めた診断（`CompileFailure` の全 leaf・render / 保存・CLI 側
-  エラー）は、`main` が結果を受けた直後に warning と同じ体裁でファイルへ書く。端末側は触らない — stderr の
-  バイト列も終了コードも `--log-file` の有無で変わらない。`--quiet` でも書く（`-q --log-file` で失敗理由が
-  どこにも残らない経路を無くす）。tracing の ERROR event としては流さない（致命的エラーは miette で、ERROR
-  レベルは使わない）。書き切りは drop 順ではなく明示的な flush で確定させる
-- **ログの記録に失敗した実行は終了コード 1**。本処理が成功していてもログを記録できていなければ
-  `ExitCode::FAILURE` で終える（記録が要ると明示した実行で、記録の欠落を成功として返さない）。生成済みの
-  PDF は消さない。本処理も失敗していたときは元の診断が主で、ログの失敗はその後ろへ副次的に添える。ログの
-  失敗をログへ書きに行くことはしない。保証するのは OS への書き込みと flush の完了まで
-- **ユーザー向け報告と tracing を分離する**。既定は warning 診断と成功サマリだけを出し、tracing は WARN
-  以上。`-v` は安定した工程（INFO）、`-vv` は内部詳細（DEBUG）、`-vvv` 以上は TRACE。CLI フラグで詳細化する
-  target は `seiran` / `seiran_compiler` / `seiran_pdf` だけで、依存 crate は WARN のまま。`RUST_LOG` は
-  target 単位指定の escape hatch として `--verbose` より優先する — 有効な `RUST_LOG` があれば `--verbose` は
-  無視し、1 段以上指定されていれば warning 診断を 1 件出す。フラグと `RUST_LOG` の合成はしない — 同一
-  target への複数 directive の優先規則に依存し、実効フィルタが字面から読めなくなる（G1）。`RUST_LOG` の
-  通知（上書き・不正）は tracing ではなく warning 診断で、実効フィルタを通らないので `RUST_LOG` が WARN を
-  通さない指定でも消えない。`--quiet` は**端末側だけ**を抑止し、`--log-file` の内容は減らさない。
-  `--quiet` と `--verbose` は直交する（`-q -vv --log-file x.log` は端末無言のまま x.log へ DEBUG まで書く。
-  `--log-file` の無い `-q -vv` は矛盾ではなく効果が無いだけ）
-- **構造は span、事実は event、工程の lifecycle は `Phase`、1 事象 1 オーナー**。工程の入れ子は span が
-  表し、event は件数などの事実だけを運ぶ。phase は INFO の span で、段の内部で同じ処理を複数回呼ぶ箇所は
+  typeset の各段を個別に呼ばない
+- **warning の表示は CLI 側の責務**。`compile` が返した `Warnings` を端末とログファイルへ出すのは CLI で、
+  ログ（tracing）へは出さない — 同じ問題を診断と tracing の両方で見せない
+- **構造は span、事実は event、工程の lifecycle は `Phase`、1 事象 1 オーナー**（3 crate 共通）。工程の入れ子は
+  span が表し、event は件数などの事実だけを運ぶ。phase は INFO の span で、段の内部で同じ処理を複数回呼ぶ箇所は
   DEBUG の span で区別する（区画ごとの改ページ等）。span のレベルはその中の event の最上位レベルと同じに
-  し、既定（`warn`）では span も無効になる。`FmtSpan` は有効にしない（span は各行の prefix と行末の
-  フィールドとしてだけ現れる）。工程の開始と結果付きの終了は `Phase` が INFO event として出す —
-  `FmtSpan::CLOSE` を採らないのは、成功と失敗を区別できず、DEBUG の span にも enter / close 行を足して
-  しまうため。`render` / `write` の件数を持つ完了 event は callee（`seiran_pdf::render` / `pdf_output`）が
+  し、既定（`warn`）では span も無効になる。工程の開始と結果付きの終了は `Phase` が INFO event として出す。
+  `render` / `write` の件数を持つ完了 event は callee（`seiran_pdf::render` / `pdf_output`）が
   出し、CLI は同じ工程の完了 event を重ねない（1 事象 1 行。compiler 側は span を開いた側が出す — `compiler`
-  節）。所要時間を持つのは工程の終了 event と、残る DEBUG の集計 event だけ。**`typeset::breaking` /
-  `typeset::boxing` の event には所要時間を載せない** — 同じ入力の TRACE ログを実行間で比較するテスト
-  （`tests/trace_events.rs`）のため。
+  節）。所要時間を持つのは工程の終了 event と DEBUG の集計 event だけ。
   tracing に載る失敗情報は工程の状態と所要時間だけで、診断本文は複製しない。ERROR レベルは使わない
 - **レベルの判定テストは「イベント数が文書の中身に比例するか」**。新しいログを足すときはこの表で決め、
   既存イベントのレベルは動かさない。
@@ -1120,13 +1013,10 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   | 段の内部完了・集計値（件数は段の数に比例） | DEBUG |
   | 文書の要素数に比例 | TRACE |
 
-  集計 1 行は DEBUG のままで、**そのループの中の 1 件**が TRACE。TRACE を出しているのは行分割（破断候補
-  ごと・確定行ごと）とシェーピング・字送り（run ごと・グリフごと・アキごと）で、発行順は決定的。物量の
-  絞り込みは `RUST_LOG` の target 単位指定が担い、量を理由に粒度を粗くしたり DEBUG へ薄めて混ぜたりしない。
-  同じ段落・同じグリフの TRACE が複数回出る経路が 2 つある — ページ単位脚注採番の反復と、widow / orphan
-  判定のための段落の投機的な再分割。どちらも回数は入力に対して決定的
+  集計 1 行は DEBUG のままで、**そのループの中の 1 件**が TRACE。物量の
+  絞り込みは `RUST_LOG` の target 単位指定が担い、量を理由に粒度を粗くしたり DEBUG へ薄めて混ぜたりしない
 - **フィールドとメッセージの規約**。対象は INFO / DEBUG / TRACE の event と span のフィールド（tracing の
-  WARN event は現状 0 件。足すなら実行環境上の異常を伝える人向けの文で、構造化フィールドは持たせない）。
+  WARN event を足すなら実行環境上の異常を伝える人向けの文で、構造化フィールドは持たせない）。
   表に無い形が要るなら表を改訂してから使う。
 
   | 項目 | 規約 |
@@ -1144,26 +1034,13 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   | フィールド順 | 識別（パス・種別・添字）→ 事実（件数・寸法・真偽）→ 末尾に `elapsed` |
   | メッセージ | 事象名の名詞止め（「行を確定」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない。例外は `Phase` の「工程を開始」「工程を終了」で、どの工程かは span の prefix が示す |
 
-  **event / span を rayon の並列 closure の中に置かない**（不変条件）。発行順が完了順に依存して非決定に
-  なり、thread-local subscriber では worker thread の発行が捕捉されない。並列区間の観測は closure の外側で
-  集計値として出す
-- **target はフィルタが TRACE を出しうるときだけ表示する**。TRACE は文書に比例して出るため、どの module
-  由来かが分からないと読めない。判定は `--verbose` の段数ではなく実効フィルタの上限で行うので、`RUST_LOG`
-  で TRACE を要求したときも表示される。判定は出力先ごとに独立。span の prefix はこの target 表示の代わりに
-  ならない — TRACE は module の識別に target が要り、span は phase までしか表さず、`RUST_LOG` で target を
-  絞ると phase span が無効になり prefix が消える。絞り込みつつ phase prefix を保ちたいときは、span を開く
-  module（`compile` / `input` / `frontend` / `semantics` は `seiran_compiler::compiler`、`font` / `typeset` は
-  `seiran_compiler::typeset`）と、開始・終了 event の target `seiran_compiler::phase` を `info` で directive に
-  足す
-- **成功サマリの所要時間は build 全体**。CLI が compile → render → atomic write の全体を自前で計測する。
-  compiler facade だけの所要時間を持つのは `compile` span の終了 event（`elapsed`）で、`Compilation` は
-  持たない。ページ数は `Compilation.publication` のページ列から得る
-- **保存は CLI 側の責務**。`compile` は `Compilation.pdf_path` を返すだけで書き出さない。atomic write は
-  保存先と同じディレクトリに一時ファイルを作ってから rename する（cross-filesystem の rename は atomic に
-  ならないため）
-- **package 名と binary 名を一致させている**（`seiran`）。`[[bin]]` セクションは持たず、`cargo run -- build`
-  がそのまま動く。ライブラリ側を `seiran-compiler` と名付けたのはこの一致を作るためなので、この crate を
-  `seiran-cli` のような別名へ戻さない
+- **event / span を rayon の並列 closure の中に置かない**。発行順が完了順に依存して非決定に
+  なり、thread-local subscriber では worker thread の発行が捕捉されない（`tests/trace_events.rs` の捕捉はこれに
+  依存する）。並列区間の観測は closure の外側で集計値として出す
+- **`Compilation` は所要時間を持たない**。compiler facade だけの所要時間は `compile` span の終了 event
+  （`elapsed`）が持ち、成功サマリの所要時間は CLI が compile → render → atomic write の全体を自前で計測する
+- **package 名と binary 名はどちらも `seiran`**。`[[bin]]` セクションは持たず `cargo run -- build` がそのまま
+  動き、ライブラリ側は `seiran-compiler` を名乗る（CLI crate を `seiran-cli` のような別名にしない）
 
 ## `seiran-fuzz`
 
@@ -1183,10 +1060,4 @@ frontend の fuzz target（cargo-fuzz）と、corpus の到達段を数える開
 
 ### 不変条件・注意点
 
-- fuzz target を `[[bin]]` 以外に置かない・集計ツールを `[[bin]]` にしない（cargo-fuzz は bin をすべて fuzz target
-  とみなす）
 - 長時間の fuzz は pre-commit や `ci.yml` に入れない（`.github/workflows/fuzz.yml` の手動・定期だけ）
-- fuzz のビルドでは root の release profile の `lto` と `strip` を外す（`tools/fuzz-frontend.sh` が
-  `CARGO_PROFILE_RELEASE_LTO=false` / `CARGO_PROFILE_RELEASE_STRIP=false` を設定する）。LTO は ASan が参照する
-  sancov の大域変数を落として Linux の link を壊し、strip はクラッシュ時のスタックトレースを読めなくする。ASan は
-  外さない — 外すと stack overflow が素の SIGSEGV になり、libFuzzer が失敗入力を保存しない

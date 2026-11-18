@@ -164,7 +164,7 @@ impl LogSink {
     };
   }
 
-  /// ユーザー向け報告 1 件ぶんをファイルへ書き、flush する（末尾に改行を足す）。
+  /// ユーザー向け報告 1 件ぶんを時刻を付けずに端末と同じ体裁のままファイルへ書き、flush する（末尾に改行を足す）。
   pub(super) fn write_block(&self, text: &str) {
     let mut guard = lock(&self.state);
     let written = writeln!(guard.writer, "{text}");

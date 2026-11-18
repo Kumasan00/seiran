@@ -85,12 +85,14 @@ impl Reporter {
   /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
   ///
   /// 端末側の出力先は stderr を明示する（`fmt` の既定は stdout で、そのままではログが成果物の経路へ流れる）。
+  /// span の enter / close は行にしない（`FmtSpan` は既定の `NONE` のまま）— 工程の開始と終了は `Phase` の event が
+  /// 出すので、span は各行の prefix と行末のフィールドとしてだけ現れる。
   /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
   /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある。
   ///
   /// # Errors
   ///
-  /// `--log-file` のパスを開けないとき [`LogFileError`] を返す。
+  /// `--log-file` のパスを開けないとき、subscriber を 1 つも設置せずに [`LogFileError`] を返す。
   pub(super) fn init(
     verbose: u8,
     quiet: bool,

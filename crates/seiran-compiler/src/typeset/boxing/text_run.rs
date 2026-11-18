@@ -64,11 +64,11 @@ impl Measurer<'_> {
         style.script_level,
       )?;
       if style.typeface == Typeface::Math {
-        // 数式のテキストには分割点を注入しない（分割点は lowering が演算子の直後に置いた MathBreak だけ）
+        // 数式のテキストには分割点を注入しない（分割点は数式エンジンが演算子の直後に置いた MathBreak だけ）
         out.push_math_box(self.shaper.add_italic_corrections(run, style)?.into_hbox()?);
         continue;
       }
-      // 語中折り返しの行末に付すハイフン箱は、使うかどうかに関わらずこのセグメントのフォントで先に組む — 枠の候補が
+      // 語中折り返しの行末に付すハイフン箱は、使うかどうかに関わらずこのセグメントのフォントで先に組む — 枠のどの候補も
       // `-` を持たなければ欠字になり、その検査は行分割の結果に依存しない
       let hyphen = if segment.category != script::ScriptCategory::Japanese && self.hyphenation.is_some() {
         Some(

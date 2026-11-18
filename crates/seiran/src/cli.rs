@@ -72,7 +72,7 @@ impl Command {
   }
 }
 
-/// コマンドライン引数を解析する。
+/// コマンドライン引数を解析する。引数が不正なときは clap が診断を出し、終了コード 2 でプロセスを終える。
 pub(super) fn parse_arg() -> Cli { return Cli::parse() }
 
 #[cfg(test)]

@@ -1,5 +1,6 @@
-//! 参照定義ファイルの読込（`references.toml` / `.json`）から文献引用（`\cite`）の意味解析・
-//! CSL 整形・参考文献リスト（書誌）生成までを 1 module に閉じる。
+//! 参照定義ファイルの読込（`references.toml` / `.json`）から文献引用（`\cite`）の CSL 整形・
+//! 参考文献リスト（書誌）生成までを 1 module に閉じる。引用箇所の意味解析（どの `\cite` がどのキーを指すか・
+//! 未定義キーの検証）は走査（`fact_collection`）が行う。
 
 mod csl_json;
 mod csl_style;
