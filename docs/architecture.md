@@ -369,173 +369,60 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 テキストソースから HIR への変換（字句解析・構文解析・評価）。公開 API は `parse` と
 `ParseError` のみで（feature `fuzzing` の入口は「テスト用子 module」項）、CST と字句・構文・評価の各エラー型（`SyntaxError` / `EvalError`）は非公開の内部実装に閉じる
 （`ParseError` の variant が運ぶだけで、`frontend` の外からは名指さない）。
-`ParseError` は `Syntax` / `Eval` の 2 バリアントを `transparent` で運ぶだけの union で、自分の
-message / `code` / help を持たない（段名だけの wrapper 診断をユーザー表示へ挟まないため）。`SourceId` も
-本文も持たず、帰属は呼び出し元（`compiler`）が添える。生成物は HIR のみで、他の文書木表現へ落とす adapter は
-持たない。
+`ParseError` は `SourceId` も本文も持たず、帰属は呼び出し元（`compiler`）が添える。生成物は HIR のみで、
+他の文書木表現へ落とす adapter は持たない。
 
 `parse` は 1 ソース分の `document::HirSource` を返す。`PathResolver` は `\image{...}` の字面を
 `ProjectPath` へ解決するために評価 context へ渡すだけで、`compile` facade が 1 回だけ構築した値をそのまま
 運ぶ。画像形式の判定（拡張子 → `document::ImageFormat`）もこの評価時の 1 箇所だけで、未対応の拡張子と形式に効かない
 オプション（`page` は PDF、`dpi` / `downsample` は PNG / JPEG だけ）は、ファイルを読む前に `\image` の位置で拒否する
 （効かないことが字面で決まるものは拒否し、資源の中身次第のもの — 1 ページの PDF への `page=1` — は受理する）。`NodeId` は `HirBuilder` が各ソース内の preorder（親を子より先に確保する規約）で発行し、スレッド共有の
-atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。段落はインラインを
-蓄積してからまとめる構造なので、子をディスパッチする**前**に段落 ID を予約する。予約が使われないまま
-閉じられた場合は `local` に穴が空くが、同じ入力なら常に同じ穴になる — ID の稠密性・連続性には依存しない。
+atomic counter を使わないので、複数ソースをどの順序でパースしても ID と位置は変わらない。
 
 #### 構文（`syntax`、非公開）
 
-`lexer` → `parser` の字句・構文解析と、`bumpalo` アリーナ上のロスレスな CST。トークンはテキストを複製せず
-`Span` 経由で元ソースから取得する。
+`lexer` → `parser` の字句・構文解析。`syntax` 層は HIR を知らない（HIR へ評価するのは `evaluator`）。
 
-- **結合文字**: 結合文字（判定は `lexer::is_combining` 1 箇所。数式 lowering の書記素クラスタと同じ基準）はトークンを
-  切らず、直前の字のトークンに入る。コマンド名・エスケープした字・テキストはその字ごと、`=` `,` はテキストになり、
-  ほかの構文文字に付いた形は `CombiningMarkOnSyntaxChar` トークンとして parser が構文エラーにする。空白・改行は結合文字を
-  吸わないので、テキストトークンが結合文字で始まるのはその直後だけで、数式の評価がそれを拒否する。根拠は
-  `docs/language-design.md` の判断事例
-- **verbatim 字句モード**: 通常の字句解析とは別経路の raw 走査で、終端マーカーを探す以外の字句規則
-  （コメント・エスケープ・`$`・`{}`）がすべて不活性になる。入口は 2 つ — verbatim 宣言された環境の本体
-  （終端は `\end{<環境名>}` の正確なバイト列一致）と、verbatim 宣言されたコマンドの必須引数（終端は
-  ブレースバランス）。走査結果は内部構造を持たない 1 個の `VerbatimText` トークン（本体が空でも 1 個）
+- **結合文字**の判定は `lexer::is_combining` 1 箇所で、数式 lowering の書記素クラスタと同じ基準
 - **どの環境・コマンドが verbatim か、どのコマンドの引数が `,` 区切りか、数式内のコマンドが必須引数を何個取るかという語彙は `syntax` が持たない**
   — `ModeResolver`（環境本体・コマンド引数・数式内の引数個数の 3 本の関数）経由で `evaluator` のレジストリが
-  単一の真実源になる（ユーザは変更できない ＝ P1 ガード）。引数モードは**引数の位置ごと**に引くので、同じ
-  コマンドでも位置によってモードが違いうる。
-  環境本体のモード（`Text` / `Math` / `Verbatim`）と引数モード（`Inherit` / `CommaList` / `Verbatim` / `Text` / `Math`）は、トークン化して
-  読むときの `ParseMode`（`Text` / `Math`）とは別の型 — 生読みは「トークン化の際のモード」ではなく入口の
-  分岐なので、`ParseMode` に `Verbatim` を足すと到達不能な分岐が生える。引数モードは外側文脈からの継承に
-  優先するので、数式内でも verbatim 宣言が効く（数式の語彙に無いコマンドは下の個数の打ち切りを受けないので、
-  `$\code{...}$` も生読みされてから評価器が未知として拒否する）。`Text` は外側が数式でもテキストモードで読む宣言で、
-  数式の語彙（`\text`）が持つ — `command_arg` は機能コマンドのレジストリに無い名前を数式の語彙の宣言で引く。`Math` は逆に
-  外側が本文でも数式モードで読む宣言で、`\num` と `\unit` と `\qty`（2 引数とも）が持つ（どれも機能コマンドのレジストリと数式の語彙の両方に同じ宣言で載り、
-  どの評価も同じ数値・単位の文法へ渡す。単位の語彙（SI 文書の接頭辞・単位、NFC で引く）は評価器の `command::unit` に閉じ、
-  HIR の `UnitFactor` は書いたままの字と指数の数字列だけを持つ — lowering は語彙を引かない。数式組版にするかは評価器と lowering が決め、`ParseMode` は構造の読みにだけ効く）
-- **エスケープの可否は parser の `parse_element` 1 箇所で判定する** — どこでも構文文字 `{ } [ ] $ _ ^ &` と `/`、
-  区切りを持つ区間（任意引数・`CommaList` の引数）の直下だけ `,` `=` / `,`。区切りは `parse_delimited` が直下の要素へ
-  だけ渡す。字句解析は `\` + 非英数字をすべて `Escaped` にし、評価器（文字列の読み取りは `evaluator::string_arg`）は `\` を外すだけ
-  （受け付けたものしか届かない）
-- **任意引数 `[...]` はコマンド・環境とも高々 1 組**（P3）。1 組目の後にトリビアを跨いで `[` が続けば
-  2 組目を読み切ってエラーにする。型付きビューはこの不変条件を `Option` で表し、下流は複数組を
-  再検査しない。verbatim 環境の `\begin` 直後だけは**トリビアを跨がない** — 隣接する 1 組だけを任意引数
-  として読み、それ以外はすべて本体のバイトになる（2 組目相当の `[...]` も本体であって構文エラーではない）
-- **環境名は `{` `}` の間のちょうど 1 個の `Text` トークン**（空は空文字列で評価器が未知の環境として診断）。それ以外は
-  `invalid_environment_name` の構文エラーで、parser が本体の読み取り方を引く名前と `EnvironmentView` の名前は
-  同じトークンなので食い違わない
-- **`\begin{name}` の後ろの `{...}` を必須引数として読むのはテキスト本体の環境だけ**。テキスト本体では裸の
-  `{` を書けない（P4）ので引数以外の読みが立たず、個数は評価器（環境の署名）が環境名つきで診断する。数式本体では
-  `{...}` は数式グループなので本体の先頭になる。必須引数を取る環境は無いので個数はパーサーが持たない
-  （初めて足すときに個数をレジストリから引く形へ変える）
-- **数式内のコマンド呼び出しは、数式の語彙が宣言する必須引数の個数（`evaluator::math` の `MathCommandKind`）を
-  読んだら打ち切る**。後ろの `{...}` は数式グループになる（`$\alpha{b}$`）。個数の宣言はパーサーの打ち切りと
-  評価器の個数検査の両方が従う 1 箇所。テキスト内と数式の語彙に無いコマンドは後ろに続く `{...}` をすべて引数として
-  読み、余分は評価器が診断する
-- **テキスト・数式どちらの文脈でも 1 要素を読む規則は `parse_element` 1 つだけ**。`$...$`・数式グループ・
-  数式環境の本体・引数の各ループは終端と「閉じないまま終わった」診断（`UnclosedInlineMath` /
-  `UnclosedMathGroup` / `UnclosedDelimiter`）だけを持つ。数式内の `\begin` も環境として読み、数式内で
-  使えないことは評価器が診断する（書いた位置で診断が変わらない）
-- **要素の入れ子は `MAX_NESTING_DEPTH`（32）段までで、段を数えるのも `parse_element` 1 箇所**。トップレベルの要素が
-  1 段目、構造（コマンドの引数・任意引数・環境の本体と名前・`$...$`・数式グループ・上付き下付き）の中の要素は囲む要素の
-  段 + 1 で、verbatim の中身は数えない。超えた要素は `nesting_too_deep` の構文エラー。評価器・意味解析・組版の再帰は
+  単一の真実源になる（ユーザは変更できない ＝ P1 ガード）
+- **要素の入れ子は `MAX_NESTING_DEPTH`（32）段まで**。評価器・意味解析・組版の再帰は
   CST の深さに従うので、この上限が全段の再帰の深さを抑える — 上限ちょうどの入れ子が debug ビルドの既定テストスレッドで
   compile 全段を通ることを `compiler::nesting_depth` のテストが固定する（値の根拠は `docs/language-design.md` の #1138）
-- **引数探索で跨いだトリビアの帰属**: コマンド呼び出しの子として抱えるのは**引数が見つかった側だけ**
-  （規則の全文は `parser` の doc と `docs/language-design.md` の #516）。返されたトリビアの受け手は段落・
-  環境本体の走査側で、段落先頭・末尾の空白と本体直下の空白・改行・コメントは捨てる
 
 #### 評価（`evaluator`）
 
-CST を走査して HIR へ評価変換する。各ハンドラは型付きビューに加えて評価 context `EvalContext` を受け取り、
-自分の ID を子より先に確保する（`syntax` 層は HIR を知らない）。context は `HirBuilder` を所有し
-`PathResolver` を借用する。`Deref` は使わず、ハンドラから呼び出し先が字面で読めるようにする。context を
-frontend 側に置くのは「評価中に持ち回る値」が frontend の関心だから（`HirBuilder` へ載せる形へ戻さない —
-signature の置換は全ハンドラで一様で、interface の凝集度で判断すると context 側が正しい）。
-
-- コマンドは `COMMANDS`、数式の語彙（記号を除く）は `MATH_COMMANDS`、記号は
-  `SYMBOLS`（検索は `command::symbol` の関数 1 つで、本文と数式の両方がそれを引く）、環境は `ENVIRONMENTS` の
-  phf レジストリを単一の真実源としてディスパッチする。レジストリの値は
-  `EnvironmentKind` で、定理クラス・引用の種類・寄せ環境の揃え（`document::TextAlignment`）・リストの順序付き / なし・数式グリッド環境のセル配置
-  （`document::GridLayout`）と採番の粒度をデータとして持つ（環境名から種別を求め直す経路は無い）。
-  セル配置と採番の粒度は独立の 2 軸でどの組み合わせも有効、区切りの許可は配置から導出するので、
-  種別と採番・区切りの食い違いは型で書けない。本体の読み取り方（`BodyMode`）も
-  種別から導出する。数式系環境は複数行分割の共通基盤を共有する
-- 設定オプション `[...]` のエントリ分割は CST のトークン単位（`string_arg::opt_arg_entries`）で、直下の構造トークン
-  `,` がエントリ、各エントリの最初の構造トークン `=` が key / value の区切り。`\,` `\=`（`Escaped`）は値の文字になる。
-  `\cite` のキー分割も同じく直下の構造トークン `,` で割る（`string_arg::comma_items`）。平坦化した文字列を割る形へ
-  戻さない（エスケープの区別が消える。#687 / #731）
-- 文字列として読む必須引数・任意引数（キーも値も、値の型によらず）に字以外の要素 — コマンド（既知・未知とも）・環境・
-  インライン数式・強制改行・数式として読んだ引数の上付き・下付き・グループ — があれば、その位置で
-  `unsupported_in_string`、空行は `paragraph_break_in_argument` にする（入れ子の中身を字として拾わない。#1105）。
-  verbatim の引数・本体は `view::verbatim_text` で字のまま読み、この検査を通らない
-- 設定オプションの検査（未知キー・同一組内のキー重複・値の型・値域）は 1 箇所（`opt_args`）が担う。ハンドラは
-  キー名と期待型を束ねた型付きのキー定数 `OptKey<T>` を宣言し、その `decl()` の列を署名の受け付けるキーに載せて、
-  同じ定数で値を取り出す（`OptArgs::get` が `Option<T>` を返す）。値域（正の長さ・1 以上の整数）も型の
-  語彙（`OptType`）に入っているので、ハンドラ側に検査は複製されない。
-  長さの字面は `Length` の `FromStr` を config / style と共有し、`opt_args` / `widths` は値域だけを
-  上に重ね、`\space` は値域を重ねない（書式の解釈を frontend に複製しない。#690）
-- `\sqrt[n]{x}` の根指数は設定オプションではなく数式内容なので、キー値への分割や `opt_args` の検査を通さない
-  （署名が `Options::MathIndex` を宣言する）。`[...]` は通常どおり Text モードで構文解析し、被根号の必須引数の個数を
-  検査してから根指数を数式として評価する
-- **必須引数の個数と未知キーの検査は署名の宣言から dispatch が行う**（`evaluator::signature`）。名前で引く呼び出し
-  （機能コマンド・数式コマンド・環境・環境内コマンド）はそれぞれ署名 `Signature<N>`（必須引数の位置ごとの読み取り方・
-  不足時の説明・受け付けるキー）を 1 つ宣言し、検査するのは dispatch の共通処理だけ — `CommandKind` /
-  `MathCommandKind` は必須引数の個数で `Leaf` / `Unary` / `Binary` に分かれ、外側の 3 arm が内側 enum の `signature()`
-  （網羅 match）から `bind` する。環境は入口（`evaluate_environment` / `evaluate_in_math`）が `EnvironmentKind::signature()`
-  から、環境内コマンドは本体の走査（`body_scan`。許可リストの組が署名を持つ）と `\cell` を拾う `build_cell` が検査する。
-  ハンドラは検査を呼ばない。宣言を持たない呼び出し（記号コマンド・`\given` 等）は `Signature::NONE` で引数もキーも
-  拒否へ倒れる。検査済みの必須引数は `Bound` の `[&CstNode; N]` で渡るので、ハンドラが読む個数は宣言した個数に型で
-  一致する。parser へ渡す読み取り方（`lookup_arg_mode`）と数式内の打ち切り個数（`lookup_math_arg_count`）も同じ宣言から
-  引く。数式グリッドの行末マーカー（`\notag` / `\label`）は署名の外で、行末の位置の診断を自分で出す
-- ハンドラが返すのは
-  **単一のノード**（`HirNode` / `HirInline`）で、列を返すのは実際に列を作る操作（子の評価・インライン
-  抽出・数式要素の評価等）だけ。環境本体の走査（`body_scan`）は許可コマンドを名前・種別・署名の組の許可リストで
-  受け取り、収集した各コマンドに種別と検査済みの引数を添えて返すので、呼び出し側は種別で match するだけでよく、
-  名前の再 match と許可リスト外を受ける `unreachable!` は無い
-- **コマンドの実行入口は 1 つ**（`evaluate_command`）。文脈は `Placement`（本文の流れ / インライン）が運び、
-  インライン文脈でブロックを生むコマンド（見出し・`\space` / `\noindent` / `\pagebreak`）、`\index` を拒否する方針下の
-  `\index`、リンクの表示内容の中のリンクを作るコマンドは、**引数を評価する前に**この入口が拒否する。どのコマンドが
-  リンクを作るかは `CommandKind::creates_link` の網羅 match が宣言する（脚注マーカーも内部リンクなので `\footnote` を含む）。
-  本文の流れは内容が 1 箇所にしか置かれずリンクの表示内容の中でもないので、どちらも常に許可
-  （`Placement::Block` が `InlinePolicy::Allow` を意味する）
-- 方針は実行入口が `Placement` で受け取り、引数の再帰評価へは `InlinePolicy` として渡す — 拒否は実行入口
-  1 箇所に閉じる。3 つの文脈は許す範囲が順に狭まり、文脈を決めるのは呼び出し元: キャプション・表の本体行が `Allow`、
-  見出しタイトル・表の `\head` 行・`\index` 自身の語が `RejectIndex`（`\index` だけ拒否）、`\href` / `\hyperref` の
-  表示内容が `RejectIndexAndLinks`（`\index` とリンクを拒否）。書体 / 色指定と脚注本体は**外側の方針を継承**する
-  （固定 `Allow` にすると `\section{\bold{x\index{x}}}` / `\href{u}{\bold{\ref{x}}}` が拒否をすり抜ける）
-- **トークンからインライン要素への変換も 1 実装**（`inline_from_token`）。`NodeId` を発行しない値を返し、
-  段落 ID を子より先に予約する規約は呼び出し元（本文の流れ）が守る
-- どの引数・環境本体が verbatim かはレジストリ（`COMMANDS` / `ENVIRONMENTS`）の値が持つ種別だけで決まる。
-  任意引数値は宣言の対象外で常に通常のトークン化を通る
+CST を走査して HIR へ評価変換する。長さの字面は `Length` の `FromStr` を config / style と共有し、`evaluator` は
+値域だけを上に重ねる（書式の解釈を frontend に複製しない。#690）。
 
 #### テスト用子 module
 
 - `frontend::test_support`（`pub(crate)`）: `frontend` 配下と後段（`semantics` / `typeset` / `compiler`）の test module が
   共有する、resolver 注入済みの入口（`base_dir` が空パスの resolver で `parse` を呼ぶ）。パス解決
   そのものを検証するテストは resolver を明示して `frontend::parse` を直接呼ぶ
-- `evaluator::test_support`（非公開 `mod`）: 本番のレジストリを注入した CST 組み立てヘルパ。`evaluator`
-  配下の test module だけが使う（子孫は親の非公開項目に到達できるので、`evaluator` の外へ幅を広げない）
 - `syntax::preservation` / `hir_invariants`（`cfg(any(test, feature = "fuzzing"))`）: frontend の出力の不変条件
   （トークンと CST の入力保存、HIR の構造的な性質 — 項目は `parse_checked` の doc）の**唯一の
   定義**（診断ラベルの範囲だけは任意入力でしか意味を持たないので `fuzzing` が持つ）。通常テスト（parser の proptest・fixture のループ）と fuzz 入口が同じ関数を呼ぶ — 新しい frontend の
-  不変条件はここへ足し、テスト側に検査を複製しない。`preservation` の構文解析は呼び出し側が行う（parser のテストはテスト用、
-  fuzz は本番の `mode_resolver`）。`hir_invariants` は自分で `frontend::parse` を呼ぶ
+  不変条件はここへ足し、テスト側に検査を複製しない
 - `fuzzing`（`feature = "fuzzing"` のときだけ）: 任意入力を本番と同じ経路で通す fuzz 入口 `check_source`。
   root から `#[doc(hidden)] pub use` で `seiran_compiler::fuzzing` として出る `seiran-fuzz` 専用の経路で、
   API ではない。既定ビルドには存在しない
 
 #### 不変条件・注意点
 
-- **評価器は状態を持たない**（`Evaluator` のような構造体は存在せず、module 内の関数群で構成する）
 - **書式化・採番は行わない**。見出し・図・表・数式は採番対象かどうかとラベル・ソース位置だけを構造化し、
   発番・`\ref` 解決は `semantics`、書式化（表示文字列の生成）は `typeset::lowering` が担う（書式は「種類の
   既定」＝ style.toml 管轄という P10 の分離）
-- **未知引数・引数個数の不一致で panic しない**: 全コマンド名 × 0〜4 個の位置引数のどの組でも
-  panic せず、閉じた許可リストの `EvalError` だけを返すことを全件走査のテストが固定する（#306）。環境・
-  数式・表専用のエラー種別が返れば本来通らない経路に迷い込んだことを意味し、許可リストへ足さず不具合と
-  して扱う
 - **`style` / `project::config` に依存しない**。設定の値を見ずに評価できる形を保つ。`base_dir.join` を
   直接書かない（解決規則の実装は `PathResolver` 1 箇所に閉じる）
 - **引用キーの存在検証は行わない**。未知のキーでもそのまま `Cite` スタブを生成する。ソース横断でキー
   集合を検証する意味解析は 1 ソース単位の評価では原理的に完結しないため、`semantics::analyze` が担う
+- **内容が 2 箇所以上に置かれうる文脈では `\index` を拒否する** — 目次の行へ複製される見出しタイトルと、
+  改ページのたびに再掲される表の `\head` 行（索引語の出現ページは、マーカーを含む内容が実際に置かれたページとして
+  `typeset::pagination::index` が集める）。リンクの表示内容（`\href` / `\hyperref` の第 2 引数）の中では `\index` に
+  加えてリンクを作るコマンドも拒否する（矩形が重なり飛び先が字面から決まらない）。HIR の形としての定義は
+  `hir_invariants::parse_checked` の (8)（リンク）と (9)（`\index`）
 - **`\index` をまたぐテキストトークンは 1 つの `Text` ノードへ畳む**。テキストノードごとに 1 シェーピング
   run を作る `typeset::boxing` で run 境界のカーニング・合字・分割機会が失われるため。
   畳むのは**マーカーを取り除くと 1 つのテキストトークンになる場合だけ**（両隣がテキストトークン由来で、
@@ -543,7 +430,6 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   ので `NodeId` の採番順は変わらず、畳んだ `Text` ノードの span は**兄弟の `Index` ノードの span を
   内包する**（兄弟 span の排他は不変条件ではない）。同じ不変条件を lowering 側で守るのは
   `typeset::lowering` のテキスト結合（`IndexMark` を透過にして結合を切らない）
-- 診断は `source::Span` を `From` で `miette::SourceSpan` へ変換して構築する
 
 ### `semantics`
 
@@ -554,12 +440,11 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
 
 境界: `semantics` の外から呼ばれる操作は `analyze`、文献の読込 `load_references`（入力読込段が呼ぶ）、
 生成物のプレーンテキスト化（`typeset::lowering` が呼ぶ）の 3 つ（`#[cfg(test)]` の
-`analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。module root が非公開の `use` で取り込む他の関数（CSL の読込・整形）は兄弟 module が root facade 経由で
-引くための経路で外部の消費者はいない。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
+`analyze::test_support::analyze_for_test` を除く。実装は子 module に置き、facade は名前だけを出す）。型（`SemanticDocument` / `LabelId` / `HeadingKey` / 生成物の語彙等）は
 `typeset` / `compiler` が名指しする。走査後に初めて成立する意味上の識別子 `LabelId` / `HeadingKey` も本 module
 が所有する（組版側は到達先の名前空間として使うだけで、発行はしない — 目次が事実に載った index から鍵を
 組み直すのは復元であって発行ではない。唯一の例外は書誌で、走査は HIR に無い書誌を見ないため、その見出しへ
-本文の続きとなる `HeadingKey` を 1 つ振るのは `typeset::lowering` 側。「走査と検証の順序」の末尾を参照）。
+本文の続きとなる `HeadingKey` を 1 つ振るのは `typeset::lowering` 側）。
 
 - **`SemanticDocument` 自身が「lowering の入力」**で、利用側は collection 構造も内訳も知らず、目的別 query
   経由でのみ参照する。組版入力を組み立てる橋渡しの中間木・ビュー型（`DocumentContent` のような）へ
@@ -581,38 +466,9 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   採番時点の値を写して持つので、後から章・節が進んでも参照先の番号は変わらない。`TheoremReset` と見出しカウンタの
   対応は `style::TheoremReset::counter_name` 1 箇所が持ち、`SemanticPolicy::from_style` がそれを適用して
   `CounterName` へ写すので、走査は `TheoremReset` を読まない
-- 子 module に crate root の module と同名を付けない — 成果物は `semantic_document.rs`、CSL スタイルの読込は
-  `citation/csl_style.rs`。`document.rs` / `style.rs` だと `semantics` 配下で `document::` / `style::` が
-  crate root（HIR / style.toml）と自 module の 2 義になるため、この名前へ戻さない
-
-#### 走査と検証の順序
-
-全ソースを 1 個のカウンタレジストリと 1 個の fact 集合で通しで走査してから、まとめて検証する。
-カウンタの現在値もラベルの定義表もソース間で共有されるため、`\ref` は他ソースのラベルも参照できる
-（レジストリが持つのはカウンタだけで、ラベルの定義表は fact 側にある）。
-
-1. **走査**: ソースごとに HIR を文書順（preorder）で辿り、ラベル・カウンタを登録しながら fact を
-   side table へ書く。参照箇所も `refs` fact（`\refs` / `\refrange` はラベル群を持つ `ref_groups` fact）へ記録するが、
-   参照先の存在はこの時点では検証しない（前方参照を許すため）。数式は「行 → 環境」の順に採番する。`counters` fact は
-   採番の直後に挿入するので、挿入順が採番順になる
-2. **検証**: 重複ラベル・未定義引用キー・未解決参照・`\refs` の種類の混在・不正な `\refrange` の 5 種を**全件**集め、
-   **文書順**にマージして報告する。未解決参照は `refs` / `ref_groups` fact とラベルの定義表だけから求め（`ref_groups` は
-   未定義のラベル 1 個ごとに 1 件）、1 件でもあれば fact 集合ごと返さない（`ref_target` / `ref_group` の不変条件はこれで
-   成立する）。種類の混在と範囲は未定義のラベルを含まない箇所だけを 1 箇所 1 件まで調べる。範囲は `counters` fact を
-   両端の位置の間だけ採番順に走査し、同じ系列の項目の自番号が直前 + 1 でなければその手前でリセットされたと判定する
-   （判定が読む設定は `SemanticPolicy` だけ）。
-   ソート鍵は span ではなく `NodeId` 由来の `(source.index(), local)` で、パースの実行順に依存しない。
-   **重複ラベルで走査を打ち切らない** — 採番はラベル記録の前に済んでいるので走査を続けてもカウンタ値は
-   ずれず、最初の定義が有効なまま残る（先勝ち）。ラベルの定義表は `SemanticFacts` の 1 つだけで、
-   書き込み口も `declare_label` 1 つ（フィールドは private）。重複は表に入らないので、参照の解決先と
-   fact の指す先は常に一致する（表を 2 つ持って呼び出し手順で整合させる形へ戻さない、#666）
-3. **完全性検証**: HIR をもう一度走査し、variant ごとに必要な fact がすべて登録されているかを確かめる。
-   fact の欠落は入力由来ではなく走査自身の不変条件違反なので、診断エラーではなく `assert!` で落とす
-   （property test が固定する）
-
-その後 CSL 整形へ進む。書誌は HIR ではなく生成物（エントリの列）として来るため走査は書誌を見ず、書誌の
-見出し（文字列は style 由来・レベルは `Section` 固定）を作り、本文の続きとなる `HeadingKey` を 1 つ振るのは
-`typeset::lowering` 側。
+- 全ソースを 1 個のカウンタレジストリと 1 個の fact 集合で通しで走査する。カウンタの現在値もラベルの定義表も
+  ソース間で共有されるので、`\ref` は他ソースのラベルも参照できる（ソースの分け方で番号と参照先が変わらないことを
+  `splitting_into_sources_keeps_numbers_and_ref_targets` が固定する）
 
 #### エラー
 
@@ -620,13 +476,7 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   運ぶ）は **`Diagnostic` を実装しない** — `?` で処理順を書くための制御フロー型であって表示単位ではなく、
   compiler seam が必ず全バリアントを分解する
 - 走査のエラー `SemanticError` は**必ず 1 つのソース位置に帰属する**（`source_id()` が `Option` ではなく
-  `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って本文付き診断を組み立てる。ソース位置を
-  持たない CSL 由来のエラーを同じ enum に混ぜるとこの不変条件が壊れる — **2 層を 1 本に統合しない**。
-  重複ラベルの最初の定義が別ソースにあるときは、code なし・severity `Advice` の関連診断を別に返し、
-  compiler がそのソースの本文を添えて主診断へ連結する
-- 未定義引用キーは 1 回の走査で複数ソースに跨りうるが、miette は 1 診断に `source_code` を 1 つしか
-  持てないため、**ソースごとの分割を semantics 側が行う**（分割を compiler 側に置くと診断文・`code`・help の
-  複製がそちらへ生まれる）
+  `SourceId` を返す）ことを不変条件とし、`compiler` はそれに乗って本文付き診断を組み立てる
 
 #### `citation`（子 module）
 
@@ -642,29 +492,17 @@ signature の置換は全ハンドラで一様で、interface の凝集度で判
   variant を足す。書誌のほうは enum ですらなく `BibliographyEntry`（キーと本文）の列 — 生産者が作る形が
   1 つしか無いものを、複数の形を許すブロック列で表さない（#667）
 - **CSL の遅延読込**: スタイル・ロケールの読込は `analyze` の内側で、**引用箇所が 1 つも無ければ呼ばない**
-  （`csl_path` 未設定の文書でも引用が無ければエラーにならない）。出力言語の決定順は `citation::csl_style` の
-  doc が持つ。文献ファイル
-  （`references.toml` / `.json`、拡張子で形式判別）の読込 I/O は入力読込段から呼ばれ、`analyze` の
+  （`csl_path` 未設定の文書でも引用が無ければエラーにならない）。文献ファイル
+  （`references.toml` / `.json`）の読込 I/O は入力読込段から呼ばれ、`analyze` の
   内側で I/O を行うのは CSL 読込だけ
-- **整形はキーの存在を保証済みとして進む**（未知キーは `unreachable!`）。上流が保証する状態は下流でも
-  `unreachable!` で扱い、同じ不変条件に対して「片方は `unreachable!`、片方は黙って救済」という逆向きの
-  扱いを作らない（#667）。hayagriva の `ElemMeta::Entry` の添字も、引用要求の items を引用キーと 1 対 1 に
-  積んでいるので越境は `unreachable!`。文書木の所有権は受け取らず、結果は引用箇所 → 表示インライン列の
-  side table と書誌のエントリ列で、**どちらのフィールドも公開しない**（利用側は `SemanticDocument` の
-  query だけを見る。「全引用箇所の表示が生成済み」は生成側が確立する不変条件なので、欠落は `Option` で
-  返さず `unreachable!`）。書誌の `Option` は別物で、`None` は「CSL が `bibliography` を定義していない」
-  または「文書に引用が 1 つも無い」を表す（`Some` なら件数 0 でも見出しが出る）
+- `SemanticDocument::bibliography` の `None` は「CSL が `bibliography` を定義していない」
+  または「文書に引用が 1 つも無い」を表す（`Some` なら件数 0 でも `typeset::lowering` が見出しを出す）
 - **書誌は本文のノード列へ追加せず、戻り値として返す**。`analyze` が本文（HIR）・事実とは別枠のまま
   `SemanticDocument` の 3 フィールド目に置いて組版へ渡す。**書誌を合成ソースとして `source_nodes` の末尾へ連結
   する方式へ戻さない** — 別枠で渡すことで citation がソースごとのノード列の構造に依存しない
 - **見出しは生成物に入れない**。書誌見出しの文字列（`style.reference.title`）は style の値、レベルは
   `Section` 固定（`BIBLIOGRAPHY_HEADING_LEVEL`）で、いずれも `typeset::lowering` が組み立てる。style の値を
-  analyze → generate → render と引き回して semantics の成果物へ埋め込む形へ戻さない（#667）。
-  CSL スタイル・ロケールも `CompiledCitationStyle` の外へは出さず、
-  hayagriva への整形要求はその型が組み立てて返す（タプルへ分解して渡し直さない）
-- 引用・書誌ともプレーン文字列に限らず、書名 / 誌名は斜体系の書体指定を持つ生成物として運ぶ
-- 文献ファイルの読込は集約せず deserialize 時に fail-fast（著者名の排他・空 / 重複 ID）。#376 の集約基準に
-  対する意図的例外として維持し、集約方式に戻さない（理由は `docs/error-handling.md`）
+  analyze → generate → render と引き回して semantics の成果物へ埋め込む形へ戻さない（#667）
 - テスト用フィクスチャ `test_support`（`#[cfg(test)]`）は `typeset` 側のテストからも使う
 
 ### `typeset`
