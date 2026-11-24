@@ -103,21 +103,21 @@ mod tests {
 
   #[test]
   fn flush_rejects_extra_argument() {
-    let result = evaluate(r"\begin{flushright}{余分}本文\end{flushright}");
+    let Err(ParseError::Eval(failures)) = evaluate(r"\begin{flushright}{余分}本文\end{flushright}") else {
+      panic!("評価エラーになるはず")
+    };
 
-    assert!(matches!(
-      result,
-      Err(ParseError::Eval(EvalError::ExtraEnvironmentArgument { ref name, .. })) if name == "flushright"
-    ));
+    assert!(
+      matches!(failures.into_sole(), EvalError::ExtraEnvironmentArgument { ref name, .. } if name == "flushright")
+    );
   }
 
   #[test]
   fn flush_rejects_opt_args() {
-    let result = evaluate(r"\begin{center}[align=right]本文\end{center}");
+    let Err(ParseError::Eval(failures)) = evaluate(r"\begin{center}[align=right]本文\end{center}") else {
+      panic!("評価エラーになるはず")
+    };
 
-    assert!(matches!(
-      result,
-      Err(ParseError::Eval(EvalError::UnknownOptArgKey { ref key, .. })) if key == "align"
-    ));
+    assert!(matches!(failures.into_sole(), EvalError::UnknownOptArgKey { ref key, .. } if key == "align"));
   }
 }

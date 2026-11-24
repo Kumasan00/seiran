@@ -267,7 +267,7 @@ mod tests {
   /// ソースを評価して評価エラーを取り出す
   fn eval_error(source: &str) -> EvalError {
     match test_support::parse_for_test(source, SourceId::new(0)) {
-      Err(ParseError::Eval(error)) => return error,
+      Err(ParseError::Eval(failures)) => return failures.into_sole(),
       other => panic!("評価エラーが期待されます: {source}: {other:?}"),
     }
   }

@@ -7,7 +7,7 @@ use miette::Diagnostic;
 
 use crate::{
   compiler::test_support::TestProject,
-  frontend::{MAX_NESTING_DEPTH, test_support},
+  frontend::{MAX_NESTING_DEPTH, ParseError, test_support},
   source::SourceId,
 };
 
@@ -46,8 +46,9 @@ fn max_nesting_depth_compiles_through_every_stage() {
 fn deepest_paragraphs_sit_exactly_at_the_limit() {
   // 1 段深くすると構文エラーになる ＝ 上のテストが上限ちょうどを踏んでいる
   for paragraph in deepest_paragraphs(MAX_NESTING_DEPTH + 1) {
-    let error =
-      test_support::parse_for_test(&paragraph, SourceId::new(0)).expect_err("上限 + 1 段は構文エラーになるはず");
+    let Err(ParseError::Syntax(error)) = test_support::parse_for_test(&paragraph, SourceId::new(0)) else {
+      panic!("上限 + 1 段は構文エラーになるはず: {paragraph}")
+    };
 
     assert_eq!(
       error.code().map(|code| return code.to_string()).as_deref(),

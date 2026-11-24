@@ -465,20 +465,18 @@ mod tests {
     ];
 
     for source in links {
-      let result = parse_checked(source);
+      let Err(ParseError::Eval(failures)) = parse_checked(source) else {
+        panic!("評価エラーになるはず: {source:?}")
+      };
 
-      assert!(
-        matches!(result, Err(ParseError::Eval(EvalError::LinkInLinkDisplay { .. }))),
-        "{source:?}: {result:?}"
-      );
+      assert!(matches!(failures.into_sole(), EvalError::LinkInLinkDisplay { .. }), "{source:?}");
     }
     for source in indexes {
-      let result = parse_checked(source);
+      let Err(ParseError::Eval(failures)) = parse_checked(source) else {
+        panic!("評価エラーになるはず: {source:?}")
+      };
 
-      assert!(
-        matches!(result, Err(ParseError::Eval(EvalError::IndexNotAllowedHere { .. }))),
-        "{source:?}: {result:?}"
-      );
+      assert!(matches!(failures.into_sole(), EvalError::IndexNotAllowedHere { .. }), "{source:?}");
     }
   }
 

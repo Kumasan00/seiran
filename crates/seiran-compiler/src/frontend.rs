@@ -12,7 +12,6 @@ pub(crate) mod test_support;
 
 use bumpalo::Bump;
 use evaluator::EvalError;
-use miette::Diagnostic;
 #[cfg(test)]
 pub(crate) use syntax::MAX_NESTING_DEPTH;
 use thiserror::Error;
@@ -20,26 +19,26 @@ use tracing::debug;
 
 use crate::{
   document::HirSource,
+  failures::Failures,
   frontend::{evaluator::EvalContext, syntax::SyntaxError},
   project::PathResolver,
   source::SourceId,
 };
 
-/// `parse` が返すエラー型
+/// `parse` が返すエラー
 ///
-/// 内側の `SyntaxError` / `EvalError` の 2 種類の leaf を `?` で運ぶための union で、この型自身は
-/// message / `code` / help を持たない。ソース本文も `SourceId` も持たず、帰属は呼び出し元が添える。
-#[derive(Debug, Error, Diagnostic)]
+/// 内側の `SyntaxError` / `EvalError` を `?` で運ぶための制御フロー型で、**表示単位ではない**
+/// （`miette::Diagnostic` を実装しない）。構文エラーは 1 件、評価エラーは 1 件以上で、両者は混ざらない
+/// （構文木を作れなければ評価へ進まない）。ソース本文も `SourceId` も持たず、帰属は呼び出し元が添える。
+#[derive(Debug, Error)]
 pub(crate) enum ParseError {
-  /// 構文解析（`crate::frontend::syntax::parse_cst`）で発生したエラー
+  /// 構文解析（`crate::frontend::syntax::parse_cst`）で発生したエラー（最初の 1 件）
   #[error(transparent)]
-  #[diagnostic(transparent)]
   Syntax(#[from] SyntaxError),
 
-  /// 評価（CST → HIR 変換）で発生したエラー
+  /// 評価（CST → HIR 変換）で発生したエラー（ソース内の出現順）
   #[error(transparent)]
-  #[diagnostic(transparent)]
-  Eval(#[from] EvalError),
+  Eval(#[from] Failures<EvalError>),
 }
 
 /// 1 ソースを字句・構文解析し HIR へ評価する。
@@ -57,7 +56,7 @@ pub(crate) fn parse(source: &str, source_id: SourceId, resolver: &PathResolver) 
   let cst = syntax::parse_cst(source, &arena, evaluator::mode_resolver())?;
 
   let ctx = EvalContext::new(source_id, resolver);
-  let nodes = evaluator::evaluate_children(source, &ctx, cst)?;
+  let nodes = evaluator::evaluate_children(source, &ctx, cst).map_err(Failures::single)?;
 
   debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースを HIR へ評価");
   return Ok(ctx.finish(nodes));
@@ -88,7 +87,7 @@ mod tests {
   /// ソースを評価して `EvalError` を取り出すテストヘルパ
   fn evaluate_error(source: &str) -> EvalError {
     match test_support::parse_for_test(source, SourceId::new(0)) {
-      Err(ParseError::Eval(error)) => return error,
+      Err(ParseError::Eval(failures)) => return failures.into_sole(),
       other => panic!("評価エラーが期待されます: {other:?}"),
     }
   }

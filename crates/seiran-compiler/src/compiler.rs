@@ -34,7 +34,8 @@ pub use warnings::Warnings;
 
 use crate::{
   document::{HirDocument, HirSource},
-  failures, frontend,
+  failures::{self, Failures},
+  frontend::{self, ParseError},
   phase::Phase,
   project::{PathResolver, ProjectPath, ProjectSource, SourceSet, config::ConfigWarning},
   publication::Publication,
@@ -224,10 +225,24 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
     .iter()
     .map(|(source_id, entry)| {
       return frontend::parse(&entry.content, source_id, resolver)
-        .map_err(|error| return SourceDiagnostic::attach(sources, source_id, error));
+        .map_err(|error| return attribute_parse_error(error, sources, source_id));
     })
     .collect();
-  return failures::collect_in_input_order(results).map_err(CompileFailure::from);
+  return failures::collect_in_input_order(results).map_err(|per_source| {
+    let flattened = Failures::from_vec(per_source.into_iter().flatten().collect())
+      .expect("非空の集合の各要素も非空集合なので、平坦化しても 1 件以上残る");
+    return CompileFailure::from_boxed(flattened);
+  });
+}
+
+/// 1 ソースの `frontend::parse` の失敗へそのソースの本文を添え、出現順の診断の集合にする。
+fn attribute_parse_error(error: ParseError, sources: &SourceSet, source_id: SourceId) -> Failures<BoxedDiagnostic> {
+  return match error {
+    ParseError::Syntax(error) => Failures::single(Box::new(SourceDiagnostic::attach(sources, source_id, error))),
+    ParseError::Eval(errors) => errors.map(|error| -> BoxedDiagnostic {
+      return Box::new(SourceDiagnostic::attach(sources, source_id, error));
+    }),
+  };
 }
 
 /// `typeset::compose` の失敗を表示可能な診断の集合にする。
