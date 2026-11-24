@@ -59,8 +59,8 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 **`code` は leaf diagnostic にだけ付ける**（#375）。段名や集約の都合しか表さない wrapper に
 独自の message / `code` / help を与えてユーザー表示へ出さない — ユーザーが最初に読むメッセージは常に
 「修正できる leaf」であるべきで、「複数のエラーが発生しました」「◯◯段に失敗しました」を先頭に置かない。
-`?` で運ぶための union（例: `frontend::ParseError`）は `#[error(transparent)]` +
-`#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `semantics::AnalyzeError` / `typeset::ComposeError`）は
+`?` で運ぶための union（例: `typeset::font::FontSystemError`）は `#[error(transparent)]` +
+`#[diagnostic(transparent)]`、表示単位ですらない制御フロー型（例: `frontend::ParseError` / `semantics::AnalyzeError` / `typeset::ComposeError`）は
 `Diagnostic` を実装しない、が既定形。
 
 `code` の変更はユーザから見える診断出力の変更なので、`crates/seiran-compiler/tests/golden_diagnostics/` の
@@ -97,7 +97,10 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
 **集約するかどうかは種類ではなく「失敗後も独立な検査を安全かつ決定的に続けられるか」で決める**。
 
 - **集約する**: config.toml / style.toml の独立フィールド違反、設定に列挙された複数パスの読込失敗、
-  source ごとの parse / eval error、文書全体の重複ラベル・未解決参照・未知引用キー、
+  ソースの構文エラー（ソースごとに最初の 1 件。構文エラーのあるソースは評価しない）と評価エラー（互いに独立な単位 —
+  段落 1 つ・段落に属さないブロック要素 1 つ、定理・引用・寄せの本体とリストの項目の中は同じ規則で再帰 — ごとに
+  最初の 1 件。単位の中は兄弟の結果に依存する検査があり、続けると派生エラーが出うるので止める。単位の分け方は
+  `frontend::evaluator::evaluate_children` の doc）、文書全体の重複ラベル・未解決参照・未知引用キー、
   19 フォント種別の各フォント検証、文書が数式で使った字の数式フォントでの欠落（使った箇所 × 字ごと・文書順）、
   各画像の読込・デコード失敗、検証済み config・style の後の
   文献・フォント・ソースの読込（ファイル間の独立な失敗。`compiler::input::load` が文献 → フォント →

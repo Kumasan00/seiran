@@ -898,7 +898,7 @@ phase 名（`resolve_config_path` は span を持たない前処理）。段の�
   wrapper の `code` とメッセージが表示に現れないことは `golden_diagnostics_show_no_aggregate_or_phase_wrapper` が
   診断 golden 全件で固定する
 - **source attribution は汎用の adapter `SourceDiagnostic<E>` 1 つ**。`SourceId` と span だけを
-  持つ leaf 診断（`frontend::ParseError` / `semantics::SemanticError` / `typeset` の字の問題 `TextGlyphError`・寸法の溢れ `DimensionOverflow` のうち位置を持つものと、はみ出し・異体字列の代替の `TypesetWarning`）へ `SourceSet` から引いた
+  持つ leaf 診断（`frontend` の `SyntaxError` / `EvalError`・`semantics::SemanticError` / `typeset` の字の問題 `TextGlyphError`・寸法の溢れ `DimensionOverflow` のうち位置を持つものと、はみ出し・異体字列の代替の `TypesetWarning`）へ `SourceSet` から引いた
   `NamedSource` を添え、`source_code` **だけ**を補う（委譲の内訳は `SourceDiagnostic` の doc）。`semantics` の `AnalyzeError`
   は CSL 由来（それ自身が leaf 診断）と意味解析由来（ソースごとに分割済み）に振り分け、後者だけに本文を
   添える。`typeset` の `ComposeError` も同じ形で、組版の失敗・字の欠落・寸法の溢れに振り分け、3 者とも要素に

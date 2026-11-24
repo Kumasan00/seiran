@@ -1,0 +1,9 @@
+\section{見出し}
+
+最初の段落に \nosuchcommanda があります。
+
+次の段落にも \nosuchcommandb があります。
+
+\begin{nosuchenvironment}
+本文
+\end{nosuchenvironment}

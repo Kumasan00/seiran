@@ -1,0 +1,53 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::unknown_command
+
+  × 不明なコマンドです: \nosuchcommanda
+   ╭─[tests/text/diagnostics/eval_errors_per_unit_a.sei:3:20]
+ 2 │ 
+ 3 │ 最初の段落に \nosuchcommanda があります。
+   ·              ────────┬───────
+   ·                      ╰── このコマンドは定義されていません
+ 4 │ 
+   ╰────
+  help: コマンド名 \nosuchcommanda のスペルを確認してください。利用可能なコマンド一覧はドキュメン
+        トを参照してください
+
+Error: frontend::eval::unknown_command
+
+  × 不明なコマンドです: \nosuchcommandb
+   ╭─[tests/text/diagnostics/eval_errors_per_unit_a.sei:5:20]
+ 4 │ 
+ 5 │ 次の段落にも \nosuchcommandb があります。
+   ·              ────────┬───────
+   ·                      ╰── このコマンドは定義されていません
+ 6 │ 
+   ╰────
+  help: コマンド名 \nosuchcommandb のスペルを確認してください。利用可能なコマンド一覧はドキュメン
+        トを参照してください
+
+Error: frontend::eval::unknown_environment
+
+  × 不明な環境です: nosuchenvironment
+   ╭─[tests/text/diagnostics/eval_errors_per_unit_a.sei:7:1]
+ 6 │     
+ 7 │ ╭─▶ \begin{nosuchenvironment}
+ 8 │ │   本文
+ 9 │ ├─▶ \end{nosuchenvironment}
+   · ╰──── この環境は定義されていません
+   ╰────
+  help: 環境名 nosuchenvironment のスペルを確認してください。利用可能な環境一覧はドキュメントを参
+        照してください
+
+Error: frontend::eval::unknown_command
+
+  × 不明なコマンドです: \nosuchcommandc
+   ╭─[tests/text/diagnostics/eval_errors_per_unit_b.sei:1:20]
+ 1 │ 別のソースの \nosuchcommandc です。
+   ·              ────────┬───────
+   ·                      ╰── このコマンドは定義されていません
+   ╰────
+  help: コマンド名 \nosuchcommandc のスペルを確認してください。利用可能なコマンド一覧はドキュメン
+        トを参照してください
