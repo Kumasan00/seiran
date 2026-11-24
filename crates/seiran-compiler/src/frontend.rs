@@ -56,10 +56,11 @@ pub(crate) fn parse(source: &str, source_id: SourceId, resolver: &PathResolver) 
   let cst = syntax::parse_cst(source, &arena, evaluator::mode_resolver())?;
 
   let ctx = EvalContext::new(source_id, resolver);
-  let nodes = evaluator::evaluate_children(source, &ctx, cst).map_err(Failures::single)?;
+  let nodes = evaluator::evaluate_children(source, &ctx, cst);
+  let hir = ctx.finish(nodes)?;
 
-  debug!(source_id = source_id.index(), node_count = nodes.len(), "ソースを HIR へ評価");
-  return Ok(ctx.finish(nodes));
+  debug!(source_id = source_id.index(), node_count = hir.nodes.len(), "ソースを HIR へ評価");
+  return Ok(hir);
 }
 
 /// 評価器の統合テスト
@@ -2209,6 +2210,14 @@ mod tests {
       "{missing:?}"
     );
     assert!(matches!(option, EvalError::UnknownOptArgKey { ref key, .. } if key == "a"), "{option:?}");
+  }
+
+  #[test]
+  fn syntax_error_suppresses_earlier_eval_errors() {
+    // 数式外の裸の `{...}` は構文エラー（P4）。その前の段落の未知のコマンドは評価されない
+    let result = test_support::parse_for_test("\\xa\n\n{x}", SourceId::new(0));
+
+    assert!(matches!(result, Err(ParseError::Syntax(SyntaxError::BareGroup { .. }))), "{result:?}");
   }
 
   #[test]

@@ -52,22 +52,30 @@ pub(super) fn mode_resolver() -> ModeResolver {
 
 /// CST ノードの子要素を評価して HIR（`Vec<HirNode>`）に変換する
 ///
-/// 採番とラベル解決は行わない。
+/// 採番とラベル解決は行わない。評価エラーは返さず `ctx` へ報告する（[`EvalContext::finish`] が集める）。子要素は
+/// 互いに独立な単位に分け、単位ごとに最初の 1 件だけを報告する:
 ///
-/// # Errors
+/// - 単位は段落 1 つか、段落に属さないブロック要素（[`command::is_block_unit`] のコマンドと環境）1 つ。環境の
+///   本体（定理・引用・寄せ）とリストの項目の中身は、その環境の評価がこの関数を再帰で呼んで同じ規則で分ける
+/// - 段落の要素が失敗したら、段落区切りかブロック要素までの残りの要素は評価しない。`\noindent` の位置のように
+///   兄弟の結果に依存する検査から派生エラーを出さないため
+/// - ブロック要素が失敗しても、成功したときと同じくそこで段落を閉じる
 ///
-/// 不明なコマンドや環境、引数の不足・過剰がある場合にエラーを返します
-pub(super) fn evaluate_children(
-  source: &str,
-  ctx: &EvalContext<'_>,
-  node: &CstNode<'_>,
-) -> Result<Vec<HirNode>, EvalError> {
+/// 報告があった場合、失敗した単位のノードは返り値に含まれない（ノード列は `finish` が捨てる）。
+pub(super) fn evaluate_children(source: &str, ctx: &EvalContext<'_>, node: &CstNode<'_>) -> Vec<HirNode> {
   let mut hir_nodes: Vec<HirNode> = Vec::new();
   let mut paragraph = ParagraphBuffer::default();
+  // 蓄積中の段落の単位で評価エラーを報告済みか
+  let mut paragraph_failed = false;
 
   for child in node.children {
     match child {
       CstElement::Token(token) => match inline::inline_from_token(source, token) {
+        Some(TokenInline::ParagraphBreak) => {
+          paragraph.flush(ctx, &mut hir_nodes);
+          paragraph_failed = false;
+        },
+        Some(TokenInline::MergeableText(_) | TokenInline::Leaf(_)) if paragraph_failed => {},
         Some(TokenInline::MergeableText(text)) => {
           paragraph.reserve(ctx, token.span);
           paragraph.push_text_token(ctx, token.span, text);
@@ -76,46 +84,75 @@ pub(super) fn evaluate_children(
           paragraph.reserve(ctx, token.span);
           paragraph.push(ctx.leaf_inline(token.span, kind));
         },
-        Some(TokenInline::ParagraphBreak) => paragraph.flush(ctx, &mut hir_nodes),
         None => {},
       },
       CstElement::Node(child_node) => match child_node.kind {
         SyntaxKind::CommandCall => {
+          let view = CommandView::new(child_node, source);
+          let block_unit = command::is_block_unit(view.name());
+          if paragraph_failed && !block_unit {
+            continue;
+          }
           // コマンドがインラインを返すかブロックを返すかは実行するまで確定しないので、
           // 先に段落 ID を予約しておく。
           paragraph.reserve(ctx, child_node.span);
-          let view = CommandView::new(child_node, source);
-          let result = command::evaluate_command(&view, ctx, Placement::Block)?;
-          match result {
-            CommandResult::Block(_permit, block_node) => {
+          match command::evaluate_command(&view, ctx, Placement::Block) {
+            Ok(CommandResult::Block(_permit, block_node)) if block_unit => {
               paragraph.flush(ctx, &mut hir_nodes);
+              paragraph_failed = false;
               hir_nodes.push(block_node);
             },
-            CommandResult::Inline(inline_node) => {
+            Ok(CommandResult::Inline(inline_node)) if !block_unit => {
               paragraph.push_inline_result(child_node.span, inline_node);
             },
-            CommandResult::NoIndent(_permit) => {
+            Ok(CommandResult::NoIndent(_permit)) if !block_unit => {
               // 先行トリビアは許すが、実体のある要素や同じマーカーがあれば段落途中として扱う。
               if paragraph.has_content() {
-                return Err(EvalError::NoindentNotAtParagraphStart {
+                ctx.report(EvalError::NoindentNotAtParagraphStart {
                   span: child_node.span.into(),
                 });
+                paragraph_failed = true;
+              } else {
+                paragraph.push(ctx.leaf_inline(child_node.span, HirInlineKind::NoIndent));
               }
-              paragraph.push(ctx.leaf_inline(child_node.span, HirInlineKind::NoIndent));
+            },
+            Ok(CommandResult::Block(..) | CommandResult::Inline(_) | CommandResult::NoIndent(_)) => {
+              unreachable!(
+                "is_block_unit と、本文の流れで CommandResult::Block を返すコマンドは、どちらも CommandKind の同じ \
+                 variant 集合（\\pagebreak・\\space・見出し）で決まる"
+              )
+            },
+            Err(error) => {
+              ctx.report(error);
+              if block_unit {
+                paragraph.flush(ctx, &mut hir_nodes);
+              }
+              paragraph_failed = !block_unit;
             },
           }
         },
         SyntaxKind::Environment => {
           paragraph.flush(ctx, &mut hir_nodes);
+          paragraph_failed = false;
           let view = EnvironmentView::new(child_node, source);
-          let node = environment::evaluate_environment(&view, ctx)?;
-          hir_nodes.push(node);
+          match environment::evaluate_environment(&view, ctx) {
+            Ok(node) => hir_nodes.push(node),
+            Err(error) => ctx.report(error),
+          }
         },
         SyntaxKind::InlineMath => {
+          if paragraph_failed {
+            continue;
+          }
           paragraph.reserve(ctx, child_node.span);
           let id = ctx.alloc(child_node.span);
-          let math_nodes = math::evaluate_math_children(source, ctx, child_node)?;
-          paragraph.push(HirInline::new(id, HirInlineKind::Math(math_nodes)));
+          match math::evaluate_math_children(source, ctx, child_node) {
+            Ok(math_nodes) => paragraph.push(HirInline::new(id, HirInlineKind::Math(math_nodes))),
+            Err(error) => {
+              ctx.report(error);
+              paragraph_failed = true;
+            },
+          }
         },
         SyntaxKind::Root
         | SyntaxKind::EnvironmentBegin
@@ -134,7 +171,7 @@ pub(super) fn evaluate_children(
 
   paragraph.flush(ctx, &mut hir_nodes);
 
-  return Ok(hir_nodes);
+  return hir_nodes;
 }
 
 /// 蓄積中の段落
@@ -245,6 +282,7 @@ mod test_support {
   use super::{EvalContext, EvalError, evaluate_children, inline, mode_resolver};
   use crate::{
     document::{HirInline, HirNode},
+    failures::Failures,
     frontend::{
       syntax::{self, CstElement, CstNode, SyntaxError, SyntaxKind},
       test_support::eval_context_for_test,
@@ -257,7 +295,8 @@ mod test_support {
   /// （`HirNode` は `id` を含む `PartialEq` を持つため、ノード全体の等価比較はしない）。
   pub(crate) fn evaluate_children_to_hir(source: &str, node: &CstNode<'_>) -> Result<Vec<HirNode>, EvalError> {
     let ctx = eval_context_for_test();
-    return evaluate_children(source, &ctx, node);
+    let nodes = evaluate_children(source, &ctx, node);
+    return ctx.finish(nodes).map(|hir| return hir.nodes).map_err(Failures::into_sole);
   }
 
   /// インライン評価結果を変換なしで `Vec<HirInline>` として返す
@@ -324,9 +363,13 @@ mod test_support {
 #[cfg(test)]
 mod tests {
   use bumpalo::Bump;
+  use miette::Diagnostic;
 
-  use super::{EvalError, HirInline, HirNode, evaluate_children_to_hir, test_support};
-  use crate::document::{HirInlineKind, HirNodeKind};
+  use super::{EvalError, HirInline, HirNode, evaluate_children, evaluate_children_to_hir, test_support};
+  use crate::{
+    document::{HirInlineKind, HirNodeKind},
+    frontend::test_support::eval_context_for_test,
+  };
 
   /// 段落 1 つを取り出す（段落以外が混ざっていれば panic する）
   fn single_paragraph(nodes: &[HirNode]) -> &[HirInline] {
@@ -461,5 +504,150 @@ mod tests {
     };
     assert_eq!(span.offset(), "本文".len());
     assert_eq!(span.len(), r"\noindent".len());
+  }
+
+  /// 文書を評価し、報告された評価エラーの先頭ラベルのオフセットを報告順に返す（成功なら空）
+  fn error_offsets(source: &str) -> Vec<usize> {
+    let arena = Bump::new();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+    let ctx = eval_context_for_test();
+
+    let nodes = evaluate_children(source, &ctx, cst);
+
+    return match ctx.finish(nodes) {
+      Ok(_) => Vec::new(),
+      Err(errors) => errors.into_iter().map(|error| return error.labels().unwrap().next().unwrap().offset()).collect(),
+    };
+  }
+
+  /// `source` の中で `needle` が最初に現れるオフセット
+  fn at(source: &str, needle: &str) -> usize { return source.find(needle).unwrap(); }
+
+  #[test]
+  fn same_paragraph_reports_only_the_first_error() {
+    let source = r"\xa と \xb";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa")]);
+  }
+
+  #[test]
+  fn separate_paragraphs_report_one_error_each() {
+    let source = "\\xa\n\n\\xb";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn theorem_body_paragraphs_are_separate_units() {
+    let source = "\\begin{theorem}\\xa\n\n\\xb\\end{theorem}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn list_items_are_separate_units() {
+    let source = r"\begin{itemize}\item{\xa}\item{\xb}\end{itemize}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn quote_and_flush_bodies_are_split_into_units() {
+    let source = "\\begin{quote}\\xa\n\n\\xb\\end{quote}\\begin{center}\\xc\n\n\\xd\\end{center}";
+
+    assert_eq!(
+      error_offsets(source),
+      vec![
+        at(source, r"\xa"),
+        at(source, r"\xb"),
+        at(source, r"\xc"),
+        at(source, r"\xd")
+      ]
+    );
+  }
+
+  #[test]
+  fn table_is_a_single_unit() {
+    let source = r"\begin{table}\row{\xa & \xb}\end{table}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa")]);
+  }
+
+  #[test]
+  fn math_environment_is_a_single_unit() {
+    let source = r"\begin{align}\xa \\ \xb\end{align}";
+
+    assert_eq!(error_offsets(source).len(), 1);
+  }
+
+  #[test]
+  fn unknown_environment_hides_its_body() {
+    let source = r"\begin{nosuchenv}\xa\end{nosuchenv}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\begin")]);
+  }
+
+  #[test]
+  fn failed_environment_header_skips_its_body() {
+    for source in [
+      r"\begin{itemize}[bad=1]\item{\xa}\end{itemize}",
+      r"\begin{theorem}[bad=1]\xa\end{theorem}",
+    ] {
+      let offsets = error_offsets(source);
+
+      assert_eq!(offsets.len(), 1, "{source}: {offsets:?}");
+      assert!(offsets[0] < at(source, r"\xa"), "{source}: ヘッダのエラーだけのはず {offsets:?}");
+    }
+  }
+
+  #[test]
+  fn block_command_after_a_failed_paragraph_is_its_own_unit() {
+    let source = "\\xa\n\\section{\\xb}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn environment_after_a_failed_paragraph_is_its_own_unit() {
+    let source = "\\xa\n\\begin{quote}\\xb\\end{quote}";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn failed_block_command_still_ends_the_paragraph() {
+    // 見出しが成功すれば段落はそこで閉じるので、失敗しても閉じないと後ろの \noindent に派生エラーが出る
+    let source = "本文\n\\section{\\xa}\\noindent 続き";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa")]);
+  }
+
+  #[test]
+  fn elements_after_a_failure_in_a_paragraph_are_skipped() {
+    let source = r"\xa\noindent $\xb$ \xc";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa")]);
+  }
+
+  #[test]
+  fn inline_math_error_ends_only_its_paragraph() {
+    let source = "$\\xa$\n\n\\xb";
+
+    assert_eq!(error_offsets(source), vec![at(source, r"\xa"), at(source, r"\xb")]);
+  }
+
+  #[test]
+  fn errors_follow_source_order_across_nesting() {
+    let source = "\\xa\n\n\\begin{theorem}\\xb\\end{theorem}\\begin{itemize}\\item{\\xc}\\end{itemize}\\xd";
+
+    assert_eq!(
+      error_offsets(source),
+      vec![
+        at(source, r"\xa"),
+        at(source, r"\xb"),
+        at(source, r"\xc"),
+        at(source, r"\xd")
+      ]
+    );
   }
 }

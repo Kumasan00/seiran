@@ -1,16 +1,18 @@
 //! 評価中に持ち回る context [`EvalContext`] — HIR の構築と外部資源パスの解決を束ねる。
 
-use std::path::Path;
+use std::{cell::RefCell, path::Path};
 
 use crate::{
   document::{HirBuilder, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
+  failures::Failures,
+  frontend::evaluator::EvalError,
   project::{PathResolver, ProjectPath},
   source::{SourceId, Span},
 };
 
 /// 1 ソース分の評価 context
 ///
-/// [`HirBuilder`]（ID 発行・位置記録）と `PathResolver`（外部資源パスの解決規則）を束ねる。文書構築の不変条件
+/// [`HirBuilder`]（ID 発行・位置記録）と `PathResolver`（外部資源パスの解決規則）と、報告された評価エラーを束ねる。文書構築の不変条件
 /// （ID 発行と位置記録が同じ呼び出しで起きる・親の ID を子より先に確保する）を持つのは
 /// [`HirBuilder`] のままで、この型は転送するだけで規約を再定義しない。
 #[derive(Debug)]
@@ -19,6 +21,8 @@ pub(crate) struct EvalContext<'a> {
   builder: HirBuilder,
   /// ソースに書かれた外部資源パスの解決規則
   resolver: &'a PathResolver,
+  /// 独立な単位ごとの最初の評価エラー（報告順＝ソース上の出現順）
+  errors: RefCell<Vec<EvalError>>,
 }
 
 impl<'a> EvalContext<'a> {
@@ -27,6 +31,7 @@ impl<'a> EvalContext<'a> {
     return EvalContext {
       builder: HirBuilder::new(source_id),
       resolver,
+      errors: RefCell::new(Vec::new()),
     };
   }
 
@@ -60,12 +65,25 @@ impl<'a> EvalContext<'a> {
     return self.builder.leaf_math(span, kind);
   }
 
+  /// 1 つの単位の最初の評価エラーを報告する（その単位の残りは評価しない側が保証する）
+  pub(super) fn report(&self, error: EvalError) {
+    self.errors.borrow_mut().push(error);
+    return;
+  }
+
   /// 評価し終えたノード列と位置表を 1 ソース分の [`HirSource`] にまとめて context を終える
-  pub(in crate::frontend) fn finish(self, nodes: Vec<HirNode>) -> HirSource {
-    return HirSource {
+  ///
+  /// # Errors
+  ///
+  /// 評価エラーが 1 件でも報告されていれば、報告順の集合を返す（ノード列は捨てる）。
+  pub(in crate::frontend) fn finish(self, nodes: Vec<HirNode>) -> Result<HirSource, Failures<EvalError>> {
+    if let Some(errors) = Failures::from_vec(self.errors.into_inner()) {
+      return Err(errors);
+    }
+    return Ok(HirSource {
       nodes,
       spans: self.builder.finish(),
-    };
+    });
   }
 }
 
@@ -80,10 +98,35 @@ mod tests {
 
     let node = ctx.leaf_node(Span::new(0, 4), HirNodeKind::Paragraph(Vec::new()));
     let id = node.id;
-    let hir = ctx.finish(vec![node]);
+    let hir = ctx.finish(vec![node]).expect("報告が無いので成功するはず");
 
     assert_eq!(hir.spans.source_id(), SourceId::new(3));
     assert_eq!(hir.nodes.len(), 1);
     assert_eq!(hir.spans.span_of(id), Span::new(0, 4));
+  }
+
+  #[test]
+  fn finish_returns_reported_errors_in_report_order() {
+    let resolver = PathResolver::new(Path::new(""));
+    let ctx = EvalContext::new(SourceId::new(0), &resolver);
+    ctx.report(EvalError::NoindentNotAtParagraphStart {
+      span: Span::new(4, 6).into(),
+    });
+    ctx.report(EvalError::NoindentNotAtParagraphStart {
+      span: Span::new(1, 2).into(),
+    });
+
+    let errors = ctx.finish(Vec::new()).expect_err("報告があるので失敗するはず");
+
+    let offsets: Vec<usize> = errors
+      .into_iter()
+      .map(|error| {
+        let EvalError::NoindentNotAtParagraphStart { span } = error else {
+          panic!("報告した variant のはず: {error:?}")
+        };
+        return span.offset();
+      })
+      .collect();
+    assert_eq!(offsets, vec![4, 1]);
   }
 }

@@ -233,6 +233,33 @@ impl CommandKind {
     };
   }
 
+  /// 本文の流れで段落に属さず、それ自身が 1 つの評価単位になる（ブロックを生む）コマンドか
+  ///
+  /// `true` の variant は本文の流れで必ず [`CommandResult::Block`] を返し、`false` の variant は返さない。
+  /// `\noindent` は `BlockPermit` を要るが段落の先頭に置くマーカーで、段落に属する。
+  fn is_block_unit(self) -> bool {
+    return match self {
+      Self::Leaf(LeafCommand::PageBreak) | Self::Unary(UnaryCommand::Space | UnaryCommand::Heading(_)) => true,
+      Self::Leaf(LeafCommand::NoIndent)
+      | Self::Unary(
+        UnaryCommand::StyledText(_)
+        | UnaryCommand::ColoredText
+        | UnaryCommand::Ref
+        | UnaryCommand::Refs
+        | UnaryCommand::Cite
+        | UnaryCommand::Footnote
+        | UnaryCommand::Index
+        | UnaryCommand::Code
+        | UnaryCommand::Url
+        | UnaryCommand::Number
+        | UnaryCommand::Unit,
+      )
+      | Self::Binary(
+        BinaryCommand::Href | BinaryCommand::Hyperref | BinaryCommand::RefRange | BinaryCommand::Quantity,
+      ) => false,
+    };
+  }
+
   /// 必須引数の位置 `index`（0 始まり）の読み取り方（宣言の範囲外は外側文脈の継承）
   fn arg_mode(self, index: usize) -> ArgMode {
     return match self {
@@ -452,6 +479,14 @@ pub(super) fn lookup_arg_mode(name: &str, index: usize) -> ArgMode {
 
 /// 名前が機能コマンドのレジストリ（[`COMMANDS`]）にあるか
 pub(super) fn is_registered(name: &str) -> bool { return COMMANDS.contains_key(name); }
+
+/// 名前のコマンドが本文の流れで段落に属さない 1 つの評価単位（ブロック）になるか
+///
+/// 評価する前に名前だけで決まる（レジストリに無い名前・記号は段落に属する）。評価エラーの集約で、失敗した段落の
+/// 読み飛ばしをどこで止めるかに使う。
+pub(super) fn is_block_unit(name: &str) -> bool {
+  return COMMANDS.get(name).is_some_and(|kind| return kind.is_block_unit());
+}
 
 /// コマンドを評価し、対応する `CommandResult` を生成する
 ///

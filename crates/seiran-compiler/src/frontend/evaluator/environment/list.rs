@@ -42,9 +42,11 @@ pub(super) fn signature(ordered: bool) -> Signature<0> {
 ///
 /// `ordered` は番号付き（`enumerate`）かどうか。
 ///
+/// 項目の中身の評価エラーは `ctx` へ報告する。
+///
 /// # Errors
 ///
-/// body 直下の許可外コンテンツ、`\item` の署名の検査のエラーの場合にエラーを返します
+/// body 直下の許可外コンテンツ、`\item` の署名の検査のエラーの場合にエラーを返します（項目の中身は評価しない）
 pub(super) fn list(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
@@ -72,7 +74,7 @@ pub(super) fn list(
       let marker = item_opts.get(MARKER);
       let item_gap = item_opts.get(ITEM_GAP);
       let item_id = ctx.alloc(cmd_view.span());
-      let item_body = evaluator::evaluate_children(source, ctx, arg)?;
+      let item_body = evaluator::evaluate_children(source, ctx, arg);
       items.push(HirListItem {
         id: item_id,
         body: item_body,

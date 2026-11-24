@@ -4,7 +4,7 @@ use crate::{
   document::{HirNode, HirNodeKind, HirProofTarget, HirTheorem, TheoremClass},
   frontend::{
     evaluator::{
-      self, EvalContext, EvalError,
+      self, EvalContext,
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
     },
@@ -32,17 +32,13 @@ pub(super) fn signature(class: TheoremClass) -> Signature<0> {
   };
 }
 
-/// 定理環境（10 種共通）を評価する
-///
-/// # Errors
-///
-/// 本体の評価エラーを返します。
+/// 定理環境（10 種共通）を評価する（本体の評価エラーは `ctx` へ報告する）
 pub(super) fn theorem(
   view: &EnvironmentView<'_>,
   ctx: &EvalContext<'_>,
   opts: &OptArgs,
   class: TheoremClass,
-) -> Result<HirNode, EvalError> {
+) -> HirNode {
   let title = opts.get(TITLE);
   let label = opts.get(LABEL);
   let of_label = opts.get(OF);
@@ -56,11 +52,11 @@ pub(super) fn theorem(
     };
   });
   let body = match view.body() {
-    Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), ctx, body),
     None => Vec::new(),
   };
 
-  return Ok(HirNode::new(
+  return HirNode::new(
     id,
     HirNodeKind::Theorem(HirTheorem {
       class,
@@ -69,7 +65,7 @@ pub(super) fn theorem(
       of,
       label,
     }),
-  ));
+  );
 }
 
 #[cfg(test)]
@@ -79,7 +75,7 @@ mod tests {
   use super::*;
   use crate::{
     document::{HirInlineKind, TheoremClass},
-    frontend::evaluator::{evaluate_children_to_hir, test_support},
+    frontend::evaluator::{EvalError, evaluate_children_to_hir, test_support},
   };
 
   #[test]
