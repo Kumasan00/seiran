@@ -94,7 +94,7 @@ pub(super) fn set(table: &mut toml::value::Table, section: &str, key: &str, valu
 }
 
 /// style.toml の `[heading.<level>]` に `key` を設定する（無ければ作る）。
-fn set_heading(table: &mut toml::value::Table, level: &str, key: &str, value: impl Into<toml::Value>) {
+pub(super) fn set_heading(table: &mut toml::value::Table, level: &str, key: &str, value: impl Into<toml::Value>) {
   section_mut(section_mut(table, "heading"), level).insert(key.to_string(), value.into());
 }
 
@@ -462,6 +462,13 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "hyperref", "link_color", "#0000ff");
       set(table, "hyperref", "url_color", "#008000");
       set(table, "hyperref", "cite_color", "#800080");
+    },
+    // 章・節の題目を柱に組む。本文のリンク色との対比で、柱にリンク色が付かないことを見る
+    "running_heads" => {
+      set(table, "header", "left", "{chapter}");
+      set(table, "header", "right", "{section}");
+      set(table, "footer", "center", "{page}");
+      set(table, "hyperref", "link_color", "#0000ff");
     },
     // ページ番号なしの目次でエントリを中央、題目を節見出しの揃え（右）に寄せた版面。深さ 3 まで載せて字下げを出す
     "toc_center" => {

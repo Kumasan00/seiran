@@ -216,7 +216,7 @@
 //!
 //! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
 //! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
@@ -5981,4 +5981,169 @@ fn footnote_only_page_with_per_page_numbering_uses_the_call_section() {
 
   assert!(!headers.is_empty(), "脚注だけのページがあるはず");
   assert!(headers.iter().all(|header| return header == "|Alpha"), "呼出元の節を出すはず: {headers:?}");
+}
+
+/// ヘッダー中央に「章|節」を置く style 差分
+fn chapter_section_header(table: &mut toml::value::Table) {
+  test_support::set(table, "header", "center", "{chapter}|{section}");
+}
+
+/// 本文 `source` をヘッダー中央に「章|節」を置いて組み、ページごとのヘッダーの字を返す。題目の空白は語間 glue に
+/// なって字に現れないので、題目は空白を含まない字面にする
+fn running_headers_of(source: &str, style: impl Fn(&mut toml::value::Table) + 'static) -> Vec<String> {
+  let pages = TestProject::builder()
+    .source_text(source)
+    .style_toml(chapter_section_header)
+    .style_toml(style)
+    .build()
+    .laid_out()
+    .pages;
+  return pages.iter().map(header_text).collect();
+}
+
+/// 章・節・小節・部の見出しをページ先頭とページ途中に置いたソース（`\\pagebreak` でページを固定する）
+const RUNNING_HEADS_SOURCE: &str = "\\chapter{Alpha}
+
+\\section{One}
+
+a
+
+\\pagebreak
+
+b
+
+\\section{Two}
+
+c
+
+\\pagebreak
+
+d
+
+\\subsection{Deep}
+
+e
+
+\\chapter{Beta}
+
+f
+
+\\part{Gamma}
+
+\\section{Three}
+
+g
+";
+
+#[test]
+fn running_heads_follow_the_first_block_of_each_page() {
+  let headers = running_headers_of(RUNNING_HEADS_SOURCE, |_| {});
+
+  assert_eq!(headers, vec!["Alpha|", "Alpha|One", "Alpha|Two", "Beta|", "|", "|Three"]);
+}
+
+#[test]
+fn running_heads_before_any_heading_are_empty() {
+  let headers = running_headers_of("a\n\n\\pagebreak\n\n\\section{One}\n\nb\n", |_| {});
+
+  assert_eq!(headers, vec!["|", "|One"]);
+}
+
+#[test]
+fn section_format_without_number_still_updates_the_heads() {
+  let headers = running_headers_of(RUNNING_HEADS_SOURCE, |table| {
+    test_support::set_heading(table, "section", "format", "{title}");
+  });
+
+  assert_eq!(headers, vec!["Alpha|", "Alpha|One", "Alpha|Two", "Beta|", "|", "|Three"]);
+}
+
+#[test]
+fn heading_moved_by_keep_with_next_shows_on_the_next_page() {
+  // keep_with_next_prevents_heading_orphan_end_to_end と同じ版面。題目の空白は字に現れない
+  let pages = TestProject::builder()
+    .sources(&["tests/text/keepwithnext.sei"])
+    .config_toml(|table| test_support::set(table, "pdf", "height", "45mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
+      test_support::set(table, "header", "center", "{section}");
+    })
+    .build()
+    .laid_out()
+    .pages;
+
+  let moved = pages
+    .iter()
+    .position(|page| return !page.opening_headings.is_empty())
+    .expect("見出しで始まるページがあるはず");
+  assert!(moved > 0, "見出しが次のページへ送られているはず");
+  let title = header_text(&pages[moved]);
+  assert!(["AlphaHeading", "BetaHeading"].contains(&title.as_str()), "送られた見出しを出すはず: {title}");
+  assert_ne!(header_text(&pages[moved - 1]), title, "送られる前のページには出ないはず");
+}
+
+#[test]
+fn index_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("index")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+
+  let index_pages: Vec<&Page> = pages.iter().filter(|page| return is_index_page(page)).collect();
+  assert!(!index_pages.is_empty(), "索引のページがあるはず");
+  assert!(index_pages.iter().all(|page| return header_text(page) == "|"), "索引のページは本文外");
+  let last_body = pages.iter().rfind(|page| return !is_index_page(page)).expect("本文のページがあるはず");
+  assert_ne!(header_text(last_body), "|", "本文の最終ページは節を出すはず");
+}
+
+#[test]
+fn bibliography_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("cite")
+    .source_text("\\section{One}\n\n本文\\cite{kwan2014}。\n\n\\pagebreak\n")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+  let headers: Vec<String> = pages.iter().map(header_text).collect();
+
+  assert_eq!(headers.len(), 2, "本文 1 ページと書誌 1 ページのはず: {headers:?}");
+  assert_eq!(headers, vec!["|One", "|"]);
+}
+
+#[test]
+fn front_matter_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("toc")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(
+    pages[0]
+      .links
+      .iter()
+      .any(|link| return matches!(link.target, LinkTarget::Internal(AnchorId::Heading(_)))),
+    "先頭は目次のページのはず"
+  );
+  assert_eq!(header_text(&pages[0]), "|");
+}
+
+#[test]
+fn blank_slot_with_absent_heading_draws_nothing() {
+  let pages = TestProject::builder()
+    .source_text("本文だけの文書。\n")
+    .style_toml(|table| {
+      test_support::set(table, "header", "left", "{chapter} ");
+      test_support::set(table, "header", "rule_thickness", "0.4pt");
+    })
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(pages.iter().all(|page| return page.header.is_empty()), "行も区切り線も出さないはず");
 }
