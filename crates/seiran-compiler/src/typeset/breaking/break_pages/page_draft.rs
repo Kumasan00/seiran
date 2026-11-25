@@ -342,18 +342,18 @@ impl PageDraft {
       top = top.try_add(geom.footnote_rule_gap)?;
       let anchor = (!pending.continued).then(|| {
         return PlacedAnchor {
-          id: AnchorId::Footnote(FootnoteId::new(pending.index)),
+          id: AnchorId::Footnote(FootnoteId::new(pending.body.index)),
           x: column_x,
           y: top,
         };
       });
       let mut links = Vec::new();
-      blocks.reserve(pending.lines.len());
-      let mut baseline = top.try_add(pending.lines.first().map_or(Length::ZERO, |line| return line.height))?;
+      blocks.reserve(pending.body.lines.len());
+      let mut baseline = top.try_add(pending.body.lines.first().map_or(Length::ZERO, |line| return line.height))?;
       let mut prev_depth = Length::ZERO;
-      for (i, mut line) in pending.lines.into_iter().enumerate() {
+      for (i, mut line) in pending.body.lines.into_iter().enumerate() {
         if i > 0 {
-          baseline = baseline.try_add(pending.leading.max(prev_depth.try_add(line.height)?))?;
+          baseline = baseline.try_add(pending.body.leading.max(prev_depth.try_add(line.height)?))?;
         }
         prev_depth = line.depth;
         line.shift_x(column_x)?;
@@ -369,7 +369,7 @@ impl PageDraft {
       top = baseline.try_add(prev_depth)?;
       self.entries.push(Entry::Footnote {
         footnote: PlacedFootnote {
-          index: pending.index,
+          index: pending.body.index,
           continued: pending.continued,
           blocks,
         },
@@ -518,8 +518,8 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{
-        AnchorId, HBox, HBoxContent, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock, PlacedHBox,
-        PlacedTableRow, PlacedTableRule, TableBoundary, TableRowFragment,
+        AnchorId, FootnoteBody, HBox, HBoxContent, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedBlock,
+        PlacedHBox, PlacedTableRow, PlacedTableRule, TableBoundary, TableRowFragment,
       },
       breaking::break_pages::PendingFootnote,
       geometry::PageGeometry,
@@ -590,12 +590,14 @@ mod tests {
   /// 1 行（リンク `uri` 付き）の脚注。`continued` で繰越断片にできる
   fn footnote(index: u32, uri: &str, continued: bool) -> PendingFootnote {
     return PendingFootnote {
-      origin: NodeId::for_test(SourceId::new(0), index),
-      number: index + 1,
-      index,
+      body: FootnoteBody {
+        origin: NodeId::for_test(SourceId::new(0), index),
+        number: index + 1,
+        index,
+        lines: vec![line(Some(external(uri)), None)],
+        leading: pt(12.0),
+      },
       continued,
-      lines: vec![line(Some(external(uri)), None)],
-      leading: pt(12.0),
     };
   }
 
@@ -852,7 +854,7 @@ mod tests {
       )
       .expect("テストの寸法は値域内");
     let mut in_footnote = footnote(0, "F", false);
-    in_footnote.lines[0].index_marks.push(IndexTerm {
+    in_footnote.body.lines[0].index_marks.push(IndexTerm {
       word: "語".to_string(),
       reading: None,
     });

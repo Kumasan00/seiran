@@ -160,18 +160,10 @@ struct PageComposer {
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
 struct PendingFootnote {
-  /// 帰属する `\footnote` コマンド
-  origin: NodeId,
-  /// 発番済みの表示番号
-  number: u32,
-  /// 出現順の識別子（0 起点）
-  index: u32,
+  /// このリージョンに置く分だけに切り詰め済みの本体
+  body: FootnoteBody,
   /// 前リージョンからの繰越（続き）か
   continued: bool,
-  /// 行分割済みの本体（このリージョンに置く分だけに切り詰め済み）
-  lines: Vec<Line>,
-  /// 行送り
-  leading: Length,
 }
 
 impl PageComposer {
@@ -238,10 +230,11 @@ impl PageComposer {
       return Ok(());
     }
     let charges = FootnoteCharges::of(&self.geom);
-    let demands: Vec<FootnoteDemand> = self.carry.iter().map(carried_demand).collect::<Result<_, _>>()?;
+    let demands: Vec<FootnoteDemand> =
+      self.carry.iter().map(|pending| return footnote_demand(&pending.body)).collect::<Result<_, _>>()?;
     // はみ出しの記録に使う繰越先頭の表示番号と起源（`pack_footnotes` が `overflowed` を立てるのは
     // 先頭の脚注に限られる）
-    let (leading_number, leading_origin) = (self.carry[0].number, self.carry[0].origin);
+    let (leading_number, leading_origin) = (self.carry[0].body.number, self.carry[0].body.origin);
     // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める
     let Some(packing) = pack_footnotes(
       &demands,
@@ -371,14 +364,14 @@ impl PageComposer {
   fn push_region_footnote(&mut self, head: PendingFootnote) -> Result<(), ElementOverflow> {
     let at = |LengthOverflow| {
       return ElementOverflow {
-        origin: Some(head.origin),
+        origin: Some(head.body.origin),
       };
     };
-    for line in &head.lines {
+    for line in &head.body.lines {
       let over = excess(line.width().map_err(at)?, self.geom.column_width).map_err(at)?;
       if let Some(excess) = over {
         self.record(OverflowKind::Line {
-          origin: Some(head.origin),
+          origin: Some(head.body.origin),
           excerpt: observe::summarize_line(line),
           axis: OverflowAxis::Horizontal,
           excess,
@@ -638,7 +631,7 @@ struct AtomicPlacement {
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
 ///
-/// 表の脚注本体は `geom` の段幅に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
+/// 表の脚注本体（行分割済みの `row.footnotes`）は判定に含める（`place_table` と同じ判定関数を通す）。
 fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Result<AtomicPlacement, ElementOverflow> {
   let at = |LengthOverflow| {
     return ElementOverflow {
@@ -780,40 +773,24 @@ fn keep_group_orphaned(
   return Ok(false);
 }
 
-impl From<FootnoteBody> for PendingFootnote {
-  /// 行分割済みの脚注本体を、まだ分割も繰越もしていない脚注（`continued: false`）にする
-  fn from(footnote: FootnoteBody) -> Self {
-    return PendingFootnote {
-      origin: footnote.origin,
-      number: footnote.number,
-      index: footnote.index,
-      continued: false,
-      lines: footnote.lines,
-      leading: footnote.leading,
-    };
-  }
-}
-
 /// 1 行（または表の 1 行）に付いた脚注から、分割可能な需要を作る（`footnotes` と同順・同長）
 fn footnote_demands(footnotes: &[FootnoteBody]) -> Result<Vec<FootnoteDemand>, ElementOverflow> {
   return footnotes.iter().map(footnote_demand).collect();
 }
 
+/// 行分割済みの脚注本体を、まだ分割も繰越もしていない脚注にする
+fn unplaced(body: FootnoteBody) -> PendingFootnote {
+  return PendingFootnote {
+    body,
+    continued: false,
+  };
+}
+
 /// 脚注 1 個の需要を作る。行の高さの積み上げが溢れたら、その脚注の起点を返す
 fn footnote_demand(footnote: &FootnoteBody) -> Result<FootnoteDemand, ElementOverflow> {
-  return demand_of(footnote.origin, &footnote.lines, footnote.leading);
-}
-
-/// 繰越中の脚注 1 個の需要を作る（[`footnote_demand`] と同じ規則）
-fn carried_demand(pending: &PendingFootnote) -> Result<FootnoteDemand, ElementOverflow> {
-  return demand_of(pending.origin, &pending.lines, pending.leading);
-}
-
-/// 起点 `origin` の脚注の行 `lines`（行送り `leading`）から需要を作る。積み上げが溢れたら `origin` を返す
-fn demand_of(origin: NodeId, lines: &[Line], leading: Length) -> Result<FootnoteDemand, ElementOverflow> {
-  return FootnoteDemand::new(lines, leading).map_err(|LengthOverflow| {
+  return FootnoteDemand::new(&footnote.lines, footnote.leading).map_err(|LengthOverflow| {
     return ElementOverflow {
-      origin: Some(origin),
+      origin: Some(footnote.origin),
     };
   });
 }
@@ -859,13 +836,13 @@ fn place_paragraph(
     demands.drain(..chunk_len);
     for (mut line, placement) in izip!(chunk_lines, plan) {
       // 脚注は行から外して予約・分割・繰越へ渡す。着地する行は脚注を持たない
-      let footnotes: Vec<PendingFootnote> = std::mem::take(&mut line.footnotes).into_iter().map(Into::into).collect();
+      let footnotes: Vec<PendingFootnote> = std::mem::take(&mut line.footnotes).into_iter().map(unplaced).collect();
       if placement.starts_region {
         composer.advance_region()?;
       }
       if placement.overflowed {
         composer.record(OverflowKind::FootnoteLine {
-          footnotes: footnotes.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
+          footnotes: footnotes.iter().map(|footnote| return (footnote.body.number, footnote.body.origin)).collect(),
         });
       }
       let baseline = placement.baseline;
@@ -1135,8 +1112,8 @@ impl<'a> FragmentFrame<'a> {
 /// 表固有の判断は分割してよいか（`breakable`）と断片の開閉（[`FragmentFrame`]）だけで、断片と境界の中身（列幅・
 /// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと、
 /// 字下げ `indent` に利用幅 `available` の中での揃えを足したオフセット（全断片で同じ）と、行の脚注の予約・配置
-/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は区画の段幅に行分割
-/// する。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
+/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は計測の段で区画の段幅に
+/// 行分割済み。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
 /// 解決する。先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
 fn place_table(
   composer: &mut PageComposer,
@@ -1271,7 +1248,7 @@ fn place_table_row(
   let charges = FootnoteCharges::of(&composer.geom);
   let demands = footnote_demands(&row.footnotes)?;
   // 脚注は行から外して予約・分割・繰越へ渡す。断片へ積む行は脚注を持たない
-  let bodies: Vec<PendingFootnote> = std::mem::take(&mut row.footnotes).into_iter().map(Into::into).collect();
+  let bodies: Vec<PendingFootnote> = std::mem::take(&mut row.footnotes).into_iter().map(unplaced).collect();
   let height = row.height();
   let fresh = frame.row_need(&row, true).map_err(at)?;
   let here = frame.row_need(&row, pending.is_none()).map_err(at)?;
@@ -1294,7 +1271,7 @@ fn place_table_row(
     LineFootnoteFit::Rejected => {
       if !bodies.is_empty() {
         composer.record(OverflowKind::FootnoteLine {
-          footnotes: bodies.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
+          footnotes: bodies.iter().map(|footnote| return (footnote.body.number, footnote.body.origin)).collect(),
         });
       }
       (
@@ -4725,8 +4702,8 @@ mod tests {
   }
 
   #[test]
-  fn footnote_of_an_indented_table_breaks_at_the_column_width() {
-    // 脚注本体の箱 80 は利用幅 60 を超えるが段幅 100 に収まる（脚注は字下げされない）
+  fn indented_table_footnote_line_is_measured_against_the_column_width() {
+    // 脚注本体の行の幅 80 は利用幅 60 を超えるが段幅 100 に収まる（脚注は字下げされない）
     let footnote = footnote_item(1, vec![box_line(80.0, 8.0, 2.0)], pt(12.0));
     let block = indented(table_block(vec![with_footnote(table_row("A"), footnote)]), 30.0, 10.0);
 
