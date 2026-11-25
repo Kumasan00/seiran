@@ -1,11 +1,11 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
-//! 本文の入口は [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
+//! 本文の入口は [`build_blocks`]（`LayoutNode` → [`Galley`] へブロックを積む）。生成コンテンツ（目次・索引・
 //! 走り文）向けには [`Shaper`] と [`LineAccum`] と、インライン列を本文と同じ規則で自然幅の閉じた箱にする
 //! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
-//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
+//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取る [`Galley`] の版面から読み、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
@@ -53,7 +53,7 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
+    boxes::{self, Align, Block, Galley, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -91,8 +91,6 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) generated: Generated,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
-  /// この縦リストを組む段の幅（寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く）
-  pub(super) column_width: Length,
   /// 既定のフォントサイズ
   pub(super) default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -107,7 +105,9 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) stretch_limit: Length,
 }
 
-/// レイアウトノードを計測済みのブロック列に変換する
+/// レイアウトノードを計測済みのブロック列に変換し、`galley` へ積む
+///
+/// 段幅は `galley` の版面の 1 段の幅で、寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く。
 ///
 /// # Errors
 ///
@@ -115,7 +115,8 @@ pub(super) struct BlockBuildInputs<'a> {
 pub(super) fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
   inputs: &BlockBuildInputs<'_>,
-) -> Result<Vec<Block>, ElementOverflow> {
+  galley: &mut Galley,
+) -> Result<(), ElementOverflow> {
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
@@ -127,13 +128,14 @@ pub(super) fn build_blocks(
       inputs.stretch_limit,
     ),
     images: inputs.images,
-    column_width: inputs.column_width,
+    column_width: galley.column_width(),
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
-  return Ok(blocks);
+  galley.extend(blocks);
+  return Ok(());
 }
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。

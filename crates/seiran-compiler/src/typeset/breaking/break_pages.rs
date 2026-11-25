@@ -23,8 +23,8 @@ use crate::{
   project::ProjectPath,
   typeset::{
     boxes::{
-      self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedMathNumber,
-      PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+      self, Align, Block, Galley, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, Page, PlacedBlock,
+      PlacedMathNumber, PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
     breaking,
     error::ElementOverflow,
@@ -413,10 +413,9 @@ impl PageComposer {
 /// 数式は字下げを引いた利用幅）と実効の本文下限を基準に軸ごとに記録する。表は利用幅に対する幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
 /// 入らない行帯）を測る。
 /// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
-pub(in crate::typeset) fn break_pages(
-  blocks: Vec<Block>,
-  geom: &PageGeometry,
-) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
+pub(in crate::typeset) fn break_pages(galley: Galley) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
+  let (geometry, blocks) = galley.into_parts();
+  let geom = &geometry;
   // 改ページの判断（生成物・ページ単位の計算）は特定の要素に帰属しない
   let page_level = |LengthOverflow| return ElementOverflow { origin: None };
   let mut composer = PageComposer::new(*geom);
@@ -1415,8 +1414,8 @@ fn place_table_row(
 #[cfg(test)]
 mod tests {
   use super::{
-    ElementOverflow, FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor,
-    break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    ElementOverflow, FootnoteCharges, FootnoteDemand, Galley, Overflow, OverflowAxis, OverflowKind, PageGeometry,
+    RegionCursor, break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
     document::{NodeId, TextAlignment},
@@ -1432,9 +1431,16 @@ mod tests {
     },
   };
 
+  /// テスト入力のブロック列と版面から区画を作る
+  fn galley_of(blocks: Vec<Block>, geom: &PageGeometry) -> Galley {
+    let mut galley = Galley::new(*geom);
+    galley.extend(blocks);
+    return galley;
+  }
+
   /// 値域内のテスト入力を `break_pages` で組む
   fn break_pages_in_range(blocks: Vec<Block>, geom: &PageGeometry) -> (Vec<Page>, Vec<Overflow>) {
-    return break_pages(blocks, geom).expect("テストの寸法は値域内");
+    return break_pages(galley_of(blocks, geom)).expect("テストの寸法は値域内");
   }
 
   /// pt 値から `Length` を作る短縮子
@@ -3935,7 +3941,7 @@ mod tests {
       align,
     }];
 
-    let result = break_pages(blocks, &test_geometry());
+    let result = break_pages(galley_of(blocks, &test_geometry()));
 
     assert_eq!(
       result.err(),
@@ -3952,7 +3958,7 @@ mod tests {
       stretch: Length::ZERO,
     }];
 
-    let result = break_pages(blocks, &test_geometry());
+    let result = break_pages(galley_of(blocks, &test_geometry()));
 
     assert_eq!(result.err(), Some(ElementOverflow { origin: None }));
   }

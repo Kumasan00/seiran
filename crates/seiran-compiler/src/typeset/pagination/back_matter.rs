@@ -5,7 +5,7 @@
 use tracing::debug_span;
 
 use crate::typeset::{
-  boxes::Page,
+  boxes::{Galley, Page},
   breaking::{Overflow, break_pages},
   error::ElementOverflow,
   pagination::{
@@ -26,13 +26,14 @@ pub(super) fn paginate(
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
 ) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
-  let back_blocks = index::build_index_blocks(ctx, body_pages, facts)?;
-  if back_blocks.is_empty() {
+  let mut galley = Galley::new(*ctx.geometry.back_geometry());
+  index::build_index_blocks(ctx, body_pages, facts, &mut galley)?;
+  if galley.is_empty() {
     return Ok((Vec::new(), Vec::new()));
   }
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "back").entered();
-    break_pages(back_blocks, ctx.geometry.back_geometry())?
+    break_pages(galley)?
   };
   return Ok((pages, overflows));
 }
