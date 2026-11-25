@@ -450,7 +450,8 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
   workspace で `image` / `usvg` の版を 1 つに pin することで担保する（PDF の `hayro-syntax` は、krilla の PDF
   埋め込みが使う hayro-write と版が揃っておらず、この担保の外にある）。SVG はパース設定（フォントと文字の照合規則）も一致させる必要があり、こちらは
   `publication::SvgParser` 1 つを両者が使うことで担保する。自然寸法は読込時に「有限かつ正」を
-  検証した型で持ち、表示寸法の確定（省略された辺の推論）は boxing の中で失敗しない計算として済む
+  検証した型で持つ。表示寸法の確定（省略された辺の推論）は boxing の中で行い、失敗するのは推論した辺が
+  長さの値域を超えるとき（`LengthOverflow`）だけ
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
   知らない」（#461）へ戻さない）。krilla の隔離は `seiran-pdf` の crate 境界と `Publication` の純データ性が
   担っており、`typeset` が確定表現を名指しすることでは破れない。依存の向きは `typeset → publication` の
