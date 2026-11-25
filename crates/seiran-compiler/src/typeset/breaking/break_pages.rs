@@ -26,7 +26,7 @@ use crate::{
       self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedMathNumber,
       PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
-    breaking::break_lines::LineBreaker,
+    breaking,
     error::ElementOverflow,
     geometry::PageGeometry,
     observe,
@@ -416,7 +416,6 @@ impl PageComposer {
 pub(in crate::typeset) fn break_pages(
   blocks: Vec<Block>,
   geom: &PageGeometry,
-  breaker: &dyn LineBreaker,
 ) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
   // 改ページの判断（生成物・ページ単位の計算）は特定の要素に帰属しない
   let page_level = |LengthOverflow| return ElementOverflow { origin: None };
@@ -433,7 +432,7 @@ pub(in crate::typeset) fn break_pages(
       && is_content_block(&blocks[i])
       && let Some(end) = keep_group_end(&blocks, i)
     {
-      if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), &composer.geom, breaker, &blocks[i..=end])?
+      if keep_group_orphaned(composer.cursor, !composer.carry.is_empty(), &composer.geom, &blocks[i..=end])?
         && !composer.cursor.at_region_top(&composer.geom)
       {
         composer.advance_region()?;
@@ -456,7 +455,7 @@ pub(in crate::typeset) fn break_pages(
         right_indent,
         alignment,
       } => {
-        place_paragraph(&mut composer, breaker, &items, leading, indent, right_indent, alignment, origin)?;
+        place_paragraph(&mut composer, &items, leading, indent, right_indent, alignment, origin)?;
       },
       Block::ComposedLine {
         origin,
@@ -541,7 +540,7 @@ pub(in crate::typeset) fn break_pages(
               origin: Some(table.origin),
             };
           })?;
-        place_table(&mut composer, breaker, table, indent, available, align)?;
+        place_table(&mut composer, table, indent, available, align)?;
         composer.cursor.at_edge = true;
       },
       Block::Math {
@@ -644,13 +643,8 @@ struct AtomicPlacement {
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
 ///
-/// 表の脚注本体は `breaker` で `geom` の段幅に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
-fn plan_atomic(
-  block: &Block,
-  cursor: RegionCursor,
-  geom: &PageGeometry,
-  breaker: &dyn LineBreaker,
-) -> Result<AtomicPlacement, ElementOverflow> {
+/// 表の脚注本体は `geom` の段幅に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
+fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Result<AtomicPlacement, ElementOverflow> {
   let at = |LengthOverflow| {
     return ElementOverflow {
       origin: block_origin(block),
@@ -684,11 +678,7 @@ fn plan_atomic(
         let first = table.head.first().or_else(|| return table.rows.first());
         match first {
           Some(row) => {
-            let demands = footnote_demands(&[pending_footnotes(
-              breaker,
-              &row.footnotes,
-              geom.column_width,
-            )?])?;
+            let demands = footnote_demands(&[pending_footnotes(&row.footnotes, geom.column_width)?])?;
             let row_at = |LengthOverflow| {
               return ElementOverflow {
                 origin: Some(row.origin),
@@ -700,12 +690,11 @@ fn plan_atomic(
           None => false,
         }
       } else {
-        let demands: Vec<FootnoteDemand> =
-          footnote_demands(&table_footnote_bodies(breaker, &table.head, geom.column_width)?)?
-            .into_iter()
-            .chain(footnote_demands(&table_footnote_bodies(breaker, &table.rows, geom.column_width)?)?)
-            .flatten()
-            .collect();
+        let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(&table.head, geom.column_width)?)?
+          .into_iter()
+          .chain(footnote_demands(&table_footnote_bodies(&table.rows, geom.column_width)?)?)
+          .flatten()
+          .collect();
         defers_unbreakable_table(cursor, total, &demands, geom).map_err(at)?
       };
       return Ok(AtomicPlacement {
@@ -728,7 +717,6 @@ fn keep_group_orphaned(
   mut cursor: RegionCursor,
   mut carry_pending: bool,
   geom: &PageGeometry,
-  breaker: &dyn LineBreaker,
   group: &[Block],
 ) -> Result<bool, ElementOverflow> {
   let Some(last_content) = group.iter().rposition(is_content_block) else {
@@ -753,8 +741,8 @@ fn keep_group_orphaned(
         right_indent,
         alignment,
       } => {
-        let lines = break_paragraph(breaker, items, geom.column_width, *indent, *right_indent, *alignment, *origin)?;
-        let demands = footnote_demands(&footnote_bodies(breaker, &lines, geom.column_width)?)?;
+        let lines = break_paragraph(items, geom.column_width, *indent, *right_indent, *alignment, *origin)?;
+        let demands = footnote_demands(&footnote_bodies(&lines, geom.column_width)?)?;
         let (plan, truncated) = plan_paragraph_lines(
           &lines,
           cursor,
@@ -790,7 +778,7 @@ fn keep_group_orphaned(
         carry_pending |= truncated;
       },
       _ if is_content_block(block) => {
-        let placement = plan_atomic(block, cursor, geom, breaker)?;
+        let placement = plan_atomic(block, cursor, geom)?;
         if gi == last_content || placement.starts_region {
           return Ok(placement.starts_region);
         }
@@ -806,7 +794,6 @@ fn keep_group_orphaned(
 ///
 /// 行の幅の計算が溢れたら、段落の起点 `origin` を [`ElementOverflow`] で返す。
 fn break_paragraph(
-  breaker: &dyn LineBreaker,
   items: &[HItem],
   column_width: Length,
   indent: Length,
@@ -816,9 +803,8 @@ fn break_paragraph(
 ) -> Result<Vec<Line>, ElementOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)
     .map_err(|LengthOverflow| return ElementOverflow { origin })?;
-  let mut lines = breaker
-    .break_lines(items, available, alignment)
-    .map_err(|LengthOverflow| return ElementOverflow { origin })?;
+  let mut lines =
+    breaking::break_lines(items, available, alignment).map_err(|LengthOverflow| return ElementOverflow { origin })?;
   // 揃えのずらしは行分割が利用可能幅の中で済ませている。段オフセットは段をまたぐと行ごとに変わるため、
   // ここでは足さず着地段が決まってから足す
   for line in &mut lines {
@@ -831,7 +817,6 @@ fn break_paragraph(
 ///
 /// 行の幅の計算が溢れたら、その脚注の起点を [`ElementOverflow`] で返す。
 fn pending_footnotes(
-  breaker: &dyn LineBreaker,
   footnotes: &[MeasuredFootnote],
   column_width: Length,
 ) -> Result<Vec<PendingFootnote>, ElementOverflow> {
@@ -839,7 +824,7 @@ fn pending_footnotes(
     .iter()
     .map(|footnote| {
       let lines =
-        breaker.break_lines(&footnote.items, column_width, TextAlignment::Left).map_err(|LengthOverflow| {
+        breaking::break_lines(&footnote.items, column_width, TextAlignment::Left).map_err(|LengthOverflow| {
           return ElementOverflow {
             origin: Some(footnote.origin),
           };
@@ -857,21 +842,16 @@ fn pending_footnotes(
 }
 
 /// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
-fn footnote_bodies(
-  breaker: &dyn LineBreaker,
-  lines: &[Line],
-  column_width: Length,
-) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
-  return lines.iter().map(|line| return pending_footnotes(breaker, &line.footnotes, column_width)).collect();
+fn footnote_bodies(lines: &[Line], column_width: Length) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
+  return lines.iter().map(|line| return pending_footnotes(&line.footnotes, column_width)).collect();
 }
 
 /// 表の各行断片に付いた脚注を段幅で行分割し、未確定の脚注にする（`rows` と同順・同長）
 fn table_footnote_bodies(
-  breaker: &dyn LineBreaker,
   rows: &[TableRowFragment],
   column_width: Length,
 ) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
-  return rows.iter().map(|row| return pending_footnotes(breaker, &row.footnotes, column_width)).collect();
+  return rows.iter().map(|row| return pending_footnotes(&row.footnotes, column_width)).collect();
 }
 
 /// 行ごとの未確定脚注から、分割可能な需要（行ごとの積み上げ高さ）を作る（`bodies` と同順・同長）
@@ -889,13 +869,8 @@ fn footnote_demand(pending: &PendingFootnote) -> Result<FootnoteDemand, ElementO
 }
 
 /// 段落を行に割ってベースライン送りで配置する
-#[expect(
-  clippy::too_many_arguments,
-  reason = "行分割器と段落 1 個分の値（行送り・字下げ・揃え・起点）を 1 回の配置で同時に要するため、束ねる中間型を作っても呼び出し側の情報量は減らない"
-)]
 fn place_paragraph(
   composer: &mut PageComposer,
-  breaker: &dyn LineBreaker,
   items: &[HItem],
   leading: Length,
   indent: Length,
@@ -904,11 +879,11 @@ fn place_paragraph(
   origin: Option<NodeId>,
 ) -> Result<(), ElementOverflow> {
   let at = |LengthOverflow| return ElementOverflow { origin };
-  let mut lines = break_paragraph(breaker, items, composer.geom.column_width, indent, right_indent, alignment, origin)?;
+  let mut lines = break_paragraph(items, composer.geom.column_width, indent, right_indent, alignment, origin)?;
   // 脚注の行分割と需要は widow/orphan の再フローや chunk の再計画で再計算しない
   // （脚注の構成は改リージョン点の選び方で変わらないため）
   let charges = FootnoteCharges::of(&composer.geom);
-  let mut bodies = footnote_bodies(breaker, &lines, composer.geom.column_width)?;
+  let mut bodies = footnote_bodies(&lines, composer.geom.column_width)?;
   let mut demands = footnote_demands(&bodies)?;
   // 段落を前から chunk 単位で確定する。繰越が生じない段落ではループは 1 周で終わる
   let mut last_baseline = composer.cursor.y;
@@ -1213,12 +1188,11 @@ impl<'a> FragmentFrame<'a> {
 /// 表固有の判断は分割してよいか（`breakable`）と断片の開閉（[`FragmentFrame`]）だけで、断片と境界の中身（列幅・
 /// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと、
 /// 字下げ `indent` に利用幅 `available` の中での揃えを足したオフセット（全断片で同じ）と、行の脚注の予約・配置
-/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は `breaker` で区画の段幅に行分割
+/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は区画の段幅に行分割
 /// する。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
 /// 解決する。先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
 fn place_table(
   composer: &mut PageComposer,
-  breaker: &dyn LineBreaker,
   table: TableBox,
   indent: Length,
   available: Length,
@@ -1232,8 +1206,8 @@ fn place_table(
   };
   // 揃えオフセットは段内のもの（字下げを含む）。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let align_offset = indent.try_add(align.offset(available, table.width).map_err(at)?).map_err(at)?;
-  let head_bodies = table_footnote_bodies(breaker, &table.head, composer.geom.column_width)?;
-  let row_bodies = table_footnote_bodies(breaker, &table.rows, composer.geom.column_width)?;
+  let head_bodies = table_footnote_bodies(&table.head, composer.geom.column_width)?;
+  let row_bodies = table_footnote_bodies(&table.rows, composer.geom.column_width)?;
   if !table.breakable {
     let demands: Vec<FootnoteDemand> = footnote_demands(&head_bodies)?
       .into_iter()
@@ -1451,23 +1425,16 @@ mod tests {
     publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
     source::SourceId,
-    typeset::{
-      boxes::{
-        Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-        MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow,
-        PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
-      },
-      breaking::break_lines::{GreedyBreaker, LineBreaker},
+    typeset::boxes::{
+      Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
+      MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow,
+      PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
   };
 
   /// 値域内のテスト入力を `break_pages` で組む
-  fn break_pages_in_range(
-    blocks: Vec<Block>,
-    geom: &PageGeometry,
-    breaker: &dyn LineBreaker,
-  ) -> (Vec<Page>, Vec<Overflow>) {
-    return break_pages(blocks, geom, breaker).expect("テストの寸法は値域内");
+  fn break_pages_in_range(blocks: Vec<Block>, geom: &PageGeometry) -> (Vec<Page>, Vec<Overflow>) {
+    return break_pages(blocks, geom).expect("テストの寸法は値域内");
   }
 
   /// pt 値から `Length` を作る短縮子
@@ -1613,7 +1580,7 @@ mod tests {
       single_line_paragraph(vec![index_mark_item("B", None)]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].index_entries.len(), 2);
@@ -1629,7 +1596,7 @@ mod tests {
       single_line_paragraph(vec![index_mark_item("語", Some("よみ"))]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].index_entries.len(), 2);
@@ -1657,7 +1624,7 @@ mod tests {
       footnote_of_lines_with_index_at(1, 1, 0, "脚注語"),
     ])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].index_entries.len(), 1, "{:?}", pages[0].index_entries);
@@ -1673,7 +1640,7 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2);
     assert!(
@@ -1722,7 +1689,7 @@ mod tests {
       "https://example.com",
     )])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     // 本文中の脚注マーカーも内部リンクを作るので、外部リンクだけを取り出して見る
     assert_eq!(pages.len(), 1);
@@ -1749,7 +1716,7 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2);
     assert!(
@@ -1780,7 +1747,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -1804,7 +1770,7 @@ mod tests {
       single_line_paragraph(vec![index_mark_item("語", None)]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{:?}", line_counts(&pages));
     assert_eq!(pages[0].index_entries.len(), 1);
@@ -1827,8 +1793,8 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (with_pages, _) = break_pages_in_range(with_marks, &geom, &GreedyBreaker);
-    let (without_pages, _) = break_pages_in_range(without_marks, &geom, &GreedyBreaker);
+    let (with_pages, _) = break_pages_in_range(with_marks, &geom);
+    let (without_pages, _) = break_pages_in_range(without_marks, &geom);
 
     assert_eq!(line_counts(&with_pages), line_counts(&without_pages));
     for (with_page, without_page) in with_pages.iter().zip(&without_pages) {
@@ -1845,7 +1811,7 @@ mod tests {
       pt(12.0),
     )])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     let body_baseline = page_baselines(&pages[0])[0];
@@ -1869,7 +1835,7 @@ mod tests {
       )]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 22.0, 34.0]));
@@ -1891,7 +1857,7 @@ mod tests {
       footnote_item(2, vec![test_box()], pt(12.0)),
     ])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].footnotes.len(), 2);
@@ -1943,7 +1909,7 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (1, vec![(1, true, 1)])], "{pages:?}");
     assert_eq!(page_baselines(&pages[0]), pts(&[10.0]));
@@ -1970,7 +1936,7 @@ mod tests {
       single_line_paragraph(vec![footnote_of_lines(2, 1)]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(
       footnote_layout(&pages),
@@ -1995,7 +1961,7 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(
       footnote_layout(&pages),
@@ -2017,7 +1983,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![single_line_paragraph(vec![footnote_of_lines(1, 4)])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (0, vec![(1, true, 1)])], "{pages:?}");
   }
@@ -2048,7 +2014,7 @@ mod tests {
       footnote_of_lines(2, 1),
     ])];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "はみ出しても配置は続くので 1 ページに収まる: {pages:?}");
     assert_eq!(
@@ -2084,7 +2050,7 @@ mod tests {
       alignment: TextAlignment::Left,
     }];
 
-    let (_, overflows) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(blocks, &geom);
 
     let recorded: Vec<(usize, Vec<u32>)> = overflows
       .iter()
@@ -2119,7 +2085,7 @@ mod tests {
     );
     let blocks = vec![single_line_paragraph(vec![footnote])];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 3, "繰越は次ページへ送られる: {pages:?}");
     assert_eq!(
@@ -2213,7 +2179,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![paragraph_with_footnote_at(6, 1, footnote_of_lines(1, 4))];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(
       footnote_layout(&pages),
@@ -2241,7 +2207,7 @@ mod tests {
       paragraph_with_footnote_at(4, 0, footnote_of_lines(1, 4)),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let split_pages: Vec<usize> = pages
       .iter()
@@ -2369,7 +2335,7 @@ mod tests {
       footnote_item(2, vec![test_box()], pt(12.0)),
     ])];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(footnote_rule_count(&pages[0]), 1, "罫線は 1 リージョンに 1 本だけのはず");
@@ -2392,7 +2358,7 @@ mod tests {
     };
     let blocks = vec![paragraph_of_lines(1)];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages[0].background_color, Some([10, 20, 30]));
   }
@@ -2411,7 +2377,7 @@ mod tests {
       )]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert!(pages[0].footnotes.is_empty(), "1 ページ目に脚注が漏れてはいけない");
@@ -2464,7 +2430,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![paragraph_of_lines(2), paragraph_of_lines(3)];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 22.0]), "先行段落の 2 行だけ");
@@ -2475,7 +2441,7 @@ mod tests {
   fn oversized_paragraph_builds_without_hang() {
     let geom = test_geometry();
 
-    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(20)], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(20)], &geom);
 
     let total: usize = pages.iter().map(|p| return page_baselines(p).len()).sum();
     assert_eq!(total, 20, "行が欠落しない: {pages:?}");
@@ -2491,7 +2457,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let baselines: Vec<Length> = pages[0]
       .blocks
@@ -2522,7 +2488,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let baseline = pages[0]
       .blocks
@@ -2553,7 +2519,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     let PlacedBlock::Image { y, .. } = pages[1].blocks.first().expect("画像があるはず") else {
@@ -2679,7 +2645,6 @@ mod tests {
         align: Align::Left,
       }],
       &test_geometry(),
-      &GreedyBreaker,
     );
     return pages;
   }
@@ -2862,7 +2827,6 @@ mod tests {
         },
       ],
       &test_geometry(),
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 2);
@@ -2915,7 +2879,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     let Some(PlacedBlock::Table { rows, .. }) = pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. }))
@@ -2953,7 +2916,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "中間に白紙ページは生じない: {pages:?}");
     assert_eq!(pages[0].blocks.len(), 1);
@@ -2965,7 +2928,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![paragraph_of_lines(1), Block::PageBreak];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(pages[0].blocks.len(), 1);
@@ -2976,7 +2939,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![Block::PageBreak];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert!(pages[0].blocks.is_empty());
@@ -2987,7 +2950,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![Block::PageBreak, paragraph_of_lines(1)];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "文書先頭の強制改ページは白紙ページを作らない: {pages:?}");
     assert_eq!(pages[0].blocks.len(), 1);
@@ -3006,7 +2969,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -3033,7 +2995,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 1, "{pages:?}");
@@ -3087,7 +3048,7 @@ mod tests {
       fixed_block(40.0),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &flush_geometry(), &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &flush_geometry());
 
     assert!(all_close(&rule_ys(&pages[0]), &[34.0, 49.0]), "{:?}", rule_ys(&pages[0]));
     assert!(all_close(&row_tops(&pages[0]), &[37.0]), "{:?}", row_tops(&pages[0]));
@@ -3110,7 +3071,7 @@ mod tests {
       fixed_block(40.0),                          // 溢れて改ページ（不足 50-32=18 を配分）
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(fixed_block_ys(&pages[0]), vec![Length::pt(10.0)], "先頭のブロックはシフトされない");
     let PlacedBlock::Table { rows, .. } =
@@ -3134,7 +3095,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1);
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
@@ -3153,7 +3114,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let anchors = &pages[0].anchors;
     assert_eq!(anchors.len(), 2, "{anchors:?}");
@@ -3171,7 +3132,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert!(pages[0].anchors.is_empty(), "ページ 1 にアンカーは無い: {:?}", pages[0].anchors);
@@ -3198,7 +3159,7 @@ mod tests {
       alignment: TextAlignment::Left,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
     let link = &pages[0].links[0];
@@ -3236,7 +3197,7 @@ mod tests {
       alignment: TextAlignment::Left,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let lines: Vec<&Line> = pages[0]
       .blocks
@@ -3279,7 +3240,7 @@ mod tests {
       alignment: TextAlignment::Left,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
     let link = &pages[0].links[0];
@@ -3299,7 +3260,7 @@ mod tests {
       alignment: TextAlignment::Right,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let line = pages[0]
       .blocks
@@ -3348,7 +3309,7 @@ mod tests {
     };
     let blocks = vec![stretchable_paragraph(TextAlignment::Justify)];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let line = pages[0]
       .blocks
@@ -3369,7 +3330,7 @@ mod tests {
     };
     let blocks = vec![stretchable_paragraph(TextAlignment::Center)];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let line = pages[0]
       .blocks
@@ -3404,7 +3365,7 @@ mod tests {
       alignment: TextAlignment::Center,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let line = pages[0]
       .blocks
@@ -3449,7 +3410,7 @@ mod tests {
       alignment: TextAlignment::Center,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let lines: Vec<&Line> = pages[0]
       .blocks
@@ -3484,7 +3445,7 @@ mod tests {
       align: Align::Center,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let PlacedBlock::Image { x, .. } = first_image(&pages[0]) else {
       unreachable!()
@@ -3507,7 +3468,7 @@ mod tests {
       align: Align::Right,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let PlacedBlock::Image { x, .. } = first_image(&pages[0]) else {
       unreachable!()
@@ -3526,7 +3487,7 @@ mod tests {
       align: Align::Center,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
@@ -3551,7 +3512,7 @@ mod tests {
       align: Align::Center,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let PlacedBlock::Table { rows, .. } =
       pages[0].blocks.iter().find(|b| matches!(b, PlacedBlock::Table { .. })).expect("表があるはず")
@@ -3565,7 +3526,7 @@ mod tests {
   fn no_line_baseline_exceeds_page_limit() {
     let geom = test_geometry();
 
-    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(12)], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(12)], &geom);
 
     assert!(pages.len() >= 2, "複数ページに分かれる: {}", pages.len());
     for page in &pages {
@@ -3626,7 +3587,7 @@ mod tests {
       composed_line(20.0, 8.0, 2.0, None),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     let baselines: Vec<Length> = pages[0]
       .blocks
@@ -3647,7 +3608,7 @@ mod tests {
       composed_line(20.0, 8.0, 2.0, Some(LinkTarget::Internal(AnchorId::Heading(HeadingKey::new(5))))),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages[0].anchors.len(), 1, "{:?}", pages[0].anchors);
     assert!(close(pages[0].anchors[0].y, 2.0));
@@ -3664,7 +3625,7 @@ mod tests {
     let geom = test_geometry();
     let blocks: Vec<Block> = std::iter::repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     let PlacedBlock::Line { baseline_y, .. } = pages[1].blocks.first().expect("2 ページ目に行があるはず")
@@ -3678,7 +3639,7 @@ mod tests {
   fn two_column_flow_fills_left_then_right_then_next_page() {
     let geom = two_column_geometry();
 
-    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(9)], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![paragraph_of_lines(9)], &geom);
 
     let page_lines = |page: &Page| -> Vec<(f32, f32)> {
       return page
@@ -3722,7 +3683,7 @@ mod tests {
     };
     let blocks = vec![paragraph_of_lines(5), link_para];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "全行が 1 ページの 2 段に収まる: {pages:?}");
     let link = pages[0]
@@ -3747,7 +3708,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 1, "{pages:?}");
@@ -3832,7 +3792,7 @@ mod tests {
       footnote_of_lines_with_link_at(2, 1, 0, "https://right.example"),
     )];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     // 空振り検知。罫線の x は段オフセットを持つので、
     // 「左段と右段の両方に脚注が着地した」ことの前提条件として使える
@@ -3975,7 +3935,7 @@ mod tests {
       align,
     }];
 
-    let result = break_pages(blocks, &test_geometry(), &GreedyBreaker);
+    let result = break_pages(blocks, &test_geometry());
 
     assert_eq!(
       result.err(),
@@ -3992,7 +3952,7 @@ mod tests {
       stretch: Length::ZERO,
     }];
 
-    let result = break_pages(blocks, &test_geometry(), &GreedyBreaker);
+    let result = break_pages(blocks, &test_geometry());
 
     assert_eq!(result.err(), Some(ElementOverflow { origin: None }));
   }
@@ -4083,7 +4043,7 @@ mod tests {
       paragraph_of_lines(2), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![3, 3], "{pages:?}");
   }
@@ -4098,7 +4058,7 @@ mod tests {
       paragraph_of_lines(2),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![4, 2], "{pages:?}");
   }
@@ -4117,7 +4077,7 @@ mod tests {
       paragraph_of_lines(2), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![3, 4], "{pages:?}");
   }
@@ -4133,7 +4093,7 @@ mod tests {
       paragraph_of_lines(2), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![4], "{pages:?}");
   }
@@ -4148,7 +4108,7 @@ mod tests {
       Block::KeepWithNext,
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![4], "{pages:?}");
   }
@@ -4166,7 +4126,7 @@ mod tests {
       paragraph_of_lines(2), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![1, 2], "{pages:?}");
   }
@@ -4184,7 +4144,7 @@ mod tests {
       paragraph_of_lines(2), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![1, 3], "{pages:?}");
     assert_eq!(pages[0].footnotes.len(), 1, "脚注は参照行と同じ 1 ページ目に残る");
@@ -4202,7 +4162,7 @@ mod tests {
       single_line_paragraph(vec![footnote_of_lines(1, 1)]), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![2, 2], "{pages:?}");
     assert_eq!(pages[1].footnotes.len(), 1, "脚注は本文と一緒に 2 ページ目へ移る");
@@ -4220,7 +4180,7 @@ mod tests {
       fixed_block(10.0),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![1, 1], "{pages:?}");
     assert_eq!(fixed_block_ys(&pages[1]), pts(&[22.0]), "画像は見出し（ベースライン 10）の 1 行送り下");
@@ -4238,7 +4198,7 @@ mod tests {
       paragraph_of_lines(3), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![1, 4], "{pages:?}");
   }
@@ -4255,7 +4215,7 @@ mod tests {
       paragraph_of_lines(1), // 本文
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(line_counts(&pages), vec![3], "{pages:?}");
   }
@@ -4321,7 +4281,7 @@ mod tests {
       fixed_block(10.0),                          // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2);
     assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 25.0, 40.0]));
@@ -4341,7 +4301,7 @@ mod tests {
       fixed_block(10.0),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0, 38.0]));
     assert!(approx(max_block_bottom(&pages[0]), 48.0));
@@ -4358,7 +4318,7 @@ mod tests {
       fixed_block(10.0),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2);
     assert_eq!(fixed_block_ys(&pages[0]), pts(&[10.0, 24.0]));
@@ -4383,7 +4343,7 @@ mod tests {
       fixed_block(30.0),                     // 溢れて改ページ（1 ページ目を確定＝下端揃え発火）
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 29.0, 48.0]));
@@ -4411,7 +4371,7 @@ mod tests {
       fixed_block(30.0), // 溢れて改ページ
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(page_baselines(&pages[0]), pts(&[10.0, 34.0]));
@@ -4450,7 +4410,6 @@ mod tests {
         align: Align::Left,
       }],
       &geom,
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 2, "{pages:?}");
@@ -4485,7 +4444,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]), None, "表は 1 ページ目に無い");
@@ -4513,7 +4472,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[0]).as_deref(), Some("R0"));
@@ -4548,7 +4507,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(first_table_row_text(&pages[1]).as_deref(), Some("R0"));
@@ -4571,7 +4530,7 @@ mod tests {
       paragraph_of_lines(1),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert!(pages[0].anchors.is_empty(), "{:?}", pages[0].anchors);
@@ -4618,7 +4577,7 @@ mod tests {
   fn line_wider_than_column_is_recorded_once_with_its_excess() {
     let blocks = vec![one_box_paragraph(wide_box(130.0, 8.0, 2.0))];
 
-    let (_, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(
       overflows,
@@ -4636,7 +4595,7 @@ mod tests {
     for width in [100.0, 100.05] {
       let blocks = vec![one_box_paragraph(wide_box(width, 8.0, 2.0))];
 
-      let (_, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+      let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
       assert!(overflows.is_empty(), "許容量 0.1pt 以下は記録しないはず: width={width} {overflows:?}");
     }
@@ -4647,7 +4606,7 @@ mod tests {
     // 幅 50 は 2 段の段幅 45 を超えるが、単段（段幅 100）なら収まる
     let blocks = vec![one_box_paragraph(wide_box(50.0, 8.0, 2.0))];
 
-    let (_, overflows) = break_pages_in_range(blocks, &two_column_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(blocks, &two_column_geometry());
 
     assert_eq!(
       overflows,
@@ -4689,7 +4648,7 @@ mod tests {
       },
     ];
 
-    let (_, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(
       overflows,
@@ -4705,7 +4664,7 @@ mod tests {
     // ベースライン 10 + 深さ 45 = 55 が page_limit 50 を超える。送っても改善しないのでその場に置く
     let blocks = vec![one_box_paragraph(wide_box(10.0, 8.0, 45.0))];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(
@@ -4728,7 +4687,7 @@ mod tests {
       *origin = Some(paragraph_origin());
     }
 
-    let (_, overflows) = break_pages_in_range(vec![paragraph], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![paragraph], &test_geometry());
 
     assert_eq!(
       overflows,
@@ -4758,7 +4717,7 @@ mod tests {
       single_line_paragraph(vec![]),
     ];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(footnote_layout(&pages), vec![(1, vec![(1, false, 3)]), (1, vec![(1, true, 1)])], "{pages:?}");
     assert_eq!(
@@ -4834,7 +4793,7 @@ mod tests {
   #[test]
   fn image_taller_than_region_is_recorded_once() {
     // 先頭 y=10 に置かれ下端 70 が page_limit 50 を超える
-    let (pages, overflows) = break_pages_in_range(vec![image_block(20.0, 60.0)], &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![image_block(20.0, 60.0)], &test_geometry());
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Vertical, 20.0)]);
@@ -4842,7 +4801,7 @@ mod tests {
 
   #[test]
   fn image_overflowing_both_axes_is_recorded_horizontal_then_vertical() {
-    let (_, overflows) = break_pages_in_range(vec![image_block(130.0, 60.0)], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![image_block(130.0, 60.0)], &test_geometry());
 
     assert_eq!(
       overflows,
@@ -4856,14 +4815,14 @@ mod tests {
   #[test]
   fn image_wider_than_its_column_is_recorded_in_two_columns() {
     // 幅 50 は 2 段の段幅 45 を超えるが、単段（段幅 100）なら収まる
-    let (_, overflows) = break_pages_in_range(vec![image_block(50.0, 20.0)], &two_column_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![image_block(50.0, 20.0)], &two_column_geometry());
 
     assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 5.0)]);
   }
 
   #[test]
   fn math_block_wider_than_column_is_recorded() {
-    let (_, overflows) = break_pages_in_range(vec![math_block(130.0, 8.0, 2.0)], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![math_block(130.0, 8.0, 2.0)], &test_geometry());
 
     assert_eq!(overflows, vec![math_overflow(0, OverflowAxis::Horizontal, 30.0)]);
   }
@@ -4871,7 +4830,7 @@ mod tests {
   #[test]
   fn math_block_taller_than_region_is_recorded() {
     // 先頭 top=10 で下端 70。先頭からでも収まらないので送らずその場に置く
-    let (_, overflows) = break_pages_in_range(vec![math_block(20.0, 50.0, 10.0)], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![math_block(20.0, 50.0, 10.0)], &test_geometry());
 
     assert_eq!(overflows, vec![math_overflow(0, OverflowAxis::Vertical, 20.0)]);
   }
@@ -4885,7 +4844,7 @@ mod tests {
       math_block(20.0, 8.0, 2.0),
     ];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert!(overflows.is_empty(), "{overflows:?}");
@@ -5007,9 +4966,9 @@ mod tests {
       let table = indented(aligned(table_block(vec![table_row("R0")]), align), 30.0, 10.0);
       let math = indented(aligned(math_block(20.0, 8.0, 2.0), align), 30.0, 10.0);
 
-      let (image_pages, _) = break_pages_in_range(vec![image], &test_geometry(), &GreedyBreaker);
-      let (table_pages, _) = break_pages_in_range(vec![table], &test_geometry(), &GreedyBreaker);
-      let (math_pages, _) = break_pages_in_range(vec![math], &test_geometry(), &GreedyBreaker);
+      let (image_pages, _) = break_pages_in_range(vec![image], &test_geometry());
+      let (table_pages, _) = break_pages_in_range(vec![table], &test_geometry());
+      let (math_pages, _) = break_pages_in_range(vec![math], &test_geometry());
 
       assert!(close(first_image_x(&image_pages[0]), image_x), "{align:?} 画像");
       assert!(close(first_table_cell_x(&table_pages[0]), cell_x), "{align:?} 表");
@@ -5023,7 +4982,7 @@ mod tests {
     for (numbers_on_right, number_x) in [(true, 84.0), (false, 30.0)] {
       let block = indented(numbered_math_block(numbers_on_right, 6.0), 30.0, 10.0);
 
-      let (pages, _) = break_pages_in_range(vec![block], &test_geometry(), &GreedyBreaker);
+      let (pages, _) = break_pages_in_range(vec![block], &test_geometry());
 
       let (_, numbers) = first_math_xs(&pages[0]);
       assert_eq!(numbers.len(), 1);
@@ -5051,7 +5010,7 @@ mod tests {
       ),
       indented(math_block(60.0, 4.0, 1.0), 30.0, 10.0),
     ];
-    let (_, fitting_overflows) = break_pages_in_range(fitting, &test_geometry(), &GreedyBreaker);
+    let (_, fitting_overflows) = break_pages_in_range(fitting, &test_geometry());
     let wide_image = indented(aligned(image_block(65.0, 5.0), Align::Center), 30.0, 10.0);
     let wide_table = indented(
       Block::Table {
@@ -5068,9 +5027,9 @@ mod tests {
     );
     let wide_math = indented(math_block(65.0, 4.0, 1.0), 30.0, 10.0);
 
-    let (image_pages, image_overflows) = break_pages_in_range(vec![wide_image], &test_geometry(), &GreedyBreaker);
-    let (_, table_overflows) = break_pages_in_range(vec![wide_table], &test_geometry(), &GreedyBreaker);
-    let (_, math_overflows) = break_pages_in_range(vec![wide_math], &test_geometry(), &GreedyBreaker);
+    let (image_pages, image_overflows) = break_pages_in_range(vec![wide_image], &test_geometry());
+    let (_, table_overflows) = break_pages_in_range(vec![wide_table], &test_geometry());
+    let (_, math_overflows) = break_pages_in_range(vec![wide_math], &test_geometry());
 
     assert!(fitting_overflows.is_empty(), "{fitting_overflows:?}");
     assert_eq!(image_overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 5.0)]);
@@ -5094,7 +5053,7 @@ mod tests {
     // 字下げ 60 / 右 60 は段幅 100 を使い切り、利用幅は 0
     let block = indented(image_block(20.0, 10.0), 60.0, 60.0);
 
-    let (pages, overflows) = break_pages_in_range(vec![block], &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![block], &test_geometry());
 
     assert!(close(first_image_x(&pages[0]), 60.0));
     assert_eq!(overflows, vec![image_overflow(0, OverflowAxis::Horizontal, 20.0)]);
@@ -5106,7 +5065,7 @@ mod tests {
     let rows = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
     let block = indented(table_block(rows), 30.0, 10.0);
 
-    let (pages, _) = break_pages_in_range(vec![block], &test_geometry(), &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![block], &test_geometry());
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     for page in &pages {
@@ -5120,7 +5079,7 @@ mod tests {
     let footnote = footnote_item(1, vec![wide_box(80.0, 8.0, 2.0)], pt(12.0));
     let block = indented(table_block(vec![with_footnote(table_row("A"), footnote)]), 30.0, 10.0);
 
-    let (pages, overflows) = break_pages_in_range(vec![block], &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![block], &test_geometry());
 
     assert!(overflows.is_empty(), "{overflows:?}");
     assert_eq!(footnote_baselines(&pages[0], 1).len(), 1, "脚注は 1 行");
@@ -5146,7 +5105,7 @@ mod tests {
         one_box_paragraph(wide_box(width, 8.0, 2.0)),
       ];
 
-      let (pages, overflows) = break_pages_in_range(blocks, &two_column_geometry(), &GreedyBreaker);
+      let (pages, overflows) = break_pages_in_range(blocks, &two_column_geometry());
 
       assert_eq!(pages.len(), 1, "{pages:?}");
       assert_eq!(overflows, expected, "width={width}");
@@ -5200,7 +5159,7 @@ mod tests {
       one_line_footnote(1),
     )])];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)]);
@@ -5215,7 +5174,7 @@ mod tests {
     let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
     rows.push(with_footnote(table_row("R3"), one_line_footnote(1)));
 
-    let (pages, _) = break_pages_in_range(vec![table_block(rows)], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![table_block(rows)], &geom);
 
     assert!(pages[0].footnotes.is_empty(), "元のページに脚注エリアを残さない");
     assert_eq!(table_rows_of(&pages[0]), 3);
@@ -5228,7 +5187,7 @@ mod tests {
     let geom = test_geometry();
     let row = with_footnote(with_footnote(table_row("A"), one_line_footnote(1)), one_line_footnote(2));
 
-    let (pages, _) = break_pages_in_range(vec![table_block(vec![row])], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![table_block(vec![row])], &geom);
 
     assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false), (1, false)]);
     assert!(footnote_baselines(&pages[0], 2)[0] > footnote_baselines(&pages[0], 1)[0], "出現順に積む");
@@ -5239,7 +5198,7 @@ mod tests {
     let geom = test_geometry();
     let row = with_footnote(table_row("A"), footnote_of_lines(1, 4));
 
-    let (pages, _) = break_pages_in_range(vec![table_block(vec![row])], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![table_block(vec![row])], &geom);
 
     assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)]);
     assert_eq!(table_footnote_indices(&pages[1]), vec![(0, true)]);
@@ -5259,7 +5218,7 @@ mod tests {
       align: Align::Left,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert!(pages.len() >= 2, "表が改ページするはず（空振り検知）: {pages:?}");
     let placed: Vec<usize> = pages
@@ -5287,7 +5246,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert!(pages[0].footnotes.is_empty(), "{:?}", pages[0].footnotes);
     assert_eq!(table_rows_of(&pages[0]), 3);
@@ -5300,7 +5259,7 @@ mod tests {
     let geom = test_geometry();
     let row = with_footnote(table_row("A"), footnote_item(1, vec![tall_box(50.0)], pt(12.0)));
 
-    let (pages, overflows) = break_pages_in_range(vec![table_block(vec![row])], &geom, &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![table_block(vec![row])], &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(table_footnote_indices(&pages[0]), vec![(0, false)], "はみ出したまま置く");
@@ -5321,7 +5280,7 @@ mod tests {
       footnote_item(1, vec![tall_box(50.0)], pt(12.0)),
     ));
 
-    let (pages, overflows) = break_pages_in_range(vec![table_block(rows)], &geom, &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![table_block(rows)], &geom);
 
     assert_eq!(table_rows_of(&pages[0]), 3);
     assert_eq!(table_rows_of(&pages[1]), 1);
@@ -5348,7 +5307,7 @@ mod tests {
       table_block(vec![with_footnote(table_row("A"), one_line_footnote(1))]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(page_baselines(&pages[0]).len(), 1, "見出し役の行は表と一緒に次ページへ");
     assert_eq!(page_baselines(&pages[1]).len(), 1);
@@ -5378,7 +5337,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
     assert_eq!(table_rows_of(&pages[1]), 2);
@@ -5398,7 +5357,7 @@ mod tests {
       table_block(rows),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert!(
       pages.iter().any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
@@ -5416,7 +5375,7 @@ mod tests {
     let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
     rows.push(with_footnote(table_row("R3"), one_line_footnote(1)));
 
-    let (pages, _) = break_pages_in_range(vec![table_block(rows)], &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(vec![table_block(rows)], &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     let footnote = footnote_numbered(&pages[0], 1).expect("右段の脚注エリアに置かれるはず");
@@ -5446,7 +5405,7 @@ mod tests {
       table_block(rows),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert!(pages.len() >= 2, "満杯で閉じるリージョンがあるはず（空振り検知）: {pages:?}");
     assert_eq!(pages.iter().map(|page| return page.footnotes.len()).sum::<usize>(), 6);
@@ -5470,7 +5429,7 @@ mod tests {
       align: Align::Left,
     }];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert!(
       pages.iter().any(|page| return page.footnotes.iter().any(|footnote| return footnote.continued)),
@@ -5507,7 +5466,7 @@ mod tests {
       },
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(table_rows_of(&pages[0]), 0, "表は途中で割れずに丸ごと送られる");
     assert_eq!(table_rows_of(&pages[1]), 2);
@@ -5537,7 +5496,7 @@ mod tests {
       align: Align::Left,
     }];
 
-    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(
@@ -5557,7 +5516,7 @@ mod tests {
     let mut rows: Vec<TableRowFragment> = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
     rows[4].overrun = pt(5.0);
 
-    let (pages, overflows) = break_pages_in_range(vec![table_block(rows)], &test_geometry(), &GreedyBreaker);
+    let (pages, overflows) = break_pages_in_range(vec![table_block(rows)], &test_geometry());
 
     assert_eq!(pages.len(), 2, "{pages:?}");
     assert_eq!(
@@ -5578,7 +5537,7 @@ mod tests {
     // 行帯 60 は版面（10..50）の高さ 40 に入らない。下端 70 が下限 50 を 20 超える
     let tall = table_fragment(table_text_box("T"), 60.0, 10.0);
 
-    let (_, overflows) = break_pages_in_range(vec![table_block(vec![tall])], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![table_block(vec![tall])], &test_geometry());
 
     assert_eq!(
       overflows,
@@ -5608,7 +5567,6 @@ mod tests {
         align: Align::Left,
       }],
       &test_geometry(),
-      &GreedyBreaker,
     );
 
     assert_eq!(pages.len(), 1, "ヘッダだけのページを作らない: {pages:?}");
@@ -5638,7 +5596,7 @@ mod tests {
       table_block(vec![table_fragment(table_text_box("T"), 60.0, 10.0)]),
     ];
 
-    let (pages, _) = break_pages_in_range(blocks, &geom, &GreedyBreaker);
+    let (pages, _) = break_pages_in_range(blocks, &geom);
 
     assert_eq!(pages.len(), 1, "{pages:?}");
     assert_eq!(page_baselines(&pages[0]).len(), 2);
@@ -5649,7 +5607,7 @@ mod tests {
   fn fitting_table_reports_nothing() {
     let rows = (0..5).map(|i| return table_row(&format!("R{i}"))).collect();
 
-    let (_, overflows) = break_pages_in_range(vec![table_block(rows)], &test_geometry(), &GreedyBreaker);
+    let (_, overflows) = break_pages_in_range(vec![table_block(rows)], &test_geometry());
 
     assert!(table_overflows(&overflows).is_empty(), "{overflows:?}");
   }

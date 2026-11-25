@@ -7,123 +7,121 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{HItem, Line},
-    breaking::break_lines::{LineBreaker, OpenLink, build_line},
+    breaking::break_lines::{OpenLink, build_line},
     observe,
   },
 };
 
-/// 貪欲法（first-fit）による行分割
-#[derive(Debug, Clone, Copy, Default)]
-pub(in crate::typeset::breaking) struct GreedyBreaker;
+/// 貪欲法（first-fit）で水平リストを本文幅の行に分割する
+///
+/// # Errors
+///
+/// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+pub(super) fn break_lines(
+  items: &[HItem],
+  text_width: Length,
+  alignment: TextAlignment,
+) -> Result<Vec<Line>, LengthOverflow> {
+  let mut lines: Vec<Line> = Vec::new();
+  let mut buffer: Vec<&HItem> = Vec::new();
+  let mut width_so_far = Length::ZERO;
+  // 通常の分割点（Glue / Penalty / Discretionary）の最新位置
+  let mut last_break: Option<usize> = None;
+  // 数式内分割点（`HItem::MathBreak`）の最新位置。通常の分割点が無いときだけ使う退避先
+  let mut last_math_break: Option<usize> = None;
+  // 折り返しをまたいで開いているリンク領域（行間で引き継ぐ）
+  let mut open_links: Vec<OpenLink> = Vec::new();
 
-impl LineBreaker for GreedyBreaker {
-  fn break_lines(
-    &self,
-    items: &[HItem],
-    text_width: Length,
-    alignment: TextAlignment,
-  ) -> Result<Vec<Line>, LengthOverflow> {
-    let mut lines: Vec<Line> = Vec::new();
-    let mut buffer: Vec<&HItem> = Vec::new();
-    let mut width_so_far = Length::ZERO;
-    // 通常の分割点（Glue / Penalty / Discretionary）の最新位置
-    let mut last_break: Option<usize> = None;
-    // 数式内分割点（`HItem::MathBreak`）の最新位置。通常の分割点が無いときだけ使う退避先
-    let mut last_math_break: Option<usize> = None;
-    // 折り返しをまたいで開いているリンク領域（行間で引き継ぐ）
-    let mut open_links: Vec<OpenLink> = Vec::new();
-
-    for item in items {
-      match item {
-        HItem::ForcedBreak => {
-          let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
-          push_line(&mut lines, line, true, false)?;
-          buffer.clear();
-          width_so_far = Length::ZERO;
+  for item in items {
+    match item {
+      HItem::ForcedBreak => {
+        let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
+        push_line(&mut lines, line, true, false)?;
+        buffer.clear();
+        width_so_far = Length::ZERO;
+        last_break = None;
+        last_math_break = None;
+      },
+      HItem::Glue {
+        natural, breakable, ..
+      } => {
+        // 行頭の breakable glue は不可視（折り返し直後・段落頭のスペースを落とす）
+        if buffer.is_empty() && *breakable {
+          continue;
+        }
+        buffer.push(item);
+        if *breakable {
+          last_break = Some(buffer.len() - 1);
+        }
+        width_so_far = width_so_far.try_add(*natural)?;
+      },
+      HItem::Penalty { value } => {
+        buffer.push(item);
+        if *value <= 0 {
+          last_break = Some(buffer.len() - 1);
+        }
+      },
+      HItem::Discretionary { hyphen } => {
+        buffer.push(item);
+        // ハイフンを足しても本文幅に収まる語中点だけを分割候補にする
+        // （折り返すと行末にハイフンが乗るため、右端超過を作らない）。自然幅には寄与しない
+        if width_so_far.try_add(hyphen.width)? <= text_width {
+          last_break = Some(buffer.len() - 1);
+        }
+      },
+      HItem::MathBreak { spacing, .. } => {
+        buffer.push(item);
+        last_math_break = Some(buffer.len() - 1);
+        // 折り返さなければアキとして幅を持つ
+        width_so_far = width_so_far.try_add(*spacing)?;
+      },
+      // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可
+      HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {
+        buffer.push(item);
+      },
+      HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
+        let item_width = item.natural_width();
+        // 1 回の持ち越しで収まるとは限らない（持ち越し後も現在の item を含めて溢れることがある）ので
+        // while で再判定する。持ち越すたびに buffer は真に縮む（少なくとも破断アイテム自身が抜ける）ので
+        // いずれ last_break / last_math_break が尽きて（あるいは収まって）終わる
+        while width_so_far.try_add(item_width)? > text_width
+          && let Some(break_index) = last_break.or(last_math_break)
+        {
+          let trailing_hyphen = match buffer[break_index] {
+            HItem::Discretionary { hyphen } => Some(hyphen),
+            _ => None,
+          };
+          let line =
+            build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links, trailing_hyphen)?;
+          push_line(&mut lines, line, false, trailing_hyphen.is_some())?;
+          let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
+          buffer = carried;
+          while matches!(
+            buffer.first(),
+            Some(HItem::Glue {
+              breakable: true,
+              ..
+            })
+          ) {
+            buffer.remove(0);
+          }
+          width_so_far = Length::try_sum(buffer.iter().map(|i| return i.natural_width()))?;
           last_break = None;
-          last_math_break = None;
-        },
-        HItem::Glue {
-          natural, breakable, ..
-        } => {
-          // 行頭の breakable glue は不可視（折り返し直後・段落頭のスペースを落とす）
-          if buffer.is_empty() && *breakable {
-            continue;
-          }
-          buffer.push(item);
-          if *breakable {
-            last_break = Some(buffer.len() - 1);
-          }
-          width_so_far = width_so_far.try_add(*natural)?;
-        },
-        HItem::Penalty { value } => {
-          buffer.push(item);
-          if *value <= 0 {
-            last_break = Some(buffer.len() - 1);
-          }
-        },
-        HItem::Discretionary { hyphen } => {
-          buffer.push(item);
-          // ハイフンを足しても本文幅に収まる語中点だけを分割候補にする
-          // （折り返すと行末にハイフンが乗るため、右端超過を作らない）。自然幅には寄与しない
-          if width_so_far.try_add(hyphen.width)? <= text_width {
-            last_break = Some(buffer.len() - 1);
-          }
-        },
-        HItem::MathBreak { spacing, .. } => {
-          buffer.push(item);
-          last_math_break = Some(buffer.len() - 1);
-          // 折り返さなければアキとして幅を持つ
-          width_so_far = width_so_far.try_add(*spacing)?;
-        },
-        // リンクマーカー・脚注マーカー・索引マーカーは幅 0・分割不可
-        HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {
-          buffer.push(item);
-        },
-        HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
-          let item_width = item.natural_width();
-          // 1 回の持ち越しで収まるとは限らない（持ち越し後も現在の item を含めて溢れることがある）ので
-          // while で再判定する。持ち越すたびに buffer は真に縮む（少なくとも破断アイテム自身が抜ける）ので
-          // いずれ last_break / last_math_break が尽きて（あるいは収まって）終わる
-          while width_so_far.try_add(item_width)? > text_width
-            && let Some(break_index) = last_break.or(last_math_break)
-          {
-            let trailing_hyphen = match buffer[break_index] {
-              HItem::Discretionary { hyphen } => Some(hyphen),
-              _ => None,
-            };
-            let line =
-              build_line(&buffer[..break_index], false, text_width, alignment, &mut open_links, trailing_hyphen)?;
-            push_line(&mut lines, line, false, trailing_hyphen.is_some())?;
-            let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
-            buffer = carried;
-            while matches!(
-              buffer.first(),
-              Some(HItem::Glue {
-                breakable: true,
-                ..
-              })
-            ) {
-              buffer.remove(0);
-            }
-            width_so_far = Length::try_sum(buffer.iter().map(|i| return i.natural_width()))?;
-            last_break = None;
-            // 通常の分割点で折ったとき、それより後ろにあった数式内分割点は持ち越し側に残る
-            // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す
-            last_math_break = buffer.iter().rposition(|carried| return matches!(carried, HItem::MathBreak { .. }));
-          }
-          buffer.push(item);
-          width_so_far = width_so_far.try_add(item_width)?;
-        },
-      }
+          // 通常の分割点で折ったとき、それより後ろにあった数式内分割点は持ち越し側に残る
+          // （通常の分割点は選んだ点より後ろに無い）ので、持ち越し後の buffer から拾い直す
+          last_math_break = buffer.iter().rposition(|carried| return matches!(carried, HItem::MathBreak { .. }));
+        }
+        buffer.push(item);
+        width_so_far = width_so_far.try_add(item_width)?;
+      },
     }
-
-    if !buffer.is_empty() || lines.is_empty() {
-      let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
-      push_line(&mut lines, line, true, false)?;
-    }
-    return Ok(lines);
   }
+
+  if !buffer.is_empty() || lines.is_empty() {
+    let line = build_line(&buffer, true, text_width, alignment, &mut open_links, None)?;
+    push_line(&mut lines, line, true, false)?;
+  }
+  return Ok(lines);
 }
 
 /// 確定した行を積み、TRACE へ出す
@@ -149,7 +147,7 @@ fn push_line(lines: &mut Vec<Line>, line: Line, is_last: bool, hyphen: bool) -> 
 
 #[cfg(test)]
 mod tests {
-  use super::{GreedyBreaker, LineBreaker};
+  use super::break_lines;
   use crate::{
     document::TextAlignment,
     length::Length,
@@ -178,9 +176,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(30.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
@@ -193,9 +189,7 @@ mod tests {
   fn fits_all_when_width_is_sufficient() {
     let items = vec![test_box(), space_glue(), test_box()];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2);
@@ -208,9 +202,7 @@ mod tests {
   fn index_mark_is_collected_without_affecting_width_or_breaks() {
     let items = vec![test_box(), index_mark("語", None), test_box()];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert_eq!(lines[0].boxes.len(), 2, "index_mark はボックスとして描画されない");
@@ -230,9 +222,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2);
@@ -249,9 +239,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "分割点がなければ overflow 許容: {lines:?}");
     assert_eq!(lines[0].boxes.len(), 3);
@@ -259,9 +247,7 @@ mod tests {
 
   #[test]
   fn empty_items_yield_single_empty_line() {
-    let lines = GreedyBreaker
-      .break_lines(&[], Length::pt(100.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&[], Length::pt(100.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -271,9 +257,7 @@ mod tests {
   fn flush_right_box_sits_on_last_line_when_it_fits() {
     let items = vec![test_box(), space_glue(), flush_right_box(8.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(50.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(50.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED box の 2 つ: {lines:?}");
@@ -289,9 +273,7 @@ mod tests {
       flush_right_box(8.0),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(14.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(14.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
@@ -310,9 +292,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(12.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(12.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "1 行目に継続中の矩形: {:?}", lines[0].links);
@@ -332,9 +312,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(12.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(12.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
@@ -354,9 +332,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 17.0), "{lines:?}");
@@ -368,9 +344,7 @@ mod tests {
   fn justify_does_not_stretch_last_line() {
     let items = vec![test_box(), stretch_glue(), test_box()];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
@@ -386,9 +360,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
@@ -404,9 +376,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(30.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 17.5), "伸長は能力の上限で止まる: {lines:?}");
@@ -422,9 +392,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(24.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(24.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 14.0), "{lines:?}");
@@ -440,9 +408,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(23.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(23.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 15.0 - 5.0 / 3.0), "収縮は能力の下限で止まる: {lines:?}");
@@ -458,9 +424,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(26.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(26.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
@@ -478,9 +442,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
@@ -498,9 +460,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 15.0), "{lines:?}");
@@ -516,9 +476,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 2 つ + 行末ハイフン: {lines:?}");
@@ -533,9 +491,7 @@ mod tests {
   fn discretionary_not_used_when_word_fits() {
     let items = vec![test_box(), discretionary(3.0), test_box()];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "ハイフン箱は付かない: {lines:?}");
@@ -551,9 +507,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(22.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(22.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "box1 + ハイフン: {lines:?}");
@@ -571,9 +525,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(29.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(29.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(lines[0].boxes[1].dx, 16.0), "glue 伸長後の box2: {lines:?}");
@@ -592,12 +544,9 @@ mod tests {
     ];
     let glue_items = vec![test_box(), cjk_glue(), test_box(), cjk_glue(), test_box()];
 
-    let penalty_lines = GreedyBreaker
-      .break_lines(&penalty_items, Length::pt(25.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
-    let glue_lines = GreedyBreaker
-      .break_lines(&glue_items, Length::pt(25.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let penalty_lines =
+      break_lines(&penalty_items, Length::pt(25.0), TextAlignment::Left).expect("テストの寸法は値域内");
+    let glue_lines = break_lines(&glue_items, Length::pt(25.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(penalty_lines.len(), glue_lines.len(), "penalty: {penalty_lines:?}, glue: {glue_lines:?}");
     for (penalty_line, glue_line) in penalty_lines.iter().zip(&glue_lines) {
@@ -612,9 +561,7 @@ mod tests {
   fn breaks_at_math_break_when_no_other_breakpoint() {
     let items = vec![box_width(20.0), math_break(3.0, 500), box_width(20.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(30.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
@@ -632,9 +579,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(30.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "空白で折る: {lines:?}");
@@ -653,9 +598,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(20.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(20.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 2], "{lines:?}");
@@ -672,9 +615,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(20.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(20.0), TextAlignment::Left).expect("テストの寸法は値域内");
 
     let box_counts: Vec<usize> = lines.iter().map(|line| return line.boxes.len()).collect();
     assert_eq!(box_counts, vec![1, 1, 1], "{lines:?}");
@@ -684,9 +625,7 @@ mod tests {
   fn center_puts_line_in_middle_of_available_width() {
     let items = vec![box_width(20.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Center)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Center).expect("テストの寸法は値域内");
 
     assert!(close(lines[0].boxes[0].dx, 40.0), "{:?}", lines[0].boxes);
   }
@@ -702,9 +641,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Right)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0), TextAlignment::Right).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2);
     assert!(close(lines[0].boxes[0].dx, 2.0), "{:?}", lines[0].boxes);
@@ -722,7 +659,7 @@ mod tests {
     ];
 
     for alignment in [TextAlignment::Center, TextAlignment::Right] {
-      let lines = GreedyBreaker.break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
+      let lines = break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
 
       let first = &lines[0];
       assert!(close(first.boxes[1].dx - first.boxes[0].dx, 15.0), "{alignment:?}: {:?}", first.boxes);
@@ -734,7 +671,7 @@ mod tests {
     let items = vec![box_width(50.0)];
 
     for alignment in [TextAlignment::Center, TextAlignment::Right] {
-      let lines = GreedyBreaker.break_lines(&items, Length::pt(30.0), alignment).expect("テストの寸法は値域内");
+      let lines = break_lines(&items, Length::pt(30.0), alignment).expect("テストの寸法は値域内");
 
       assert_eq!(lines[0].boxes[0].dx, Length::ZERO, "{alignment:?}");
     }
@@ -745,9 +682,7 @@ mod tests {
     // 字下げ 10 + 本文 20 = 30 を幅 100 の右端へ: 本文の箱は 70 + 10 = 80
     let items = vec![HItem::Kern(Length::pt(10.0)), box_width(20.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Right)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Right).expect("テストの寸法は値域内");
 
     assert!(close(lines[0].boxes[0].dx, 80.0), "{:?}", lines[0].boxes);
   }
@@ -757,9 +692,7 @@ mod tests {
     // 本文 20 + QED 10、幅 100: 本文は 0..90 の中央（35）、QED は右端（90）
     let items = vec![box_width(20.0), flush_right_box(10.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Center)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Center).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert!(close(lines[0].boxes[0].dx, 35.0), "{:?}", lines[0].boxes);
@@ -770,9 +703,7 @@ mod tests {
   fn right_aligned_line_with_qed_ends_body_at_mark() {
     let items = vec![box_width(20.0), flush_right_box(10.0)];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Right)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Right).expect("テストの寸法は値域内");
 
     assert!(close(lines[0].boxes[0].dx, 70.0), "{:?}", lines[0].boxes);
     assert!(close(lines[0].boxes[1].dx, 90.0), "{:?}", lines[0].boxes);
@@ -786,9 +717,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = GreedyBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Center)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0), TextAlignment::Center).expect("テストの寸法は値域内");
 
     let link = &lines[0].links[0];
     assert!(close(link.x0, 40.0) && close(link.x1, 60.0), "{link:?}");

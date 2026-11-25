@@ -3,28 +3,27 @@
 mod greedy;
 mod knuth_plass;
 
-pub(super) use greedy::GreedyBreaker;
-pub(in crate::typeset) use knuth_plass::KnuthPlassBreaker;
-
 use crate::{
   document::TextAlignment,
   length::{Length, LengthOverflow},
   typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 
-/// 行分割アルゴリズムの抽象
-pub(in crate::typeset) trait LineBreaker {
-  /// 水平リストを本文幅で行に分割する
-  ///
-  /// # Errors
-  ///
-  /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
-  fn break_lines(
-    &self,
-    items: &[HItem],
-    text_width: Length,
-    alignment: TextAlignment,
-  ) -> Result<Vec<Line>, LengthOverflow>;
+/// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
+/// 両端揃えでも、実現可能な分割が無いサブ段落は貪欲法の両端揃えで組む
+///
+/// # Errors
+///
+/// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+pub(in crate::typeset) fn break_lines(
+  items: &[HItem],
+  text_width: Length,
+  alignment: TextAlignment,
+) -> Result<Vec<Line>, LengthOverflow> {
+  if alignment == TextAlignment::Justify {
+    return knuth_plass::break_lines(items, text_width);
+  }
+  return greedy::break_lines(items, text_width, alignment);
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
@@ -249,7 +248,7 @@ fn build_line(
   return Ok(line);
 }
 
-/// 行分割器が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
+/// 行分割が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
 ///
 /// 分割機会は breakable な `Glue`（幅は区間に入れない）・`Penalty { value <= 0 }`・`Discretionary`（直前の区間に
 /// ハイフン幅を足す）・`MathBreak`（`spacing` は区間に入れない）・`ForcedBreak`。それ以外は自然幅を区間へ足し、
@@ -411,10 +410,73 @@ mod test_support {
 
 #[cfg(test)]
 mod tests {
-  use super::{GreedyBreaker, HItem, Length, LineBreaker, TextAlignment, min_content_width};
+  use super::{HItem, Length, Line, TextAlignment, break_lines, greedy, knuth_plass, min_content_width};
   use crate::typeset::breaking::break_lines::test_support::{
-    box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue,
+    box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
   };
+
+  /// 2 つの行列が同じ組み方か（行数・各行の box 数・各 box の `dx` が sp 丸め精度内で一致）を確かめる
+  fn assert_same_lines(actual: &[Line], expected: &[Line]) {
+    assert_eq!(actual.len(), expected.len(), "actual: {actual:?}, expected: {expected:?}");
+    for (actual_line, expected_line) in actual.iter().zip(expected) {
+      assert_eq!(actual_line.boxes.len(), expected_line.boxes.len(), "actual: {actual:?}, expected: {expected:?}");
+      for (a, e) in actual_line.boxes.iter().zip(&expected_line.boxes) {
+        assert!((a.dx - e.dx).abs() <= Length::from_sp(1), "actual: {actual:?}, expected: {expected:?}");
+      }
+    }
+  }
+
+  #[test]
+  fn non_justified_alignments_break_greedily() {
+    let items = vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+
+    for alignment in [
+      TextAlignment::Left,
+      TextAlignment::Center,
+      TextAlignment::Right,
+    ] {
+      let lines = break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
+      let greedy = greedy::break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
+
+      assert_same_lines(&lines, &greedy);
+    }
+  }
+
+  #[test]
+  fn justified_alignment_breaks_with_knuth_plass() {
+    let glue = || {
+      return HItem::Glue {
+        natural: Length::pt(2.0),
+        stretch: Length::pt(1.0),
+        shrink: Length::pt(2.0),
+        breakable: true,
+      };
+    };
+    let items = vec![
+      box_width(8.0),
+      glue(),
+      box_width(8.0),
+      glue(),
+      box_width(8.0),
+      glue(),
+      box_width(8.0),
+      glue(),
+      box_width(8.0),
+    ];
+
+    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
+
+    assert_same_lines(&lines, &optimal);
+    // 貪欲法なら 3 行になる入力
+    assert_eq!(lines.len(), 2, "{lines:?}");
+  }
 
   #[test]
   fn min_content_width_is_the_widest_segment_between_glue() {
@@ -464,7 +526,7 @@ mod tests {
 
   #[test]
   fn greedy_never_overflows_at_the_min_content_width() {
-    // 分割機会が glue / penalty / 数式内分割点だけの列で、最小内容幅で折ると全行が収まる（定義が行分割器と一致する）
+    // 分割機会が glue / penalty / 数式内分割点だけの列で、最小内容幅で折ると全行が収まる（定義が行分割と一致する）
     let items = vec![
       box_width(7.0),
       space_glue(),
@@ -478,7 +540,7 @@ mod tests {
     ];
     let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = GreedyBreaker.break_lines(&items, width, TextAlignment::Left).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, width, TextAlignment::Left).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");
   }

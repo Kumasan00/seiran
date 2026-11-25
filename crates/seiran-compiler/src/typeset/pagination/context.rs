@@ -1,11 +1,11 @@
-//! 組版の各段が共有する資源・寸法・行分割アルゴリズム
+//! 組版の各段が共有する資源と寸法
 
 use crate::{
   project::config::ProjectConfig,
   style::{PageNumberingStyle, Style},
   typeset::{
-    boxes::Page, breaking::KnuthPlassBreaker, font::FontSystem, geometry::PreparedGeometry, glyph_issues::GlyphIssues,
-    lowering::HeadingRecord, pagination::page_values::BodyPageValues,
+    boxes::Page, font::FontSystem, geometry::PreparedGeometry, glyph_issues::GlyphIssues, lowering::HeadingRecord,
+    pagination::page_values::BodyPageValues,
   },
 };
 
@@ -19,8 +19,6 @@ pub(in crate::typeset) struct TypesetContext<'a> {
   pub(super) fonts: &'a FontSystem,
   /// 入力読込で検証済みの版面（本文幅・段幅・本文 / 前付け / 後付けのページ幾何）
   pub(super) geometry: &'a PreparedGeometry,
-  /// 全段が使う行分割アルゴリズム（段落全体最適の Knuth–Plass）
-  pub(super) breaker: KnuthPlassBreaker,
   /// 全段のシェーピングが組めなかった字の収集器（組版を終えてから診断へ変える）
   pub(in crate::typeset) glyph_issues: GlyphIssues,
 }
@@ -38,7 +36,6 @@ impl<'a> TypesetContext<'a> {
       style,
       fonts,
       geometry,
-      breaker: KnuthPlassBreaker,
       glyph_issues: GlyphIssues::default(),
     };
   }

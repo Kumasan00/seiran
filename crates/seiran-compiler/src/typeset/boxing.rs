@@ -20,7 +20,7 @@
 //! 生成コンテンツと表のセルが使う 1 行組み立ての仕組み（[`LineAccum`] / [`inline_atom`] と自然幅の 1 行）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・
 //! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
-//! [`BlockBuildInputs::breaker`]（本文の段落と同じ行分割器）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
+//! 本文の段落と同じ行分割（`breaking::break_lines`）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
 //! 積み場所で、run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の
 //! 約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
@@ -54,7 +54,6 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
-    breaking::LineBreaker,
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -94,8 +93,6 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) images: &'a ImageResources,
   /// この縦リストを組む段の幅（寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く）
   pub(super) column_width: Length,
-  /// 表のセルを折り返す行分割器（本文の段落と同じもの）
-  pub(super) breaker: &'a dyn LineBreaker,
   /// 既定のフォントサイズ
   pub(super) default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -131,7 +128,6 @@ pub(super) fn build_blocks(
     ),
     images: inputs.images,
     column_width: inputs.column_width,
-    breaker: inputs.breaker,
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
@@ -148,8 +144,6 @@ struct BlockBuilder<'a> {
   images: &'a ImageResources,
   /// この縦リストを組む段の幅
   column_width: Length,
-  /// 表のセルを折り返す行分割器
-  breaker: &'a dyn LineBreaker,
 }
 
 impl BlockBuilder<'_> {
@@ -243,7 +237,7 @@ impl BlockBuilder<'_> {
             };
           })?;
           blocks.push(Block::Table {
-            table: self.measurer.build_table(table, available, self.breaker)?,
+            table: self.measurer.build_table(table, available)?,
             indent,
             right_indent,
             align: Align::from(alignment),
