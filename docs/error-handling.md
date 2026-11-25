@@ -223,7 +223,9 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   端末への描画は `Result` の `Termination` ではなく `termination::Outcome::report` が行い、報告を終えてから
   終了コードを返す — ログ出力先の終了処理（flush と保持した失敗の取り出し）を、終了コードの決定より前に
   必ず通すため。診断の体裁は `Report` の `Debug`（miette の `fancy-no-backtrace`）のまま。
-  報告の書き出し先は引数で受け、stderr へ書けなくても panic せず終了コードを保つ（#549）
+  報告の書き出し先は引数で受け、stderr へ書けなくても panic せず終了コードを保つ（#549）。warning 診断と
+  成功サマリ（`reporting`）も同じく stderr への書き込み失敗を捨て、終了コードとログファイルへの記録を
+  端末へ書けたかに依らせない（#1190）
 
 ## パターン例
 

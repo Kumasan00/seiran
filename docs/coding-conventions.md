@@ -394,10 +394,12 @@ Unicode の文字名）。doc はこれに何をするか 1 行を足す。ど�
   以上どの診断も大きくなり、これは「thiserror + miette の富んだ診断を採る」という**種類**の判断 1 個の
   帰結だから（P10 の判定テストと同型）。逆に `cast_*` 系・`too_many_arguments`・`ref_option` は箇所ごとに
   根拠が違うので per-site の `#[expect]` のまま。
-- ライブラリ 2 crate では `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`）。人へ
-  伝えたいことは診断（miette）か tracing に載せる。表示はユーザーへ届ける成果物なので、CLI（`seiran`）の
-  crate root だけ `print_stderr` を `#![expect]` で開けてある。stdout はフォント調査サブコマンドの一覧だけが
-  使い、`println!` ではなく `subcommand::listing::emit` の書き出し 1 関数を通す（`io::stdout()` は `main.rs` が渡す）。
+- `println!` / `eprintln!` はどの crate でも使わない（`print_stdout` / `print_stderr`。`#[expect]` で開けた
+  箇所は無い）。ライブラリ 2 crate は人へ伝えたいことを診断（miette）か tracing に載せる。CLI（`seiran`）の
+  表示はユーザーへ届ける成果物だが、`eprintln!` は stderr へ書けないと panic するので、warning と成功サマリは
+  `reporting`、主診断は `termination::Outcome::report` が `io::stderr()` へ直接書き、書き込み失敗は捨てる。
+  stdout はフォント調査サブコマンドの一覧だけが使い、`subcommand::listing::emit` の書き出し 1 関数を通す
+  （`io::stdout()` は `main.rs` が渡す）。
 - 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`RandomState` の
   反復順はプロセスごとに変わるので、出力順・採番順・配列添字にすると成果物が非決定になる。`BTreeMap` を
   使うか、キーで `sort` した `Vec` に落としてから反復する。この lint が見るのは `for` だけなので
@@ -447,7 +449,7 @@ lint の増減と根拠の更新が同じ diff に閉じるように、個々の
 | 字面に意味（G1 の読み側） | 字面から意味が一意に取れる                                                  | `clone_on_ref_ptr` / `map_err_ignore` / `elided_lifetimes_in_paths` |
 | 表記の固定（G1 の書き側） | 同じ意味を 2 通りに書かない                                                 | `separated_literal_suffix` / `pub_without_shorthand`                |
 | 決定性                    | 成果物のバイト再現性を壊すものを拒む                                        | `iter_over_hash_type` / `float_cmp_const`                           |
-| crate の責務境界          | ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない             | `exit` / `print_stdout`                                             |
+| crate の責務境界          | プロセス境界の効果（終了・表示）は CLI の決まった経路だけが持つ             | `exit` / `print_stdout`                                             |
 | 誤りの検出                | 取り違え・バグ源になる形を拒む                                              | `rc_mutex` / `unit_bindings`                                        |
 | 残骸を残さない            | 死んだコード・デバッグ残りを残さない                                        | `dbg_macro` / `unused_macro_rules`                                  |
 | nursery                   | group が未安定なので目的別に散らさず 1 節に集める（目的は各行の根拠コメント） | `redundant_clone` / `fallible_impl_from`                            |

@@ -1,7 +1,5 @@
 //! Seiran の CLI エントリーポイント
 
-#![expect(clippy::print_stderr, reason = "CLI の表示はユーザーへ届ける成果物で、tracing の代用ではない")]
-
 mod cli;
 mod pdf_output;
 mod phase;

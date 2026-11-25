@@ -203,12 +203,12 @@ lossy_float_literal = "warn"
 pointer_format = "warn"
 
 # ---------------------------------------------------------------------------
-# crate の責務境界 — ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない
+# crate の責務境界 — プロセス境界の効果（終了・表示）は CLI の決まった経路だけが持つ
 # ---------------------------------------------------------------------------
 
 # ライブラリ 2 crate がプロセスを殺さない（終了コードの決定は CLI の責務）。
 exit = "warn"
-# 表示はプロダクト。ライブラリ 2 crate の防火壁で、CLI の crate root だけ `print_stderr` を `#![expect]` で開ける（stdout は `subcommand::listing::emit` の書き出し 1 関数に閉じ、`println!` は使わない）。
+# 表示はプロダクト。全 crate で使わない — ライブラリ 2 crate の防火壁で、CLI も書き込み失敗で panic する `eprintln!` を避け、stderr は `reporting` と `termination` の書き込み（失敗は捨てる）、stdout は `subcommand::listing::emit` の 1 関数に閉じる。
 print_stderr = "warn"
 print_stdout = "warn"
 
