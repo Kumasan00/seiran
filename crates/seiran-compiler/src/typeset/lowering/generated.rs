@@ -13,7 +13,7 @@ use crate::{
     boxes::{AnchorId, LinkTarget},
     lowering::{
       HeadingRecord, LoweringContext,
-      heading::{self, title_style, toc_entry_style},
+      heading::{self, running_text_style, title_style, toc_entry_style},
       inline,
       layout_node::{InlineNode, LayoutNode, TextStyle},
       paragraph::{assemble_paragraph, body_text_style},
@@ -61,6 +61,14 @@ pub(super) fn lower_bibliography(
     toc_label: vec![InlineNode::Text(
       ctx.style.reference.title.clone(),
       toc_entry_style(ctx.style),
+    )],
+    header_title: vec![InlineNode::Text(
+      ctx.style.reference.title.clone(),
+      running_text_style(&ctx.style.header),
+    )],
+    footer_title: vec![InlineNode::Text(
+      ctx.style.reference.title.clone(),
+      running_text_style(&ctx.style.footer),
     )],
   }];
 
@@ -257,6 +265,11 @@ mod tests {
       matches!(headings[0].toc_label.as_slice(), [InlineNode::Text(t, s)] if *t == style.reference.title && *s == toc_entry_style(&style)),
       "{:?}",
       headings[0].toc_label
+    );
+    assert!(
+      matches!(headings[0].header_title.as_slice(), [InlineNode::Text(t, s)] if *t == style.reference.title && *s == running_text_style(&style.header)),
+      "{:?}",
+      headings[0].header_title
     );
   }
 }

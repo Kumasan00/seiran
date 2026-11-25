@@ -370,6 +370,7 @@ impl PageBuilder {
         footer: Vec::new(),
         footnotes: Vec::new(),
         anchors: Vec::new(),
+        opening_headings: Vec::new(),
         links: Vec::new(),
         index_entries: Vec::new(),
         background_color: None,
@@ -438,6 +439,17 @@ impl PageBuilder {
       x,
       y,
     });
+    return self;
+  }
+
+  /// 本文最初のブロックで解決した見出しアンカーを追加する（座標は原点）
+  pub(crate) fn opening_heading(mut self, key: HeadingKey) -> Self {
+    self.page.anchors.push(PlacedAnchor {
+      id: AnchorId::Heading(key),
+      x: Length::ZERO,
+      y: Length::ZERO,
+    });
+    self.page.opening_headings.push(key);
     return self;
   }
 

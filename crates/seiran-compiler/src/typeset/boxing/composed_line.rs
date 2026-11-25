@@ -172,8 +172,8 @@ pub(in crate::typeset) fn inline_atom(
   })?;
   if !(line.links.is_empty() && line.footnotes.is_empty() && line.index_marks.is_empty()) {
     unreachable!(
-      "inline_atom が組むのは目次の行の題目（HeadingRecord::toc_label）だけで、lowering::heading の写しがリンクは子だけを組み、\
-       脚注・索引を落としている"
+      "inline_atom が組むのは目次の行・柱の題目（HeadingRecord の toc_label / header_title / footer_title）だけで、\
+       lowering::heading の写しがリンクは子だけを組み、脚注・索引を落としている"
     )
   }
   let mut atom = HBox::atom(line.boxes).map_err(|LengthOverflow| {

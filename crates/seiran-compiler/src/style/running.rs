@@ -6,6 +6,8 @@
 //! - `{page}` — 現在ページの印字ページ番号（ページラベル）
 //! - `{pages}` — 総ページ数
 //! - `{title}` / `{author}` / `{date}` — `config.toml` の `[document]` メタデータ
+//! - `{chapter}` / `{section}` — 本文ページの最初の本文ブロックが属する章・節の題目（番号を含まない）。
+//!   該当する見出しが無いページ・本文外のページ（前付け・書誌・索引）では空
 
 use garde::Validate;
 use serde::Deserialize;

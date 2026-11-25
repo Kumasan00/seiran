@@ -525,6 +525,7 @@ mod tests {
       footer: Vec::new(),
       footnotes: Vec::new(),
       anchors: Vec::new(),
+      opening_headings: Vec::new(),
       links: Vec::new(),
       index_entries: entries
         .into_iter()

@@ -313,6 +313,8 @@ mod tests {
         format!("{number} {title_plain}"),
         toc_entry_style(&Style::default()),
       )],
+      header_title: Vec::new(),
+      footer_title: Vec::new(),
     };
   }
 
@@ -330,6 +332,7 @@ mod tests {
             x: Length::ZERO,
             y: Length::ZERO,
           }],
+          opening_headings: Vec::new(),
           links: Vec::new(),
           index_entries: Vec::new(),
           background_color: None,

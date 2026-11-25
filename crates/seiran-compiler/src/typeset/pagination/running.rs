@@ -1,22 +1,25 @@
 //! 段 6 — 走り文（ヘッダー・フッター）の生成と配置
 //!
-//! style の投影（テンプレート・書体・区切り線）、`{page}` 等のトークン置換、左 / 中央 / 右スロットの
+//! style の投影（テンプレート・書体・区切り線）、`{page}` 等のトークン置換と章・節の題目の組版、左 / 中央 / 右スロットの
 //! 配置までをこの module に閉じる。
+
+mod heads;
+
+use std::ops::Range;
 
 use tracing::debug;
 
 use crate::{
   color::Color,
-  document::Typeface,
   length::{Length, LengthOverflow},
   project::config::DocumentConfig,
   style::{RunningContentStyle, RunningTemplate, RunningValues, Style},
   typeset::{
     boxes::{HBox, Page, PlacedBlock},
-    boxing::{LineAccum, Shaper, row_width},
+    boxing::{LineAccum, Shaper, inline_atom, row_width},
     error::ElementOverflow,
     glyph_issues::{Generated, GlyphOrigin},
-    lowering::TextStyle,
+    lowering::{HeadingRecord, InlineNode, TextStyle, running_text_style},
     pagination::{context::TypesetContext, page_values::PageLabels},
   },
 };
@@ -47,10 +50,10 @@ struct RunningSlots {
   center: RunningTemplate,
   /// 右スロットのテンプレート
   right: RunningTemplate,
-  /// 書体
-  typeface: Typeface,
-  /// フォントサイズ
-  font_size: Length,
+  /// 地の文字のスタイル（`[header]` / `[footer]` の書体・サイズ）
+  style: TextStyle,
+  /// `{chapter}` / `{section}` に組む見出し記録の題目の写し（ヘッダー用かフッター用か）
+  title: fn(&HeadingRecord) -> &[InlineNode],
   /// ベースラインのページ上端からの距離（絶対座標。フッターは投影時に換算済み）
   baseline_y: Length,
   /// 区切り線をテキストの下に置くか（`true`: ヘッダー、`false`: フッター）
@@ -76,7 +79,8 @@ struct RunningMetadata {
 
 /// 全ページのラベル確定後にヘッダー・フッターを配置する。
 ///
-/// 全スロットが空なら何もしない。
+/// 全スロットが空なら何もしない。`body` は `pages` のうち本文が占める範囲で、`{chapter}` / `{section}` は本文ページに
+/// だけ出る（前付け・後付けでは空）。
 ///
 /// # Panics
 ///
@@ -85,17 +89,20 @@ struct RunningMetadata {
 ///
 /// # Errors
 ///
-/// 寸法が長さの値域を超えたら [`ElementOverflow`]（生成内容なので起点なし）を返す。
+/// 寸法が長さの値域を超えたら [`ElementOverflow`] を返す（地の文字は生成内容なので起点なし、題目は見出しを起点とする）。
 pub(super) fn place_running_content(
   ctx: &TypesetContext<'_>,
   pages: &mut [Page],
   page_labels: PageLabels,
+  headings: &[HeadingRecord],
+  body: Range<usize>,
 ) -> Result<(), ElementOverflow> {
   let spec =
     build_running_spec(ctx.style, &ctx.config.document, ctx.geometry.text_width(), ctx.config.pdf.height, page_labels);
   if spec.header.is_none() && spec.footer.is_none() {
     return Ok(());
   }
+  let body_heads = heads::page_heads(&pages[body.clone()], headings);
   let mut shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::RunningContent));
   for (index, page) in pages.iter_mut().enumerate() {
     if spec.skip_first && index == 0 {
@@ -104,13 +111,23 @@ pub(super) fn place_running_content(
     let Some((page_label, pages_label)) = spec.page_numbers.get(index) else {
       unreachable!("ページ番号ラベル列は pagination::paginate がページ列から作るので、長さはページ数と一致する")
     };
+    let values = RunningValues {
+      page: page_label,
+      pages: pages_label,
+      title: &spec.metadata.title,
+      author: &spec.metadata.author,
+      date: &spec.metadata.date,
+    };
+    let heads = index
+      .checked_sub(body.start)
+      .and_then(|offset| return body_heads.get(offset))
+      .copied()
+      .unwrap_or((None, None));
     if let Some(slots) = &spec.header {
-      page.header = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
-        .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+      page.header = build_running_blocks(ctx, &mut shaper, slots, spec.text_width, values, heads)?;
     }
     if let Some(slots) = &spec.footer {
-      page.footer = build_running_blocks(&mut shaper, slots, spec.text_width, page_label, pages_label, &spec.metadata)
-        .map_err(|LengthOverflow| return ElementOverflow { origin: None })?;
+      page.footer = build_running_blocks(ctx, &mut shaper, slots, spec.text_width, values, heads)?;
     }
   }
   debug!(page_count = pages.len(), "ヘッダー・フッターを配置");
@@ -129,8 +146,8 @@ fn build_running_spec(
     unreachable!("用紙高は正（config の garde）で baseline_offset は非負（style の garde）なので、差は値域に収まる");
   };
   return RunningContentSpec {
-    header: running_slots(&style.header, style.header.baseline_offset, true),
-    footer: running_slots(&style.footer, footer_baseline_y, false),
+    header: running_slots(&style.header, style.header.baseline_offset, true, |record| return &record.header_title),
+    footer: running_slots(&style.footer, footer_baseline_y, false, |record| return &record.footer_title),
     metadata: RunningMetadata {
       title: document.title.clone().unwrap_or_default(),
       author: document.author.clone().unwrap_or_default(),
@@ -145,7 +162,12 @@ fn build_running_spec(
 /// `RunningContentStyle` を配置用の [`RunningSlots`] に変換する。
 ///
 /// 全スロットが空白のみなら描画を省略するため `None` を返す。
-fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bool) -> Option<RunningSlots> {
+fn running_slots(
+  style: &RunningContentStyle,
+  baseline_y: Length,
+  rule_below: bool,
+  title: fn(&HeadingRecord) -> &[InlineNode],
+) -> Option<RunningSlots> {
   if style.is_blank() {
     return None;
   }
@@ -153,8 +175,8 @@ fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bo
     left: style.left.clone(),
     center: style.center.clone(),
     right: style.right.clone(),
-    typeface: style.typeface,
-    font_size: style.font_size,
+    style: running_text_style(style),
+    title,
     baseline_y,
     rule_below,
     rule_thickness: style.rule_thickness,
@@ -164,25 +186,31 @@ fn running_slots(style: &RunningContentStyle, baseline_y: Length, rule_below: bo
 }
 
 /// ヘッダーまたはフッター 1 つ分の配置済みブロック（行＋任意の区切り線）を組み立てる
+///
+/// `heads` はそのページの柱に出す（章, 節）。
 fn build_running_blocks(
+  ctx: &TypesetContext<'_>,
   shaper: &mut Shaper<'_>,
   slots: &RunningSlots,
   text_width: Length,
-  page_label: &str,
-  pages_label: &str,
-  metadata: &RunningMetadata,
-) -> Result<Vec<PlacedBlock>, LengthOverflow> {
-  let style = TextStyle {
-    font_size: slots.font_size,
-    typeface: slots.typeface,
-    color: None,
-    script_level: None,
-    math_operator: None,
-  };
-  let left = shape_slot(shaper, &slots.left, page_label, pages_label, metadata, style)?;
-  let center = shape_slot(shaper, &slots.center, page_label, pages_label, metadata, style)?;
-  let right = shape_slot(shaper, &slots.right, page_label, pages_label, metadata, style)?;
+  values: RunningValues<'_>,
+  heads: (Option<&HeadingRecord>, Option<&HeadingRecord>),
+) -> Result<Vec<PlacedBlock>, ElementOverflow> {
+  let left = shape_slot(ctx, shaper, slots, &slots.left, values, heads)?;
+  let center = shape_slot(ctx, shaper, slots, &slots.center, values, heads)?;
+  let right = shape_slot(ctx, shaper, slots, &slots.right, values, heads)?;
+  return place_slots(slots, text_width, left, center, right)
+    .map_err(|LengthOverflow| return ElementOverflow { origin: None });
+}
 
+/// 組んだ 3 スロットを左／中央／右に揃えて 1 行に置き、任意の区切り線を添える
+fn place_slots(
+  slots: &RunningSlots,
+  text_width: Length,
+  left: Vec<HBox>,
+  center: Vec<HBox>,
+  right: Vec<HBox>,
+) -> Result<Vec<PlacedBlock>, LengthOverflow> {
   let center_x = text_width.try_sub(row_width(&center)?)?.try_div(2.0)?;
   let right_x = text_width.try_sub(row_width(&right)?)?;
 
@@ -219,57 +247,60 @@ fn build_running_blocks(
   return Ok(result);
 }
 
-/// 1 スロットのテンプレートをトークン置換してシェーピングした `HBox` 列を返す
+/// 1 スロットのテンプレートを組んだ `HBox` 列を返す
+///
+/// 地の文字（値のトークンを埋めたもの）は `shaper` で組み、`{chapter}` / `{section}` の題目は見出しを起点とする
+/// シェーパーで本文と同じ規則の閉じた箱 1 つにする。地の文字が空白だけで題目も空なら何も組まない。
 fn shape_slot(
+  ctx: &TypesetContext<'_>,
   shaper: &mut Shaper<'_>,
+  slots: &RunningSlots,
   template: &RunningTemplate,
-  page_label: &str,
-  pages_label: &str,
-  metadata: &RunningMetadata,
-  style: TextStyle,
-) -> Result<Vec<HBox>, LengthOverflow> {
-  let text = substitute(template, page_label, pages_label, metadata);
-  if text.trim().is_empty() {
+  values: RunningValues<'_>,
+  (chapter, section): (Option<&HeadingRecord>, Option<&HeadingRecord>),
+) -> Result<Vec<HBox>, ElementOverflow> {
+  let chapter_title = chapter.map_or(&[][..], slots.title);
+  let section_title = section.map_or(&[][..], slots.title);
+  let visible = template.expand(
+    values,
+    || return !chapter_title.is_empty(),
+    || return !section_title.is_empty(),
+    |text| return !text.trim().is_empty(),
+  );
+  if !visible.contains(&true) {
     return Ok(Vec::new());
   }
-  return shaper.shape_text(&text, style);
+  let pieces = template.expand(
+    values,
+    || return title_boxes(ctx, chapter, chapter_title),
+    || return title_boxes(ctx, section, section_title),
+    |text| {
+      return shaper
+        .shape_text(text, slots.style)
+        .map_err(|LengthOverflow| return ElementOverflow { origin: None });
+    },
+  );
+  return Ok(pieces.into_iter().collect::<Result<Vec<_>, _>>()?.concat());
 }
 
-/// テンプレート中のトークンを実値へ置換する
-fn substitute(template: &RunningTemplate, page_label: &str, pages_label: &str, metadata: &RunningMetadata) -> String {
-  return template.expand(RunningValues {
-    page: page_label,
-    pages: pages_label,
-    title: &metadata.title,
-    author: &metadata.author,
-    date: &metadata.date,
-  });
-}
-
-#[cfg(test)]
-mod tests {
-  use super::{RunningMetadata, substitute};
-  use crate::style::RunningTemplate;
-
-  fn metadata() -> RunningMetadata {
-    return RunningMetadata {
-      title: "My Title".to_string(),
-      author: "Me".to_string(),
-      date: "2026-06-14".to_string(),
-    };
-  }
-
-  #[test]
-  fn substitute_replaces_page_and_pages_independently() {
-    let result = substitute(&RunningTemplate::parse("{page} / {pages}"), "3", "12", &metadata());
-
-    assert_eq!(result, "3 / 12");
-  }
-
-  #[test]
-  fn substitute_replaces_metadata_tokens() {
-    let result = substitute(&RunningTemplate::parse("{title} — {author} ({date})"), "1", "1", &metadata());
-
-    assert_eq!(result, "My Title — Me (2026-06-14)");
-  }
+/// 柱の題目 `title` を、見出し `record` を字の問題の起点にして本文と同じ規則の閉じた箱にする（空なら箱なし）
+fn title_boxes(
+  ctx: &TypesetContext<'_>,
+  record: Option<&HeadingRecord>,
+  title: &[InlineNode],
+) -> Result<Vec<HBox>, ElementOverflow> {
+  let Some(record) = record.filter(|_| return !title.is_empty()) else {
+    return Ok(Vec::new());
+  };
+  let shaper = Shaper::new(
+    ctx.fonts,
+    &ctx.glyph_issues,
+    record.node.map_or(GlyphOrigin::Generated(Generated::RunningContent), GlyphOrigin::Element),
+  );
+  return Ok(vec![inline_atom(
+    shaper,
+    title.to_vec(),
+    ctx.style.text.punctuation_spacing,
+    ctx.geometry.body_height(),
+  )?]);
 }

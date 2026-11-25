@@ -390,7 +390,8 @@ impl PageDraft {
 
   /// 台帳を `Page` へ確定して排出し、次ページの空の台帳になる。未解決アンカーは持ち越す
   ///
-  /// `Page` の各フィールドは台帳の配置順（リージョンごとに本文 → 脚注）で並ぶ。
+  /// `Page` の各フィールドは台帳の配置順（リージョンごとに本文 → 脚注）で並ぶ。リージョンは段の読み順に閉じるので、
+  /// 最初の `Entry::Block` が読み順で本文最初のブロックになる。
   pub(super) fn take_page(&mut self, geom: &PageGeometry) -> Page {
     let entries = std::mem::take(&mut self.entries);
     self.region_start = 0;
@@ -401,6 +402,7 @@ impl PageDraft {
       footer: Vec::new(),
       footnotes: Vec::new(),
       anchors: Vec::new(),
+      opening_headings: Vec::new(),
       links: Vec::new(),
       index_entries: std::mem::take(&mut self.index_entries),
       background_color: geom.background_color,
@@ -414,6 +416,15 @@ impl PageDraft {
           links,
           ..
         } => {
+          if page.blocks.is_empty() {
+            page.opening_headings = anchors
+              .iter()
+              .filter_map(|anchor| match anchor.id {
+                AnchorId::Heading(key) => return Some(key),
+                _ => return None,
+              })
+              .collect();
+          }
           page.blocks.push(block);
           page.anchors.extend(anchors);
           page.links.extend(links);

@@ -380,6 +380,10 @@ enum RunningPlaceholder {
   Author,
   /// `{date}` — 日付
   Date,
+  /// `{chapter}` — そのページの章の題目
+  Chapter,
+  /// `{section}` — そのページの節の題目
+  Section,
 }
 
 impl Placeholder for RunningPlaceholder {
@@ -393,6 +397,8 @@ impl Placeholder for RunningPlaceholder {
       "title" => Some(Self::Title),
       "author" => Some(Self::Author),
       "date" => Some(Self::Date),
+      "chapter" => Some(Self::Chapter),
+      "section" => Some(Self::Section),
       _ => None,
     };
   }
@@ -429,7 +435,7 @@ define_template! {
 }
 
 define_template! {
-  /// `{page}` / `{pages}` / `{title}` / `{author}` / `{date}` を持つ書式（走り文スロット）
+  /// `{page}` / `{pages}` / `{title}` / `{author}` / `{date}` / `{chapter}` / `{section}` を持つ書式（走り文スロット）
   RunningTemplate(RunningPlaceholder)
 }
 
@@ -638,18 +644,41 @@ pub(crate) struct RunningValues<'a> {
 }
 
 impl RunningTemplate {
-  /// メタデータとページ番号を埋めた文字列を返す
-  #[must_use]
-  pub(crate) fn expand(&self, values: RunningValues<'_>) -> String {
-    return self.0.expand_to_string(|placeholder| {
-      return match placeholder {
-        RunningPlaceholder::Page => values.page.to_string(),
-        RunningPlaceholder::Pages => values.pages.to_string(),
-        RunningPlaceholder::Title => values.title.to_string(),
-        RunningPlaceholder::Author => values.author.to_string(),
-        RunningPlaceholder::Date => values.date.to_string(),
-      };
-    });
+  /// メタデータとページ番号を地の文字へ埋め、`{chapter}` / `{section}` の位置へ `chapter` / `section` の出力を
+  /// 差し込んだ出力型 `T` の列に展開する
+  ///
+  /// 地の文字と値のトークンは隣り合う分を 1 つの `literal` にまとめる（題目のトークンを含まないテンプレートは
+  /// 高々 1 回）。埋めた値は再解析しないので、値に `{page}` 等が含まれていても展開されない。
+  pub(crate) fn expand<T>(
+    &self,
+    values: RunningValues<'_>,
+    mut chapter: impl FnMut() -> T,
+    mut section: impl FnMut() -> T,
+    mut literal: impl FnMut(&str) -> T,
+  ) -> Vec<T> {
+    self.0.ensure_validated();
+    let mut nodes: Vec<T> = Vec::new();
+    let mut buffer = String::new();
+    for part in &self.0.parts {
+      match part {
+        Part::Literal(range) => buffer.push_str(&self.0.source[range.clone()]),
+        Part::Placeholder(RunningPlaceholder::Page) => buffer.push_str(values.page),
+        Part::Placeholder(RunningPlaceholder::Pages) => buffer.push_str(values.pages),
+        Part::Placeholder(RunningPlaceholder::Title) => buffer.push_str(values.title),
+        Part::Placeholder(RunningPlaceholder::Author) => buffer.push_str(values.author),
+        Part::Placeholder(RunningPlaceholder::Date) => buffer.push_str(values.date),
+        Part::Placeholder(RunningPlaceholder::Chapter) => {
+          flush_literal(&mut nodes, &mut buffer, &mut literal);
+          nodes.push(chapter());
+        },
+        Part::Placeholder(RunningPlaceholder::Section) => {
+          flush_literal(&mut nodes, &mut buffer, &mut literal);
+          nodes.push(section());
+        },
+      }
+    }
+    flush_literal(&mut nodes, &mut buffer, &mut literal);
+    return nodes;
   }
 
   /// テンプレート文字列が空白のみかどうか
@@ -771,15 +800,20 @@ mod tests {
   fn expansion_is_single_pass_and_does_not_reinterpret_values() {
     let template = RunningTemplate::parse("{title} — {page}");
 
-    let text = template.expand(RunningValues {
-      page: "7",
-      pages: "9",
-      title: "{page} 章",
-      author: "",
-      date: "",
-    });
+    let text = template.expand(
+      RunningValues {
+        page: "7",
+        pages: "9",
+        title: "{page} 章",
+        author: "",
+        date: "",
+      },
+      || unreachable!("題目のトークンは無い"),
+      || unreachable!("題目のトークンは無い"),
+      str::to_string,
+    );
 
-    assert_eq!(text, "{page} 章 — 7", "埋めた値の中の {{page}} は再解釈されない");
+    assert_eq!(text, vec!["{page} 章 — 7"], "埋めた値の中の {{page}} は再解釈されない");
   }
 
   #[test]
@@ -830,7 +864,47 @@ mod tests {
     assert!(violation(&TheoremHeadingTemplate::parse("{display_name} of {of} ({title}) {number}")).is_none());
     assert!(violation(&TheoremHeadingTemplate::parse("{page}")).is_some());
     assert!(violation(&RunningTemplate::parse("{page} / {pages} — {title}{author}{date}")).is_none());
+    assert!(violation(&RunningTemplate::parse("{chapter}{section}")).is_none());
     assert!(violation(&RunningTemplate::parse("{pagee}")).is_some());
+    assert!(violation(&NumberTitleTemplate::parse("{chapter}")).is_some());
+  }
+
+  /// `{page}` だけを埋め、`{pages}` は `"12"`、文書メタデータは空にした走り文の値
+  fn running_values(page: &str) -> RunningValues<'_> {
+    return RunningValues {
+      page,
+      pages: "12",
+      title: "",
+      author: "",
+      date: "",
+    };
+  }
+
+  #[test]
+  fn running_expand_merges_values_into_literals_and_inserts_titles_in_place() {
+    let pieces = RunningTemplate::parse("{page} {chapter} / {section}").expand(
+      running_values("3"),
+      || return "<C>".to_string(),
+      || return "<S>".to_string(),
+      |text| return format!("L({text})"),
+    );
+
+    assert_eq!(pieces, vec!["L(3 )", "<C>", "L( / )", "<S>"]);
+  }
+
+  #[test]
+  fn running_expand_without_titles_is_a_single_literal() {
+    let expand = |source: &str| {
+      return RunningTemplate::parse(source).expand(
+        running_values("3"),
+        || unreachable!("題目のトークンは無い"),
+        || unreachable!("題目のトークンは無い"),
+        str::to_string,
+      );
+    };
+
+    assert_eq!(expand("{page} / {pages}"), vec!["3 / 12"]);
+    assert_eq!(expand(""), Vec::<String>::new());
   }
 
   #[test]

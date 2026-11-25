@@ -112,6 +112,7 @@ mod tests {
         })
         .collect(),
       anchors: Vec::new(),
+      opening_headings: Vec::new(),
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,

@@ -28,7 +28,7 @@ mod title_page;
 
 use std::mem;
 
-pub(super) use heading::toc_entry_style;
+pub(super) use heading::{running_text_style, toc_entry_style};
 pub(super) use layout_node::{
   DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
   ParagraphLayout, QuantityPiece, TableCellContent, TableColumn, TableLayout, TableRowLayout, TextStyle,
@@ -124,7 +124,8 @@ impl<'a> LoweringContext<'a> {
 /// 見出し 1 件の記録
 #[derive(Debug, Clone)]
 pub(super) struct HeadingRecord {
-  /// 目次の行のはみ出し警告が指し、目次の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None`
+  /// 目次の行のはみ出し警告が指し、目次・柱の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None` で、
+  /// 柱はこの見出し以降を本文外として扱う
   pub node: Option<NodeId>,
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
@@ -136,6 +137,11 @@ pub(super) struct HeadingRecord {
   pub title_plain: String,
   /// 目次の行に組む「番号 題目」。目次の行の書体で lower 済みで、リンク・脚注・索引を含まない
   pub toc_label: Vec<InlineNode>,
+  /// ヘッダーの `{chapter}` / `{section}` に組む題目（番号を含まない）。`[header]` の書体・サイズで lower 済みで、
+  /// リンク・脚注・索引を含まない
+  pub header_title: Vec<InlineNode>,
+  /// フッターの `{chapter}` / `{section}` に組む題目。`[footer]` の書体・サイズで lower 済みのほかは `header_title` と同じ
+  pub footer_title: Vec<InlineNode>,
 }
 
 impl HeadingRecord {
@@ -818,6 +824,8 @@ mod tests {
         number: number.to_string(),
         title_plain: title_plain.to_string(),
         toc_label: Vec::new(),
+        header_title: Vec::new(),
+        footer_title: Vec::new(),
       };
     };
     assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");

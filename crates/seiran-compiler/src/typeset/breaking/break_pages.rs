@@ -3062,6 +3062,67 @@ mod tests {
   }
 
   #[test]
+  fn heading_landing_on_the_first_block_opens_the_page() {
+    let geom = test_geometry();
+    let blocks = vec![
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      paragraph_of_lines(1),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &geom);
+
+    assert_eq!(pages[0].opening_headings, vec![HeadingKey::new(0)]);
+  }
+
+  #[test]
+  fn heading_after_the_first_block_does_not_open_the_page() {
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(1),
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      paragraph_of_lines(1),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &geom);
+
+    assert_eq!(pages.len(), 1, "{pages:?}");
+    assert!(pages[0].opening_headings.is_empty(), "{:?}", pages[0].opening_headings);
+    assert!(pages[0].anchors.iter().any(|anchor| return anchor.id == AnchorId::Heading(HeadingKey::new(0))));
+  }
+
+  #[test]
+  fn heading_carried_to_the_next_page_opens_that_page() {
+    let geom = test_geometry();
+    let blocks = vec![
+      paragraph_of_lines(4),
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      paragraph_of_lines(1),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &geom);
+
+    assert_eq!(pages.len(), 2, "{pages:?}");
+    assert!(pages[0].opening_headings.is_empty(), "{:?}", pages[0].opening_headings);
+    assert_eq!(pages[1].opening_headings, vec![HeadingKey::new(0)]);
+  }
+
+  #[test]
+  fn heading_at_the_top_of_the_second_column_does_not_open_the_page() {
+    let geom = two_column_geometry();
+    let blocks = vec![
+      paragraph_of_lines(4),
+      Block::Anchor(AnchorId::Heading(HeadingKey::new(0))),
+      paragraph_of_lines(1),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &geom);
+
+    assert_eq!(pages.len(), 1, "2 段目に収まるはず: {pages:?}");
+    assert!(pages[0].opening_headings.is_empty(), "{:?}", pages[0].opening_headings);
+    assert!(pages[0].anchors.iter().any(|anchor| return anchor.id == AnchorId::Heading(HeadingKey::new(0))));
+  }
+
+  #[test]
   fn paragraph_link_becomes_placed_link() {
     use crate::typeset::boxes::LinkTarget;
     let geom = test_geometry();
