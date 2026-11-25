@@ -156,10 +156,11 @@ impl PageGeometry {
   /// 段の右端の外で、どの段に着地しても隣の段・用紙端に届かない幅。単段は右余白、複数段は段間と右余白の小さい方
   #[must_use]
   pub(super) fn right_clearance(&self) -> Length {
-    if self.num_columns > 1 {
-      return self.column_gap.min(self.margin_right);
-    }
-    return self.margin_right;
+    return if self.num_columns > 1 {
+      self.column_gap.min(self.margin_right)
+    } else {
+      self.margin_right
+    };
   }
 }
 

@@ -1184,6 +1184,7 @@ mod tests {
 
     let lines = break_lines(&items, pt(38.5), pt(5.0)).expect("テストの寸法は値域内");
 
+    assert_eq!(lines[0].boxes.len(), 4, "1 行目は句読点までの 4 箱: {lines:?}");
     assert_eq!(lines[0].hanging, Length::ZERO, "{lines:?}");
     assert!(lines[0].width().expect("値域内") <= pt(38.5), "{lines:?}");
   }
@@ -1223,6 +1224,25 @@ mod tests {
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.last().expect("1 行目は箱を持つ").dx, pt(30.0), "{lines:?}");
+    assert_eq!(lines[0].hanging, pt(5.0), "{lines:?}");
+  }
+
+  #[test]
+  fn does_not_hang_a_comma_before_a_hyphenation_point() {
+    let items = vec![
+      box_width(10.0),
+      cjk_glue(),
+      box_width(10.0),
+      cjk_glue(),
+      box_width(10.0),
+      comma(5.0),
+      discretionary(1.0),
+      box_width(10.0),
+    ];
+
+    let lines = break_lines(&items, pt(30.0), pt(5.0)).expect("テストの寸法は値域内");
+
+    assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
   }
 
   #[test]

@@ -29,6 +29,10 @@
 //!   寄せ環境 3 種 [`flush_environment_matches_text_alignment_of_the_same_direction`] /
 //!   [`nested_flush_environment_uses_innermost_direction_and_reverts_after_it`] /
 //!   [`empty_flush_environment_adds_no_vertical_space`]（寄せ環境で包んだ組版と、包まない・`[text].alignment` を変えた組版）
+//! - **`Line` へ直接アサート（行末の句読点のぶら下げ）**:
+//!   [`hanging_punctuation_hangs_a_comma_that_alone_overflows`] 以下の `hanging_punctuation_*` /
+//!   `hanging_last_line_is_not_stretched` / `hanging_comma_*`（共通ヘルパ [`hanging_project`] / [`body_lines`] /
+//!   [`line_runs`] 経由。ぶら下げ量・句読点の位置・リンク矩形・文字列と cluster・警告の有無を固定する）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -6365,6 +6369,7 @@ fn hanging_comma_across_a_style_boundary_hangs_the_same() {
   let plain = body_lines(&hanging_project("あいうえおかきくけ、こさし\n", true).build());
   let bold = body_lines(&hanging_project("あいうえおかきく\\bold{け、}こさし\n", true).build());
 
+  assert_eq!(plain[0].hanging, Length::pt(6.0));
   assert_eq!(bold[0].hanging, plain[0].hanging);
   assert_close(last_run(&bold[0]).dx, last_run(&plain[0]).dx, "句読点の位置");
 }
@@ -6400,6 +6405,8 @@ fn hanging_comma_raises_no_overflow_warning() {
   let long_word = compile("Pneumonoultramicroscopicsilicovolcanoconiosis\n");
 
   assert!(hung.warnings.is_empty(), "{:?}", hung.warnings);
+  let hung_lines = body_lines(&hanging_project("あいうえおかきくけ、こさし\n", true).build());
+  assert_eq!(hung_lines[0].hanging, Length::pt(6.0));
   let overflows = long_word
     .warnings
     .iter()

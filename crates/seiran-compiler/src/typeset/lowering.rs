@@ -539,6 +539,15 @@ mod tests {
   }
 
   #[test]
+  fn theorem_body_paragraph_may_hang_punctuation() {
+    // 定理の見出し段落は false、本文段落は true
+    let flags =
+      paragraph_hanging_flags(&lower_source(&style_with_hanging(), "\\begin{theorem}\n本文。\n\\end{theorem}\n"));
+
+    assert_eq!(flags, vec![false, true]);
+  }
+
+  #[test]
   fn no_paragraph_hangs_when_the_style_is_off() {
     let flags = paragraph_hanging_flags(&lower_source(&ReadStyle::default(), "本文。\n"));
 
