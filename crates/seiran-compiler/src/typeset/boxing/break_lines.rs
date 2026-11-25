@@ -23,7 +23,7 @@ pub(super) fn break_lines(
   return if alignment == TextAlignment::Justify {
     knuth_plass::break_lines(items, text_width)
   } else {
-    greedy::break_lines(items, text_width, alignment)
+    greedy::break_lines(items, text_width, alignment, &mut Vec::new())
   };
 }
 
@@ -443,7 +443,8 @@ mod tests {
       TextAlignment::Right,
     ] {
       let lines = break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
-      let greedy = greedy::break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
+      let greedy =
+        greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new()).expect("テストの寸法は値域内");
 
       assert_same_lines(&lines, &greedy);
     }
