@@ -9,7 +9,8 @@ use crate::{
   typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
 };
 
-/// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む
+/// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
+/// 両端揃えでも、実現可能な分割が無いサブ段落は貪欲法の両端揃えで組む
 ///
 /// # Errors
 ///
@@ -247,7 +248,7 @@ fn build_line(
   return Ok(line);
 }
 
-/// 行分割器が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
+/// 行分割が改行できる位置の間で最も広い区間の幅（セルの最小内容幅）
 ///
 /// 分割機会は breakable な `Glue`（幅は区間に入れない）・`Penalty { value <= 0 }`・`Discretionary`（直前の区間に
 /// ハイフン幅を足す）・`MathBreak`（`spacing` は区間に入れない）・`ForcedBreak`。それ以外は自然幅を区間へ足し、
@@ -525,7 +526,7 @@ mod tests {
 
   #[test]
   fn greedy_never_overflows_at_the_min_content_width() {
-    // 分割機会が glue / penalty / 数式内分割点だけの列で、最小内容幅で折ると全行が収まる（定義が行分割器と一致する）
+    // 分割機会が glue / penalty / 数式内分割点だけの列で、最小内容幅で折ると全行が収まる（定義が行分割と一致する）
     let items = vec![
       box_width(7.0),
       space_glue(),

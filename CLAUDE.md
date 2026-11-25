@@ -256,7 +256,7 @@ rust-analyzer の LSP は Claude Code の plugin（`rust-analyzer-lsp`）で使�
 | ----------------------------------------------------------------------------------- | --------------------------------- |
 | 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                  |
 | 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）     | `findReferences`                  |
-| trait 実装の列挙（`ProjectSource` 等の seam の実装は複数ファイルに散る）           | `goToImplementation`              |
+| trait 実装の列挙（`ProjectSource` 等の seam の実装は複数ファイルに散る）            | `goToImplementation`              |
 | 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                          | `hover`                           |
 | ファイル内の型・関数一覧                                                            | `documentSymbol`                  |
 | 呼び出し関係（パイプラインのどの段から呼ばれるか）                                  | `incomingCalls` / `outgoingCalls` |
