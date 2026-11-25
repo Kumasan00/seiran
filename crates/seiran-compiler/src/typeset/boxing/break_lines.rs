@@ -155,7 +155,7 @@ fn build_line(
   let mut depth = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) => {
         boxes.push(PlacedHBox {
           hbox: hbox.clone(),
           dx: x,
@@ -264,7 +264,9 @@ pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflo
   let mut segment = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(_) | HItem::FlushRight(_) | HItem::Kern(_) => segment = segment.try_add(item.natural_width())?,
+      HItem::Box(_) | HItem::Comma(_) | HItem::FlushRight(_) | HItem::Kern(_) => {
+        segment = segment.try_add(item.natural_width())?;
+      },
       HItem::Glue {
         natural, breakable, ..
       } => {

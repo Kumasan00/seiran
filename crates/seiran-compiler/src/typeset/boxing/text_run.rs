@@ -203,7 +203,7 @@ pub(super) fn place_prose(
 ) -> Result<(), LengthOverflow> {
   for item in list.into_items() {
     match item {
-      HItem::Box(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) => {
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
         *dx = dx.try_add(width)?;
@@ -303,7 +303,12 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
 
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
-      out.push(HItem::Box(punct_box(run, i, normalize, advances[i])?));
+      let hbox = punct_box(run, i, normalize, advances[i])?;
+      out.push(if eff_class(i) == yakumono::YakumonoClass::Comma {
+        HItem::Comma(hbox)
+      } else {
+        HItem::Box(hbox)
+      });
       normal_start = i + 1;
     }
   }
@@ -710,7 +715,7 @@ mod tests {
     return items
       .iter()
       .filter_map(|item| {
-        let HItem::Box(hbox) = item else {
+        let (HItem::Box(hbox) | HItem::Comma(hbox)) = item else {
           return None;
         };
         let HBoxContent::Glyphs(run) = &hbox.content else {
@@ -744,6 +749,42 @@ mod tests {
       texts.iter().any(|box_text| return box_text.contains("」\u{FE00}")),
       "クラスタは 1 つの箱に収まるはず: {texts:?}"
     );
+  }
+
+  #[test]
+  fn japanese_commas_become_comma_items() {
+    // 、。，． は Comma、」・ は Box（いずれも全角 1 グリフ）
+    for (text, expect_comma) in [
+      ("あ、", true),
+      ("あ。", true),
+      ("あ，", true),
+      ("あ．", true),
+      ("あ」", false),
+      ("あ・", false),
+    ] {
+      let run = shaped_with_ranges(text, &[(0..3, 1000), (3..text.len(), 1000)]);
+      let mut out = Vec::new();
+
+      split_japanese_run(&run, &mut out).expect("テストの寸法は値域内");
+
+      let last_box = out
+        .iter()
+        .rev()
+        .find(|item| return !matches!(item, HItem::Glue { .. }))
+        .expect("句読点の箱があるはず");
+      assert_eq!(matches!(last_box, HItem::Comma(_)), expect_comma, "{text}: {out:?}");
+    }
+  }
+
+  #[test]
+  fn comma_cluster_with_a_combining_mark_stays_a_plain_box() {
+    // 句読点 + 結合文字が 2 グリフ 1 クラスタなら約物として詰めない（Comma にしない）
+    let run = shaped_with_ranges("あ、\u{0301}", &[(0..3, 1000), (3..8, 1000), (3..8, 0)]);
+    let mut out = Vec::new();
+
+    split_japanese_run(&run, &mut out).expect("テストの寸法は値域内");
+
+    assert!(out.iter().all(|item| return !matches!(item, HItem::Comma(_))), "{out:?}");
   }
 
   #[test]

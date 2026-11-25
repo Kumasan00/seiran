@@ -170,6 +170,7 @@ fn break_subparagraph(
       HItem::Glue { .. }
       | HItem::Penalty { .. }
       | HItem::Box(_)
+      | HItem::Comma(_)
       | HItem::Kern(_)
       | HItem::FlushRight(_)
       | HItem::ForcedBreak

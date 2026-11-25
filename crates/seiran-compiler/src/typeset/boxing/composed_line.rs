@@ -114,7 +114,7 @@ pub(super) fn unwrapped_line(items: &[HItem]) -> Result<Line, LengthOverflow> {
   let mut open: Vec<(LinkTarget, Length)> = Vec::new();
   for item in items {
     match item {
-      HItem::Box(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) => {
         line.boxes.push(PlacedHBox {
           hbox: hbox.clone(),
           dx: cursor,

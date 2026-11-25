@@ -546,7 +546,9 @@ fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
     .iter()
     .filter_map(|item| match item {
-      HItem::Box(hbox) | HItem::FlushRight(hbox) => return max_font_size_in_content(&hbox.content),
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::FlushRight(hbox) => {
+        return max_font_size_in_content(&hbox.content);
+      },
       // グリフを内包しないアイテムはフォントサイズを持たない。`Discretionary` のハイフン箱と
       // `Footnote` の本体は支配的サイズには数えない（行送りは本文側で決まる）。
       HItem::Glue { .. }

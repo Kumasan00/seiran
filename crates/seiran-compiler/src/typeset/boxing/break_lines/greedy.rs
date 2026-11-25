@@ -81,7 +81,7 @@ pub(super) fn break_lines(
       HItem::LinkStart(_) | HItem::LinkEnd | HItem::Footnote(_) | HItem::IndexMark(_) => {
         buffer.push(item);
       },
-      HItem::Box(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
+      HItem::Box(_) | HItem::Comma(_) | HItem::Kern(_) | HItem::FlushRight(_) => {
         let item_width = item.natural_width();
         // 1 回の持ち越しで収まるとは限らない（持ち越し後も現在の item を含めて溢れることがある）ので
         // while で再判定する。持ち越すたびに buffer は真に縮む（少なくとも破断アイテム自身が抜ける）ので

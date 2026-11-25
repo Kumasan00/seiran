@@ -312,7 +312,7 @@ mod tests {
     return items
       .iter()
       .map(|item| match item {
-        HItem::Box(_) => return "box".to_string(),
+        HItem::Box(_) | HItem::Comma(_) => return "box".to_string(),
         HItem::Glue {
           natural, breakable, ..
         } => return format!("glue {natural}{}", if *breakable { "" } else { " nobreak" }),
