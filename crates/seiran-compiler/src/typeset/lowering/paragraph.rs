@@ -45,6 +45,7 @@ pub(super) fn assemble_paragraph(
     origin,
     content: result,
     spacing_after: ctx.style.text.paragraph_spacing,
+    hanging_punctuation: ctx.style.text.hanging_punctuation,
   };
 }
 

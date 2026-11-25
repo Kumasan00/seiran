@@ -61,6 +61,7 @@ pub(super) fn lower_theorem(
         origin: Some(id),
         content: vec![qed_node],
         spacing_after: Length::ZERO,
+        hanging_punctuation: false,
       }));
     }
   }
@@ -118,6 +119,7 @@ fn build_heading(
     origin: Some(id),
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
+    hanging_punctuation: false,
   })];
 
   return LayoutNode::VBox {

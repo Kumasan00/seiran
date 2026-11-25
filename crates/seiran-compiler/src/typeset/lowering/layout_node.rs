@@ -72,6 +72,15 @@ pub(in crate::typeset) struct ParagraphLayout {
   pub content: Vec<InlineNode>,
   /// 内容が空でも残す段落後の固定アキ。0 はアキなし
   pub spacing_after: Length,
+  /// 行末の和文句読点をぶら下げてよい本文系の段落か。揃えは見ない（両端揃えかどうかは継いだ揃えを知る boxing が判定する）
+  #[cfg_attr(
+    not(test),
+    expect(
+      dead_code,
+      reason = "lowering が解決するだけで、読む側（boxing の段落組み）は後続の変更で足す。足した時点でこの属性を外す"
+    )
+  )]
+  pub hanging_punctuation: bool,
 }
 
 /// 段落の水平リスト（`crate::typeset::boxes::HItem` 列）へ入れられるノード

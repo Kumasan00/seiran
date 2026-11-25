@@ -123,7 +123,7 @@ mod tests {
     style::{RunningTemplate, Style as ReadStyle},
     typeset::lowering::{
       lower_sources_with_headings, running_text_style,
-      test_support::{analyzed, context, inlines, lower, paragraph_layout, paragraph_origins},
+      test_support::{analyzed, context, inlines, lower, paragraph_hanging_flags, paragraph_layout, paragraph_origins},
     },
   };
 
@@ -181,6 +181,17 @@ mod tests {
       _ => return None,
     });
     assert_eq!(italic.map(|s| return s.typeface), Some(Typeface::SerifItalic), "{layout:?}");
+  }
+
+  #[test]
+  fn bibliography_entries_follow_hanging_punctuation() {
+    let mut style = ReadStyle::default();
+    style.text.hanging_punctuation = true;
+
+    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
+
+    // 先頭は書誌見出しの段落（独立行なので false）、続くのが書誌エントリ
+    assert_eq!(paragraph_hanging_flags(&layout), vec![false, true], "{layout:?}");
   }
 
   #[test]

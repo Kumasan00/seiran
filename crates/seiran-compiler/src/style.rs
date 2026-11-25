@@ -602,6 +602,20 @@ mod validate_tests {
   }
 
   #[test]
+  fn parse_rejects_hanging_punctuation_without_punctuation_spacing() {
+    let toml = "[text]\npunctuation_spacing = false\nhanging_punctuation = true\n";
+
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+
+    assert_eq!(paths(&errors), vec!["text.hanging_punctuation"]);
+  }
+
+  #[test]
+  fn parse_accepts_hanging_punctuation_with_punctuation_spacing() {
+    assert!(parse("[text]\nhanging_punctuation = true\n", dummy_source()).is_ok());
+  }
+
+  #[test]
   fn parse_rejects_toc_alignment_with_page_numbers() {
     // show_page_numbers は既定 true
     let toml = "[toc]\nalignment = \"center\"\n";
