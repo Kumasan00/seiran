@@ -436,9 +436,9 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
 
 段順序と、その間に成立する不変条件（box 計測は
 1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
-各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の差し替え
-seam（`LineBreaker` trait と 2 実装）は実在するが、どの breaker を使うかを外へ出さない（Knuth–Plass を
-`pagination` の context が保持し、greedy は内部フォールバック）。
+各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の入口は
+`breaking::break_lines` 1 つで、どの方式で組むか（両端揃えは Knuth–Plass、それ以外と実現可能な分割が無い
+サブ段落は貪欲法）を外へ出さない。
 
 境界:
 
@@ -693,9 +693,9 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
 
-`boxing` から `breaking` への依存は表エンジンがセルを折り返すための `breaking::break_lines` の 2 つ（行分割器
-`LineBreaker` と最小内容幅 `min_content_width`）だけで、どちらも計測済みの `HItem` を読むだけのフォント非依存の
-純粋関数（行分割器は本文の段落と同じものを `BlockBuildInputs::breaker` で借りる）。改ページ（`break_pages`）は段順序どおり
+`boxing` から `breaking` への依存は表エンジンがセルを折り返すための `breaking::break_lines` の 2 つ（行分割
+`break_lines` と最小内容幅 `min_content_width`）だけで、どちらも計測済みの `HItem` を読むだけのフォント非依存の
+純粋関数。改ページ（`break_pages`）は段順序どおり
 `boxing` の下流のまま。
 
 #### 数式エンジン（`boxing::math`）

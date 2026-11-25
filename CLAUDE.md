@@ -107,7 +107,7 @@ CLI 引数パース → compile facade      base_dir から PathResolver を 1 �
 - 採番・`\ref` 解決・引用キー検証は semantics が確定し、lowering は表示文字列化だけ。
   文書木への書き戻しはどの段も行わない
 - box は boxing で寸法を 1 回だけ計測して保持し、breaking 以降のパスはフォントに触れない
-- 行分割は glue / penalty モデル（Knuth–Plass。greedy は内部フォールバックのみ）。縦組版は glue と 2 つの改ページ制御（強制改ページ・分割禁止）で、有限値の penalty を持たない
+- 行分割は glue / penalty モデル（Knuth–Plass。両端揃え以外と実現可能な分割が無いサブ段落は内部の貪欲法）。縦組版は glue と 2 つの改ページ制御（強制改ページ・分割禁止）で、有限値の penalty を持たない
 - インライン数式の分割点（`HItem::MathBreak`。数式エンジンが積む）は、行分割が他の分割点で組めないときだけ使う。
   上付き下付き・分数・二項係数・根号・アクセント（広幅を含む）・上下線・伸縮括弧・数式内へ埋め込んだ行列と場合分け・グループ・数式内の文章（`\text`）・数値・単位・量（`\num` / `\unit` / `\qty`。本文でも同じ箱）とディスプレイ数式は閉じた箱
   （`HBoxContent::Atom`）のまま段落の行分割へ渡り、行分割は数式の内部構造を知らない（分割点の位置・記号間のアキの規則は
@@ -256,7 +256,7 @@ rust-analyzer の LSP は Claude Code の plugin（`rust-analyzer-lsp`）で使�
 | ----------------------------------------------------------------------------------- | --------------------------------- |
 | 定義へ移動（特に root facade の `pub use` re-export 越し。grep は facade で止まる） | `goToDefinition`                  |
 | 参照の網羅（リファクタの影響範囲確認。grep の文字列一致は同名衝突・漏れが出る）     | `findReferences`                  |
-| trait 実装の列挙（`LineBreaker` 等の seam の実装は複数ファイルに散る）              | `goToImplementation`              |
+| trait 実装の列挙（`ProjectSource` 等の seam の実装は複数ファイルに散る）           | `goToImplementation`              |
 | 型・シグネチャ・doc コメントの確認（宣言まで飛ばずに済む）                          | `hover`                           |
 | ファイル内の型・関数一覧                                                            | `documentSymbol`                  |
 | 呼び出し関係（パイプラインのどの段から呼ばれるか）                                  | `incomingCalls` / `outgoingCalls` |

@@ -7,9 +7,7 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{HItem, Line},
-    breaking::break_lines::{
-      GreedyBreaker, LineBreaker, OpenLink, build_line, glue_metrics, strip_leading_glue, trim_trailing_glue,
-    },
+    breaking::break_lines::{OpenLink, build_line, glue_metrics, greedy, strip_leading_glue, trim_trailing_glue},
     observe,
   },
 };
@@ -25,41 +23,30 @@ const DOUBLE_HYPHEN_DEMERIT: f64 = 10_000.0;
 /// badness の上限。極端に疎な行（伸長比が大きい行）はこの値で頭打ちにする
 const INFINITE_BADNESS: f64 = 10_000.0;
 
-/// Knuth–Plass 方式（段落全体最適）による行分割
-#[derive(Debug, Clone, Copy, Default)]
-pub(crate) struct KnuthPlassBreaker;
+/// Knuth–Plass 方式（段落全体最適）で水平リストを本文幅の両端揃えの行に分割する
+///
+/// # Errors
+///
+/// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+pub(super) fn break_lines(items: &[HItem], text_width: Length) -> Result<Vec<Line>, LengthOverflow> {
+  // 強制改行（ForcedBreak）で区切ったサブ段落ごとに最適化する。各サブ段落の最終行は伸縮しない
+  let segments = split_on_forced_break(items);
+  let segment_count = segments.len();
+  let mut lines: Vec<Line> = Vec::new();
+  // 折り返しをまたいで開いているリンク領域（サブ段落・行をまたいで引き継ぐ）
+  let mut open_links: Vec<OpenLink> = Vec::new();
 
-impl LineBreaker for KnuthPlassBreaker {
-  fn break_lines(
-    &self,
-    items: &[HItem],
-    text_width: Length,
-    alignment: TextAlignment,
-  ) -> Result<Vec<Line>, LengthOverflow> {
-    // 両端揃え以外（左・中央・右）は貪欲法で組む
-    if alignment != TextAlignment::Justify {
-      return GreedyBreaker.break_lines(items, text_width, alignment);
+  for (index, segment) in segments.iter().enumerate() {
+    let has_following_break = index + 1 < segment_count;
+    let is_sole_segment = segment_count == 1;
+    // 末尾（強制改行の後ろ）の空サブ段落は行を作らない（貪欲法の末尾フラッシュと同じ挙動）
+    if !has_following_break && !is_sole_segment && segment.is_empty() {
+      continue;
     }
-
-    // 強制改行（ForcedBreak）で区切ったサブ段落ごとに最適化する。各サブ段落の最終行は伸縮しない
-    let segments = split_on_forced_break(items);
-    let segment_count = segments.len();
-    let mut lines: Vec<Line> = Vec::new();
-    // 折り返しをまたいで開いているリンク領域（サブ段落・行をまたいで引き継ぐ）
-    let mut open_links: Vec<OpenLink> = Vec::new();
-
-    for (index, segment) in segments.iter().enumerate() {
-      let has_following_break = index + 1 < segment_count;
-      let is_sole_segment = segment_count == 1;
-      // 末尾（強制改行の後ろ）の空サブ段落は行を作らない（貪欲法の末尾フラッシュと同じ挙動）
-      if !has_following_break && !is_sole_segment && segment.is_empty() {
-        continue;
-      }
-      let segment_lines = break_subparagraph(segment, text_width, &mut open_links)?;
-      lines.extend(segment_lines);
-    }
-    return Ok(lines);
+    let segment_lines = break_subparagraph(segment, text_width, &mut open_links)?;
+    lines.extend(segment_lines);
   }
+  return Ok(lines);
 }
 
 /// 強制改行（[`HItem::ForcedBreak`]）位置で分割したサブ段落スライス列を返す
@@ -144,7 +131,7 @@ enum Edge {
 }
 
 /// 強制改行を含まない 1 サブ段落を最適分割する。溢れる行を避けられない（末尾まで実現可能な分割が無い）サブ段落だけを
-/// `GreedyBreaker` で組む
+/// 貪欲法（`greedy::break_lines`）で組む
 fn break_subparagraph(
   items: &[HItem],
   text_width: Length,
@@ -254,7 +241,7 @@ fn break_subparagraph(
 
   // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
   if best[node_count - 1].is_none() {
-    return GreedyBreaker.break_lines(items, text_width, TextAlignment::Justify);
+    return greedy::break_lines(items, text_width, TextAlignment::Justify);
   }
 
   let mut chain: Vec<usize> = Vec::new();
@@ -426,17 +413,15 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<
 
 #[cfg(test)]
 mod tests {
-  use super::{
-    Breakpoint, Edge, GreedyBreaker, KnuthPlassBreaker, LineBreaker, PathCost, break_subparagraph, demerits,
-    evaluate_edge,
-  };
+  use super::{Breakpoint, Edge, PathCost, break_lines, break_subparagraph, demerits, evaluate_edge};
   use crate::{
     document::TextAlignment,
     length::Length,
     typeset::{
       boxes::{HItem, Line},
-      breaking::break_lines::test_support::{
-        box_width, discretionary, flush_right_box, link_target, math_break, stretch_glue, test_box,
+      breaking::break_lines::{
+        greedy,
+        test_support::{box_width, discretionary, flush_right_box, link_target, math_break, stretch_glue, test_box},
       },
     },
   };
@@ -455,40 +440,9 @@ mod tests {
   /// `Length` が pt 値 `expected` に（差 1e-3 pt 未満で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
-  /// 2 つの `Length` が（sp 丸め精度内で）一致するか
-  fn close_l(a: Length, b: Length) -> bool { return (a - b).abs() <= Length::from_sp(1); }
-
-  #[test]
-  fn non_justify_delegates_to_greedy() {
-    let items = vec![
-      test_box(),
-      stretch_glue(),
-      test_box(),
-      stretch_glue(),
-      test_box(),
-    ];
-
-    let kp = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
-    let greedy = GreedyBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Left)
-      .expect("テストの寸法は値域内");
-
-    assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
-    for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
-      assert_eq!(kp_line.boxes.len(), greedy_line.boxes.len());
-      for (a, b) in kp_line.boxes.iter().zip(&greedy_line.boxes) {
-        assert!(close_l(a.dx, b.dx), "kp: {kp:?}, greedy: {greedy:?}");
-      }
-    }
-  }
-
   #[test]
   fn empty_items_yield_single_empty_line() {
-    let lines = KnuthPlassBreaker
-      .break_lines(&[], Length::pt(100.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&[], Length::pt(100.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -516,12 +470,8 @@ mod tests {
       box_width(8.0),
     ];
 
-    let greedy = GreedyBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
-    let kp = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let greedy = greedy::break_lines(&items, Length::pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let kp = break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 3, "greedy: {greedy:?}");
     assert!(right_edge(&greedy[0]) < pt(24.0), "greedy の非最終行は疎（右端 < 25）: {greedy:?}");
@@ -540,9 +490,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0)).expect("テストの寸法は値域内");
 
     // glue は自然幅 5 のまま
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -553,9 +501,7 @@ mod tests {
   fn empty_segment_before_forced_break_yields_empty_line() {
     let items = vec![HItem::ForcedBreak, test_box()];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(lines[0].boxes.is_empty(), "1 行目は空: {lines:?}");
@@ -566,9 +512,7 @@ mod tests {
   fn trailing_forced_break_does_not_add_empty_line() {
     let items = vec![test_box(), HItem::ForcedBreak];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(100.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(100.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
@@ -582,9 +526,7 @@ mod tests {
       flush_right_box(8.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(14.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(14.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
@@ -596,9 +538,7 @@ mod tests {
   fn flush_right_box_sits_on_last_line_when_it_fits() {
     let items = vec![test_box(), stretch_glue(), flush_right_box(8.0)];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(50.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(50.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED: {lines:?}");
@@ -617,9 +557,7 @@ mod tests {
       test_box(),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(27.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(27.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
@@ -642,9 +580,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "行末にハイフンが付く: {lines:?}");
@@ -671,9 +607,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(40.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(40.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -706,9 +640,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 3, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "{lines:?}");
@@ -734,9 +666,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(34.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(34.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -755,12 +685,8 @@ mod tests {
       box_width(40.0),
     ];
 
-    let kp = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
-    let greedy = GreedyBreaker
-      .break_lines(&items, Length::pt(30.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let kp = break_lines(&items, Length::pt(30.0)).expect("テストの寸法は値域内");
+    let greedy = greedy::break_lines(&items, Length::pt(30.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
@@ -849,10 +775,8 @@ mod tests {
       box_width(8.0),
     ];
 
-    let kp = KnuthPlassBreaker
-      .break_lines(&items, pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
-    let greedy = GreedyBreaker.break_lines(&items, pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let kp = break_lines(&items, pt(25.0)).expect("テストの寸法は値域内");
+    let greedy = greedy::break_lines(&items, pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 4, "greedy: {greedy:?}");
     assert_eq!(kp.len(), 3, "kp: {kp:?}");
@@ -895,9 +819,7 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 4, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(12.0)], "{lines:?}");
@@ -915,9 +837,7 @@ mod tests {
     // 幅 25。語 b18|b18 は 1 行に収まらず、語中で割った 1 行目 b18 + ハイフン 3 は伸縮点が無い
     let items = vec![box_width(18.0), discretionary(3.0), box_width(18.0)];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, pt(25.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(18.0), pt(3.0)], "{lines:?}");
@@ -981,9 +901,7 @@ mod tests {
       box_width(20.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(36.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(36.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "{lines:?}");
@@ -1005,9 +923,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(40.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(40.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "2 つ目の空白で折る: {lines:?}");
@@ -1030,9 +946,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = KnuthPlassBreaker
-      .break_lines(&items, Length::pt(32.0), TextAlignment::Justify)
-      .expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(32.0)).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 3 つ（MB はボックスを生成しない）: {lines:?}");
