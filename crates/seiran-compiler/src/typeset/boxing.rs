@@ -9,6 +9,7 @@
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
 //! 段落は [`ParagraphLayout`] ごとに水平リストを計測して使える幅（段幅から字下げを引いた `boxes::usable_width`）で行分割し（左字下げまでずらした行を `Block::Paragraph` が持つ）、内容が空でも段落後の固定アキを残す。
+//! 両端揃えの本文系段落は行末の句読点を右字下げと段の外の幅（版面の `right_clearance`）の範囲でぶら下げてよい。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（数式エンジン — インライン・ディスプレイ数式の段・アキ・分割候補の組み立てと、構造ごとの計測・配置）と
@@ -131,6 +132,7 @@ pub(super) fn build_blocks(
     ),
     images: inputs.images,
     column_width: galley.column_width(),
+    right_clearance: galley.right_clearance(),
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
@@ -148,6 +150,8 @@ struct BlockBuilder<'a> {
   images: &'a ImageResources,
   /// この縦リストを組む段の幅
   column_width: Length,
+  /// 段の右端の外で、どの段に着地しても隣の段・用紙端に届かない幅（句読点をぶら下げてよい幅の、字下げ以外の分）
+  right_clearance: Length,
 }
 
 impl BlockBuilder<'_> {
@@ -308,12 +312,18 @@ impl BlockBuilder<'_> {
             origin: paragraph.origin,
           };
         })?;
+    let overflow = |LengthOverflow| {
+      return ElementOverflow {
+        origin: paragraph.origin,
+      };
+    };
+    let hang_room = if paragraph.hanging_punctuation && alignment == TextAlignment::Justify {
+      right_indent.try_add(self.right_clearance).map_err(overflow)?
+    } else {
+      Length::ZERO
+    };
     let lines =
-      break_paragraph(&items, self.column_width, indent, right_indent, alignment).map_err(|LengthOverflow| {
-        return ElementOverflow {
-          origin: paragraph.origin,
-        };
-      })?;
+      break_paragraph(&items, self.column_width, indent, right_indent, alignment, hang_room).map_err(overflow)?;
     return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
       lines,
@@ -324,6 +334,7 @@ impl BlockBuilder<'_> {
 
 /// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
 ///
+/// `hang_room` は両端揃えの行末の句読点を利用幅の外へぶら下げてよい幅（0 ならぶら下げない）。
 /// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
 /// ここでは足さず着地段が決まってから足す。
 ///
@@ -336,9 +347,10 @@ fn break_paragraph(
   indent: Length,
   right_indent: Length,
   alignment: TextAlignment,
+  hang_room: Length,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = break_lines::break_lines(items, available, alignment, Length::ZERO)?;
+  let mut lines = break_lines::break_lines(items, available, alignment, hang_room)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -907,8 +919,9 @@ mod tests {
       items.push(test_box());
     }
 
-    let lines = break_paragraph(&items, Length::pt(60.0), Length::pt(10.0), Length::pt(10.0), TextAlignment::Left)
-      .expect("値域内");
+    let lines =
+      break_paragraph(&items, Length::pt(60.0), Length::pt(10.0), Length::pt(10.0), TextAlignment::Left, Length::ZERO)
+        .expect("値域内");
 
     assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
     for line in &lines {
@@ -934,7 +947,8 @@ mod tests {
     ];
 
     let lines =
-      break_paragraph(&items, Length::pt(100.0), Length::pt(15.0), Length::ZERO, TextAlignment::Left).expect("値域内");
+      break_paragraph(&items, Length::pt(100.0), Length::pt(15.0), Length::ZERO, TextAlignment::Left, Length::ZERO)
+        .expect("値域内");
 
     assert_eq!(lines.len(), 1);
     let links = &lines[0].links;
@@ -948,7 +962,8 @@ mod tests {
     let items = vec![test_box()];
 
     let lines =
-      break_paragraph(&items, Length::pt(100.0), Length::ZERO, Length::ZERO, TextAlignment::Right).expect("値域内");
+      break_paragraph(&items, Length::pt(100.0), Length::ZERO, Length::ZERO, TextAlignment::Right, Length::ZERO)
+        .expect("値域内");
 
     assert!(close(lines[0].boxes[0].dx, 90.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
   }
@@ -958,7 +973,8 @@ mod tests {
     let items = stretchable_items();
 
     let lines =
-      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Justify).expect("値域内");
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Justify, Length::ZERO)
+        .expect("値域内");
 
     let boxes = &lines[0].boxes;
     assert!(close(boxes[1].dx + boxes[1].hbox.width, 27.0), "{boxes:?}");
@@ -969,7 +985,8 @@ mod tests {
     let items = stretchable_items();
 
     let lines =
-      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
+        .expect("値域内");
 
     let boxes = &lines[0].boxes;
     assert!(close(boxes[0].dx, 1.0), "{boxes:?}");
@@ -981,7 +998,8 @@ mod tests {
     let items = vec![box_width(50.0)];
 
     let lines =
-      break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+      break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
+        .expect("値域内");
 
     assert!(close(lines[0].boxes[0].dx, 0.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
   }
@@ -991,7 +1009,8 @@ mod tests {
     let items = rigid_items();
 
     let lines =
-      break_paragraph(&items, Length::pt(35.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+      break_paragraph(&items, Length::pt(35.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
+        .expect("値域内");
 
     assert_eq!(lines.len(), 2, "段幅 35 で 2 行に折り返すはず: {} 行", lines.len());
     assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
@@ -1004,7 +1023,7 @@ mod tests {
     // 2 個目の箱の位置（10pt）に足すと値域の上端を超える字下げ
     let indent = Length::from_sp(i64::MAX) - Length::pt(5.0);
 
-    let result = break_paragraph(&items, Length::pt(100.0), indent, Length::ZERO, TextAlignment::Left);
+    let result = break_paragraph(&items, Length::pt(100.0), indent, Length::ZERO, TextAlignment::Left, Length::ZERO);
 
     assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));
   }

@@ -134,6 +134,8 @@ pub(super) struct PageGeometry {
   pub column_gap: Length,
   /// 1 段あたりの幅。[`PreparedGeometry::prepare`] が段数・段間から確定した値
   pub column_width: Length,
+  /// 本文右端から用紙右端まで（`style.page.margin_right`）
+  pub margin_right: Length,
   /// 下端揃え（flush bottom）を有効にするか（`style.toml` の `[page] flush_bottom`）。
   pub flush_bottom: bool,
   /// 脚注: 本文と区切り罫線の間隔（`style.footnote.top_margin`）
@@ -148,6 +150,17 @@ pub(super) struct PageGeometry {
   pub footnote_rule_gap: Length,
   /// ページ背景色（RGB）。`None` は塗りつぶさない（`style.background_color`）
   pub background_color: Option<[u8; 3]>,
+}
+
+impl PageGeometry {
+  /// 段の右端の外で、どの段に着地しても隣の段・用紙端に届かない幅。単段は右余白、複数段は段間と右余白の小さい方
+  #[must_use]
+  pub(super) fn right_clearance(&self) -> Length {
+    if self.num_columns > 1 {
+      return self.column_gap.min(self.margin_right);
+    }
+    return self.margin_right;
+  }
 }
 
 /// 横断検証を通った版面。
@@ -328,6 +341,7 @@ fn build_page_geometries(
     num_columns: body.0,
     column_gap,
     column_width: body.1,
+    margin_right: style.page.margin_right,
     flush_bottom: style.page.flush_bottom,
     footnote_top_margin: style.footnote.top_margin,
     footnote_rule_length: style.footnote.rule_length,
@@ -607,6 +621,32 @@ mod tests {
       prepared.back_geometry().column_width
     );
     assert_eq!(prepared.front_geometry().column_width, prepared.text_width());
+  }
+
+  #[test]
+  fn right_clearance_is_the_right_margin_for_a_single_column() {
+    let (_tempdir, config) = read_test_config();
+    let mut style = test_style(50.0, 50.0, 50.0, 20.0);
+    style.columns.count = 1;
+    style.columns.gap = pt(5.0);
+
+    let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
+
+    assert_eq!(prepared.body_geometry().right_clearance(), pt(20.0));
+  }
+
+  #[test]
+  fn right_clearance_is_the_narrower_of_gap_and_margin_for_columns() {
+    let (_tempdir, config) = read_test_config();
+    for (gap, expected) in [(10.0, 10.0), (30.0, 20.0)] {
+      let mut style = test_style(50.0, 50.0, 50.0, 20.0);
+      style.columns.count = 2;
+      style.columns.gap = pt(gap);
+
+      let prepared = PreparedGeometry::prepare(&config, &style).unwrap();
+
+      assert_eq!(prepared.body_geometry().right_clearance(), pt(expected), "段間 {gap}pt");
+    }
   }
 
   #[test]
