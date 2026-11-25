@@ -131,7 +131,7 @@ enum Edge {
 }
 
 /// 強制改行を含まない 1 サブ段落を最適分割する。溢れる行を避けられない（末尾まで実現可能な分割が無い）サブ段落だけを
-/// 貪欲法（`greedy::break_lines`）で組む
+/// 貪欲法（`greedy::break_lines`）で組み、開いているリンクも貪欲法へ引き継ぐ
 fn break_subparagraph(
   items: &[HItem],
   text_width: Length,
@@ -241,7 +241,7 @@ fn break_subparagraph(
 
   // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
   if best[node_count - 1].is_none() {
-    return greedy::break_lines(items, text_width, TextAlignment::Justify);
+    return greedy::break_lines(items, text_width, TextAlignment::Justify, open_links);
   }
 
   let mut chain: Vec<usize> = Vec::new();
@@ -440,6 +440,18 @@ mod tests {
   /// `Length` が pt 値 `expected` に（差 1e-3 pt 未満で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
 
+  /// 各行のリンク矩形が `expected`（行ごとの `(x0, x1)` の pt 値）と一致し、行き先がすべて `link_target()` か
+  fn assert_link_spans(lines: &[Line], expected: &[&[(f32, f32)]]) {
+    assert_eq!(lines.len(), expected.len(), "{lines:?}");
+    for (line, spans) in lines.iter().zip(expected) {
+      assert_eq!(line.links.len(), spans.len(), "{lines:?}");
+      for (link, &(x0, x1)) in line.links.iter().zip(*spans) {
+        assert!(close(link.x0, x0) && close(link.x1, x1), "期待 ({x0}, {x1}): {lines:?}");
+        assert_eq!(link.target, link_target(), "{lines:?}");
+      }
+    }
+  }
+
   #[test]
   fn empty_items_yield_single_empty_line() {
     let lines = break_lines(&[], Length::pt(100.0)).expect("テストの寸法は値域内");
@@ -470,7 +482,8 @@ mod tests {
       box_width(8.0),
     ];
 
-    let greedy = greedy::break_lines(&items, Length::pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let greedy = greedy::break_lines(&items, Length::pt(25.0), TextAlignment::Justify, &mut Vec::new())
+      .expect("テストの寸法は値域内");
     let kp = break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 3, "greedy: {greedy:?}");
@@ -543,6 +556,73 @@ mod tests {
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED: {lines:?}");
     assert!(close(lines[0].boxes[1].dx, 42.0), "QED は右端寄せ: {lines:?}");
+  }
+
+  #[test]
+  fn link_continues_into_a_greedy_fallback_subparagraph() {
+    // 2 つ目のサブ段落は本文幅を超える b40 を含み、実現可能な分割が無いので貪欲法へ落ちる
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      box_width(10.0),
+      HItem::ForcedBreak,
+      box_width(40.0),
+      stretch_glue(),
+      box_width(10.0),
+      HItem::LinkEnd,
+    ];
+
+    let lines = break_lines(&items, pt(30.0)).expect("テストの寸法は値域内");
+
+    assert_link_spans(&lines, &[&[(0.0, 10.0)], &[(0.0, 40.0)], &[(0.0, 10.0)]]);
+  }
+
+  #[test]
+  fn link_opened_in_a_greedy_fallback_subparagraph_continues_after_it() {
+    // 1 つ目のサブ段落は b40 を含んで貪欲法へ落ち、その中で開いたリンクが次のサブ段落で閉じる
+    let items = vec![
+      box_width(40.0),
+      stretch_glue(),
+      HItem::LinkStart(link_target()),
+      box_width(10.0),
+      HItem::ForcedBreak,
+      box_width(10.0),
+      HItem::LinkEnd,
+    ];
+
+    let lines = break_lines(&items, pt(30.0)).expect("テストの寸法は値域内");
+
+    assert_link_spans(&lines, &[&[], &[(0.0, 10.0)], &[(0.0, 10.0)]]);
+  }
+
+  #[test]
+  fn link_continues_across_consecutive_greedy_fallback_subparagraphs() {
+    // どちらのサブ段落も b40 だけで溢れて貪欲法へ落ちる
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      box_width(40.0),
+      HItem::ForcedBreak,
+      box_width(40.0),
+      HItem::LinkEnd,
+    ];
+
+    let lines = break_lines(&items, pt(30.0)).expect("テストの寸法は値域内");
+
+    assert_link_spans(&lines, &[&[(0.0, 40.0)], &[(0.0, 40.0)]]);
+  }
+
+  #[test]
+  fn link_across_forced_break_without_fallback_has_a_rect_per_line() {
+    let items = vec![
+      HItem::LinkStart(link_target()),
+      box_width(10.0),
+      HItem::ForcedBreak,
+      box_width(10.0),
+      HItem::LinkEnd,
+    ];
+
+    let lines = break_lines(&items, pt(30.0)).expect("テストの寸法は値域内");
+
+    assert_link_spans(&lines, &[&[(0.0, 10.0)], &[(0.0, 10.0)]]);
   }
 
   #[test]
@@ -686,7 +766,8 @@ mod tests {
     ];
 
     let kp = break_lines(&items, Length::pt(30.0)).expect("テストの寸法は値域内");
-    let greedy = greedy::break_lines(&items, Length::pt(30.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let greedy = greedy::break_lines(&items, Length::pt(30.0), TextAlignment::Justify, &mut Vec::new())
+      .expect("テストの寸法は値域内");
 
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
@@ -776,7 +857,8 @@ mod tests {
     ];
 
     let kp = break_lines(&items, pt(25.0)).expect("テストの寸法は値域内");
-    let greedy = greedy::break_lines(&items, pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
+    let greedy =
+      greedy::break_lines(&items, pt(25.0), TextAlignment::Justify, &mut Vec::new()).expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 4, "greedy: {greedy:?}");
     assert_eq!(kp.len(), 3, "kp: {kp:?}");
