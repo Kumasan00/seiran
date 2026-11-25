@@ -28,7 +28,7 @@ mod title_page;
 
 use std::mem;
 
-pub(super) use heading::toc_entry_style;
+pub(super) use heading::{running_text_style, toc_entry_style};
 pub(super) use layout_node::{
   DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
   ParagraphLayout, QuantityPiece, TableCellContent, TableColumn, TableLayout, TableRowLayout, TextStyle,
@@ -124,7 +124,8 @@ impl<'a> LoweringContext<'a> {
 /// 見出し 1 件の記録
 #[derive(Debug, Clone)]
 pub(super) struct HeadingRecord {
-  /// 目次の行のはみ出し警告が指し、目次の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None`
+  /// 目次の行のはみ出し警告が指し、目次・柱の題目の字の問題が帰属する見出し。書誌の見出し（生成物）は `None` で、
+  /// 柱はこの見出し以降を本文外として扱う
   pub node: Option<NodeId>,
   /// 見出しの文書順インデックス（0 始まり）
   pub index: usize,
@@ -136,6 +137,13 @@ pub(super) struct HeadingRecord {
   pub title_plain: String,
   /// 目次の行に組む「番号 題目」。目次の行の書体で lower 済みで、リンク・脚注・索引を含まない
   pub toc_label: Vec<InlineNode>,
+  /// ヘッダーの `{chapter}` / `{section}` に組む題目（番号を含まない）。`[header]` の書体・サイズで lower 済みで、
+  /// リンク・脚注・索引を含まない。`[header]` のどのスロットも題目を使わなければ空
+  pub header_title: Vec<InlineNode>,
+  /// フッターの `{chapter}` / `{section}` に組む題目。`[footer]` の書体・サイズで lower 済みのほかは `header_title` と同じ
+  pub footer_title: Vec<InlineNode>,
+  /// この見出し（題目を含む）以降に出現する最初の脚注の出現 index。書誌の見出しは文書の脚注総数で、どの脚注もこれより前
+  pub footnote_start: u32,
 }
 
 impl HeadingRecord {
@@ -239,8 +247,8 @@ pub(super) struct LoweringState<'a> {
   document: &'a SemanticDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
-  /// 見出しノード → （タイトルのプレーンテキスト, 目次の行に組む「番号 題目」）
-  heading_titles: NodeMap<(String, Vec<InlineNode>)>,
+  /// 見出しノード → 走査で組んだ見出し記録
+  heading_records: NodeMap<HeadingRecord>,
 }
 
 impl<'a> LoweringState<'a> {
@@ -249,7 +257,7 @@ impl<'a> LoweringState<'a> {
     return LoweringState {
       document,
       footnote_count: 0,
-      heading_titles: NodeMap::default(),
+      heading_records: NodeMap::default(),
     };
   }
 
@@ -259,6 +267,9 @@ impl<'a> LoweringState<'a> {
     self.footnote_count += 1;
     return index;
   }
+
+  /// これまでに払い出した脚注の個数（次の脚注の出現 index）
+  pub(super) fn footnote_count(&self) -> u32 { return self.footnote_count; }
 
   /// 引用箇所の表示インライン列を引く
   pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
@@ -311,22 +322,22 @@ impl<'a> LoweringState<'a> {
   /// 参照箇所（`\ref` / `\hyperref` / `[of=...]`）の参照先を引く
   pub(super) fn ref_target(&self, site: NodeId) -> &'a LabelId { return self.document.ref_target(site); }
 
-  /// 見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を記録する
-  pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String, toc_label: Vec<InlineNode>) {
-    self.heading_titles.insert(node, (plain, toc_label));
+  /// 見出しノードの記録を残す
+  pub(super) fn record_heading(&mut self, node: NodeId, record: HeadingRecord) {
+    self.heading_records.insert(node, record);
     return;
   }
 
-  /// 記録済みの見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を引く
+  /// 記録済みの見出し記録を引く
   ///
   /// # Panics
   ///
   /// 走査で記録していない見出しノードを渡した場合にパニックします。
-  pub(super) fn heading_title(&self, node: NodeId) -> (&str, &[InlineNode]) {
-    let Some((plain, toc_label)) = self.heading_titles.get(node) else {
-      unreachable!("見出しのタイトルは HIR の走査で必ず記録される: {node:?}")
+  pub(super) fn heading_record(&self, node: NodeId) -> &HeadingRecord {
+    let Some(record) = self.heading_records.get(node) else {
+      unreachable!("見出しの記録は HIR の走査で必ず残る: {node:?}")
     };
-    return (plain, toc_label);
+    return record;
   }
 }
 
@@ -340,26 +351,12 @@ pub(super) fn lower_sources_with_headings(
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
-    generated::lower_bibliography(ctx, document.bibliography(), document.heading_count());
+    generated::lower_bibliography(ctx, document.bibliography(), document.heading_count(), state.footnote_count());
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
-  let mut headings: Vec<HeadingRecord> = document
-    .headings()
-    .map(|heading| {
-      let (title_plain, toc_label) = state.heading_title(heading.node);
-      return HeadingRecord {
-        node: Some(heading.node),
-        index: heading.key.index(),
-        level: heading.level,
-        number: document
-          .counter_value(heading.node)
-          .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value)),
-        title_plain: title_plain.to_string(),
-        toc_label: toc_label.to_vec(),
-      };
-    })
-    .collect();
+  let mut headings: Vec<HeadingRecord> =
+    document.headings().map(|heading| return state.heading_record(heading.node).clone()).collect();
   headings.extend(bibliography_headings);
 
   let input_node_count: usize = document.hir().source_nodes().iter().map(Vec::len).sum::<usize>()
@@ -832,6 +829,9 @@ mod tests {
         number: number.to_string(),
         title_plain: title_plain.to_string(),
         toc_label: Vec::new(),
+        header_title: Vec::new(),
+        footer_title: Vec::new(),
+        footnote_start: 0,
       };
     };
     assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");

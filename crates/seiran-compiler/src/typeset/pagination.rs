@@ -111,7 +111,7 @@ pub(super) fn paginate(
   );
 
   // phase 6: 走り文を配置する
-  running::place_running_content(ctx, &mut pages, page_labels)
+  running::place_running_content(ctx, &mut pages, page_labels, &headings, front_count..front_count + body_count)
     .map_err(|overflow| return ComposeError::Dimension(overflow.locate(source_map)))?;
 
   // phase 7: PDF しおりを組み立てる

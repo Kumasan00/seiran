@@ -4,12 +4,12 @@ use crate::{
   document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId, Typeface},
   length::Length,
   semantics::{GeneratedInline, HeadingKey, LabelId, generated_inlines_to_plain_text},
-  style::Style as ReadStyle,
+  style::{RunningContentStyle, Style as ReadStyle},
   typeset::{
     boxes::AnchorId,
     error::ElementOverflow,
     lowering::{
-      LoweringContext, LoweringState, code, counter, inline,
+      HeadingRecord, LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
       math::{lower_inline_math, unicode_math_text},
       quantity,
@@ -40,12 +40,36 @@ pub(in crate::typeset) fn toc_entry_style(style: &ReadStyle) -> TextStyle {
   };
 }
 
-/// 見出しの題目を、目次の行に組む写しのインライン列へ lower する
+/// 柱（ヘッダー・フッター）の文字の外側のスタイル（その欄の書体・サイズ・色なし）を返す
+pub(in crate::typeset) fn running_text_style(style: &RunningContentStyle) -> TextStyle {
+  return TextStyle {
+    font_size: style.font_size,
+    typeface: style.typeface,
+    color: None,
+    script_level: None,
+    math_operator: None,
+  };
+}
+
+/// 柱の欄 `running` に組む題目の写しを返す（その欄のどのスロットも `{chapter}` / `{section}` を使わなければ空）
 ///
-/// 本文と同じノード・書体規則で組む。`\ref` / `\refs` / `\refrange` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んで
+/// `title` は欄の外側のスタイル（[`running_text_style`]）を受け取って写しを作るクロージャで、使う欄でだけ呼ぶ。
+pub(super) fn running_title(
+  running: &RunningContentStyle,
+  title: impl FnOnce(TextStyle) -> Vec<InlineNode>,
+) -> Vec<InlineNode> {
+  if !running.uses_titles() {
+    return Vec::new();
+  }
+  return title(running_text_style(running));
+}
+
+/// 見出しの題目を、紙面に組む生成物（目次の行・柱）の写しのインライン列へ lower する
+///
+/// 本文と同じノード・書体規則で、外側のスタイルを `parent_style` にして組む。`\ref` / `\refs` / `\refrange` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んで
 /// リンクとリンク色を付けず、脚注・索引は写さず、改行は語間空白 1 個にする。`state` は共有参照なので、写しは脚注の採番を
 /// 進めない。
-fn toc_title(
+fn title_copy(
   ctx: &LoweringContext<'_>,
   inlines: &[HirInline],
   parent_style: TextStyle,
@@ -57,12 +81,12 @@ fn toc_title(
       HirInlineKind::Text(text) => out.push(InlineNode::Text(text.clone(), parent_style)),
       HirInlineKind::Symbol(ch) => out.push(InlineNode::Text(ch.to_string(), parent_style)),
       HirInlineKind::Styled { font, children } => {
-        out.extend(toc_title(ctx, children, inline::styled(parent_style, *font), state));
+        out.extend(title_copy(ctx, children, inline::styled(parent_style, *font), state));
       },
       HirInlineKind::Colored { color, children } => {
-        out.extend(toc_title(ctx, children, inline::colored(parent_style, *color), state));
+        out.extend(title_copy(ctx, children, inline::colored(parent_style, *color), state));
       },
-      HirInlineKind::Link { children, .. } => out.extend(toc_title(ctx, children, parent_style, state)),
+      HirInlineKind::Link { children, .. } => out.extend(title_copy(ctx, children, parent_style, state)),
       HirInlineKind::Code(text) => out.extend(code::lower_inline_code(text, parent_style)),
       HirInlineKind::Math(math_nodes) => {
         out.extend(lower_inline_math(math_nodes, parent_style.font_size, parent_style.color, ctx.style));
@@ -83,7 +107,7 @@ fn toc_title(
       HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => {
         out.push(InlineNode::Text(ref_group_text(ctx.style, state, inline.id), parent_style));
       },
-      HirInlineKind::Cite { .. } => out.extend(generated_toc_title(state.citation_display(inline.id), parent_style)),
+      HirInlineKind::Cite { .. } => out.extend(generated_title_copy(state.citation_display(inline.id), parent_style)),
       HirInlineKind::LineBreak => out.push(InlineNode::Text(" ".to_string(), parent_style)),
       HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } | HirInlineKind::NoIndent => {},
     }
@@ -91,16 +115,16 @@ fn toc_title(
   return merge_adjacent_text(out);
 }
 
-/// 引用の表示（CSL 整形の生成物）を、目次の行に組む写しへ lower する（内部リンクは子だけを組む）
-fn generated_toc_title(inlines: &[GeneratedInline], parent_style: TextStyle) -> Vec<InlineNode> {
+/// 引用の表示（CSL 整形の生成物）を、紙面に組む生成物の写しへ lower する（内部リンクは子だけを組む）
+fn generated_title_copy(inlines: &[GeneratedInline], parent_style: TextStyle) -> Vec<InlineNode> {
   let mut out = Vec::new();
   for inline in inlines {
     match inline {
       GeneratedInline::Text(text) => out.push(InlineNode::Text(text.clone(), parent_style)),
       GeneratedInline::Styled { font, children } => {
-        out.extend(generated_toc_title(children, inline::styled(parent_style, *font)));
+        out.extend(generated_title_copy(children, inline::styled(parent_style, *font)));
       },
-      GeneratedInline::InternalLink { children, .. } => out.extend(generated_toc_title(children, parent_style)),
+      GeneratedInline::InternalLink { children, .. } => out.extend(generated_title_copy(children, parent_style)),
     }
   }
   return out;
@@ -180,15 +204,17 @@ pub(super) fn lower_hir_heading(
 ) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let key = state.heading_key(id);
   let label = state.declared_label(id).cloned();
+  let footnote_start = state.footnote_count();
   let number = state
     .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
   let entry_style = toc_entry_style(ctx.style);
-  let toc = toc_label(&number, toc_title(ctx, &heading.title, entry_style, &*state), entry_style);
-  state.record_heading_title(id, plain, toc);
+  let toc = toc_label(&number, title_copy(ctx, &heading.title, entry_style, &*state), entry_style);
+  let header_title = running_title(&ctx.style.header, |style| return title_copy(ctx, &heading.title, style, &*state));
+  let footer_title = running_title(&ctx.style.footer, |style| return title_copy(ctx, &heading.title, style, &*state));
   let style = title_style(ctx, heading.level);
-  return lower_heading(
+  let layout = lower_heading(
     ctx,
     heading.level,
     &number,
@@ -196,7 +222,22 @@ pub(super) fn lower_hir_heading(
     label,
     key,
     Some(id),
+  )?;
+  state.record_heading(
+    id,
+    HeadingRecord {
+      node: Some(id),
+      index: key.index(),
+      level: heading.level,
+      number,
+      title_plain: plain,
+      toc_label: toc,
+      header_title,
+      footer_title,
+      footnote_start,
+    },
   );
+  return Ok(layout);
 }
 
 /// 見出しをレイアウトノードに変換する
@@ -269,7 +310,7 @@ mod tests {
     color::Color,
     document::TextAlignment,
     semantics::CitationId,
-    style::{NumberTitleTemplate, Style as ReadStyle},
+    style::{NumberTitleTemplate, RunningTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::{
@@ -721,6 +762,94 @@ mod tests {
     assert_eq!(text_of(toc_label("", title(), style)), vec!["T"]);
     assert_eq!(text_of(toc_label("1", Vec::new(), style)), vec!["1"]);
     assert_eq!(text_of(toc_label("1", title(), style)), vec!["1 T"]);
+  }
+
+  /// ヘッダーとフッターの両方に `{section}` を置いた style
+  fn style_with_running_titles() -> ReadStyle {
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{section}");
+    style.footer.left = RunningTemplate::parse("{section}");
+    return style;
+  }
+
+  #[test]
+  fn running_titles_are_empty_when_no_slot_uses_them() {
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{page}");
+    style.footer.right = RunningTemplate::parse("{chapter}");
+
+    let headings = heading_records(&style, "\\section{Intro}\n");
+
+    assert!(headings[0].header_title.is_empty(), "ヘッダーは題目を使わない: {:?}", headings[0].header_title);
+    assert!(!headings[0].footer_title.is_empty(), "フッターは題目を使う");
+  }
+
+  #[test]
+  fn running_titles_use_the_header_and_footer_styles_without_the_number() {
+    let mut style = style_with_running_titles();
+    style.header.typeface = Typeface::SansSerif;
+    style.header.font_size = Length::pt(7.0);
+    style.footer.font_size = Length::pt(11.0);
+
+    let headings = heading_records(&style, "\\section{Intro}\n");
+
+    assert!(
+      matches!(headings[0].header_title.as_slice(), [InlineNode::Text(t, s)] if t == "Intro" && *s == running_text_style(&style.header)),
+      "番号を含まず [header] の書体・サイズで組む: {:?}",
+      headings[0].header_title
+    );
+    assert!(
+      matches!(headings[0].footer_title.as_slice(), [InlineNode::Text(t, s)] if t == "Intro" && *s == running_text_style(&style.footer)),
+      "番号を含まず [footer] の書体・サイズで組む: {:?}",
+      headings[0].footer_title
+    );
+  }
+
+  #[test]
+  fn running_titles_have_no_links_or_footnotes() {
+    let headings = heading_records(
+      &style_with_running_titles(),
+      "\\section{See \\href{https://example.com}{site}\\footnote{n} $x^{2}$}\n",
+    );
+
+    for title in [&headings[0].header_title, &headings[0].footer_title] {
+      let nodes = flatten(title);
+      assert!(
+        !nodes.iter().any(|n| matches!(n, InlineNode::Link { .. } | InlineNode::Footnote { .. })),
+        "{title:?}"
+      );
+      assert!(nodes.iter().any(|n| matches!(n, InlineNode::Math(_))), "数式は数式のまま組む: {title:?}");
+      let joined: String = texts(title).iter().map(|(t, _)| return *t).collect();
+      assert!(joined.contains("site"), "リンクの表示は組む: {joined}");
+    }
+  }
+
+  #[test]
+  fn running_titles_do_not_consume_footnote_numbers() {
+    let style = style_with_running_titles();
+    let document = analyzed("\\section{A\\footnote{x}}\n\n本文\\footnote{y}\n");
+
+    let (layout, headings) =
+      lower_sources_with_headings(&context(&style), &document).expect("テストが組む長さは値域内");
+
+    for title in [&headings[0].header_title, &headings[0].footer_title] {
+      assert!(
+        !flatten(title).iter().any(|n| matches!(n, InlineNode::Footnote { .. } | InlineNode::Raise { .. })),
+        "{title:?}"
+      );
+    }
+    assert_eq!(footnotes(inlines(&layout)), vec![(2, 1)], "本文の脚注は見出しの脚注の次: {layout:?}");
+  }
+
+  #[test]
+  fn footnote_start_counts_footnotes_before_the_heading() {
+    let headings = heading_records(
+      &ReadStyle::default(),
+      "前\\footnote{a}\n\n\\section{A\\footnote{b}}\n\n本文\\footnote{c}\n\n\\section{B}\n",
+    );
+
+    assert_eq!(headings[0].footnote_start, 1, "題目の脚注 b は A に属する");
+    assert_eq!(headings[1].footnote_start, 3);
   }
 
   /// `\section{title}` のしおりの題目（番号を除く平文）

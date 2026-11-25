@@ -13,7 +13,7 @@ use crate::{
     boxes::{AnchorId, LinkTarget},
     lowering::{
       HeadingRecord, LoweringContext,
-      heading::{self, title_style, toc_entry_style},
+      heading::{self, running_title, title_style, toc_entry_style},
       inline,
       layout_node::{InlineNode, LayoutNode, TextStyle},
       paragraph::{assemble_paragraph, body_text_style},
@@ -27,11 +27,12 @@ const BIBLIOGRAPHY_HEADING_LEVEL: HeadingLevel = HeadingLevel::Section;
 /// 書誌（CSL 整形の生成物）をレイアウトノードと見出し記録へ変換する
 ///
 /// `bibliography` が `None`（文書に引用が無い、または CSL が書誌を定義していない）のときは
-/// 見出しも出さない。
+/// 見出しも出さない。`footnote_count` は本文の脚注総数で、書誌の見出しの記録の `footnote_start` になる。
 pub(super) fn lower_bibliography(
   ctx: &LoweringContext<'_>,
   bibliography: Option<&[BibliographyEntry]>,
   next_heading_index: usize,
+  footnote_count: u32,
 ) -> (Vec<LayoutNode>, Vec<HeadingRecord>) {
   let Some(entries) = bibliography else {
     return (Vec::new(), Vec::new());
@@ -62,6 +63,13 @@ pub(super) fn lower_bibliography(
       ctx.style.reference.title.clone(),
       toc_entry_style(ctx.style),
     )],
+    header_title: running_title(&ctx.style.header, |style| {
+      return vec![InlineNode::Text(ctx.style.reference.title.clone(), style)];
+    }),
+    footer_title: running_title(&ctx.style.footer, |style| {
+      return vec![InlineNode::Text(ctx.style.reference.title.clone(), style)];
+    }),
+    footnote_start: footnote_count,
   }];
 
   for entry in entries {
@@ -112,9 +120,9 @@ mod tests {
   use crate::{
     document::Typeface,
     semantics::CitationId,
-    style::Style as ReadStyle,
+    style::{RunningTemplate, Style as ReadStyle},
     typeset::lowering::{
-      lower_sources_with_headings,
+      lower_sources_with_headings, running_text_style,
       test_support::{analyzed, context, inlines, lower, paragraph_layout, paragraph_origins},
     },
   };
@@ -160,7 +168,7 @@ mod tests {
   fn bibliography_paragraph_keeps_generated_styling() {
     let style = ReadStyle::default();
 
-    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+    let (layout, _headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
 
     assert!(
       layout
@@ -204,7 +212,7 @@ mod tests {
   fn empty_bibliography_still_emits_heading() {
     let style = ReadStyle::default();
 
-    let (layout, headings) = lower_bibliography(&context(&style), Some(&[]), 0);
+    let (layout, headings) = lower_bibliography(&context(&style), Some(&[]), 0, 0);
 
     assert_eq!(headings.len(), 1, "エントリ 0 件でも書誌見出しは出るはず: {headings:?}");
     assert_eq!(headings[0].title_plain, "References");
@@ -218,7 +226,7 @@ mod tests {
   fn absent_bibliography_emits_nothing() {
     let style = ReadStyle::default();
 
-    let (layout, headings) = lower_bibliography(&context(&style), None, 0);
+    let (layout, headings) = lower_bibliography(&context(&style), None, 0, 0);
 
     assert!(layout.is_empty(), "書誌が無ければレイアウトノードは出ないはず: {layout:?}");
     assert!(headings.is_empty(), "書誌が無ければ見出し記録も出ないはず: {headings:?}");
@@ -229,7 +237,7 @@ mod tests {
     let mut style = ReadStyle::default();
     style.reference.title = "参考文献".to_string();
 
-    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
 
     assert_eq!(headings[0].title_plain, "参考文献", "style.reference.title が見出しになるはず");
   }
@@ -239,7 +247,7 @@ mod tests {
     // 書誌は CSL の生成物で、単一のソース要素に対応しない
     let style = ReadStyle::default();
 
-    let (layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+    let (layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
 
     let origins = paragraph_origins(&layout);
     assert!(!origins.is_empty(), "見出しとエントリの段落があるはず: {layout:?}");
@@ -249,14 +257,20 @@ mod tests {
 
   #[test]
   fn bibliography_heading_record_has_toc_label() {
-    let style = ReadStyle::default();
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{section}");
 
-    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0);
+    let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
 
     assert!(
       matches!(headings[0].toc_label.as_slice(), [InlineNode::Text(t, s)] if *t == style.reference.title && *s == toc_entry_style(&style)),
       "{:?}",
       headings[0].toc_label
+    );
+    assert!(
+      matches!(headings[0].header_title.as_slice(), [InlineNode::Text(t, s)] if *t == style.reference.title && *s == running_text_style(&style.header)),
+      "{:?}",
+      headings[0].header_title
     );
   }
 }

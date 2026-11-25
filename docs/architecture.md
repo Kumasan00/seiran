@@ -282,7 +282,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **脚注**: `numbering`（`continuous` / `per_page`）は「脚注という種類の既定」なので P10 によりソースの
   オプションではなく style が持つ。数字表記スタイルはページ番号・カウンタと同じ `NumberStyle` を流用する
 - **ヘッダ / フッタ**: 共通の `RunningContentStyle`（左中右スロット + トークン）。`enabled` は無く、
-  スロットにテンプレートを置くと有効になる
+  スロットにテンプレートを置くと有効になる。`{chapter}` / `{section}` は本文の見出しから決まり、番号を含まない題目を
+  目次の行と同じ規則で、外側の書体・サイズだけその欄のもので組む（所属の決め方は `typeset` の `pagination` 項）
 
 ### `frontend`
 
@@ -596,7 +597,14 @@ context が持つ字の問題の収集器を `paginate` の後で読む。`glyph
   部品（`Shaper`）は `boxing` が共有し、何を組むかは消費側が持つ。生成コンテンツは段落構築のポリシー（既定フォントサイズ・行高係数・
   ハイフネーション）を持たないので、`Shaper` を構築する。**目次**の行の題目は lowering が見出しから作った
   インライン列（`HeadingRecord::toc_label`。外側の書体は lowering が `[toc]` から投影する）で、`boxing::inline_atom`
-  （内部で `Measurer` を作る）が本文と同じ和欧文間アキ・約物アキで組む
+  （内部で `Measurer` を作る）が本文と同じ和欧文間アキ・約物アキで組む。**柱**の `{chapter}` / `{section}` の題目も同じ形で、
+  lowering が `[header]` / `[footer]` の書体から投影した写し（`HeadingRecord::header_title` / `footer_title`）を `inline_atom`
+  で組み、地の文字だけを `Shaper` で組む。目次の行・柱の題目の字の問題は生成元ではなく見出しの要素に帰属する
+- 柱の章・節の所属は 3 か所の事実から決まる。改ページがページごとに「読み順で本文最初のブロックで着地した見出し」
+  （`Page::opening_headings`）を、lowering が見出しごとに「その見出し以降の最初の脚注の出現 index」
+  （`HeadingRecord::footnote_start`）を記録し、走り文（`pagination::running::heads`）だけが章・節の状態遷移を持つ。
+  ページ途中の見出しはそのページを切り替えず、本文の無い繰越脚注だけのページは脚注の呼出元の所属を使い、
+  前付け・後付け・書誌（`node` を持たない見出し記録）以降は本文外として章・節とも空
 - **索引**の見出し行の直後に置く分割禁止（`Block::KeepWithNext`）が `break_pages` の keep-with-next 機構に乗って段末の孤立を防ぐ
 
 #### 脚注のページ単位採番（`pagination::footnote_numbering`）

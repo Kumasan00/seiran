@@ -216,7 +216,7 @@
 //!
 //! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
 //! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
@@ -246,6 +246,7 @@ use crate::{
   length::Length,
   project::{FontFace, FontType},
   publication::{GlyphRun, PaintOp},
+  semantics::HeadingKey,
   typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
 
@@ -5889,4 +5890,308 @@ fn trailing_negative_space_in_a_fence_body_pulls_the_next_atom_back() {
   let (narrowed, _) = next_and_size("a\\negthinspace\\negthinspace\\negthinspace");
 
   assert_eq!(narrowed, plain + (font_size * -9) / 18.0f64, "中身の末尾の負の明示アキの分だけ後続が寄る");
+}
+
+/// ページのヘッダーに描く字を、箱の順（左のスロットから）につないで返すテストヘルパ（ヘッダーが無ければ空文字列）
+fn header_text(page: &Page) -> String {
+  let mut text = String::new();
+  for block in &page.header {
+    if let PlacedBlock::Line { line, .. } = block {
+      for placed in &line.boxes {
+        push_text(&placed.hbox.content, &mut text);
+      }
+    }
+  }
+  return text;
+}
+
+/// 節 Alpha の本文に版面を超える長い脚注を置き、続く節 Beta で文書が終わるソース。長い脚注の残りは文書末尾の後ろへ
+/// 繰り越され、本文の無い脚注だけのページになる
+const CARRIED_FOOTNOTE_SOURCE: &str = "\\section{Alpha}
+
+本文\\footnote{この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。\
+この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。\
+この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。}。
+
+\\section{Beta}
+
+短い本文。
+";
+
+/// [`CARRIED_FOOTNOTE_SOURCE`] を `footnote_split` の版面で、ヘッダー中央に「章|節」を置いて組んだページ列
+fn carried_footnote_pages(numbering: &'static str) -> Vec<Page> {
+  return TestProject::builder()
+    .golden_fixture("footnote_split")
+    .source_text(CARRIED_FOOTNOTE_SOURCE)
+    .style_toml(move |table| {
+      test_support::set(table, "header", "center", "{chapter}|{section}");
+      test_support::set(table, "footnote", "numbering", numbering);
+    })
+    .build()
+    .laid_out()
+    .pages;
+}
+
+/// 本文が無く繰越脚注だけのページのヘッダーの字を返す
+fn footnote_only_headers(pages: &[Page]) -> Vec<String> {
+  return pages
+    .iter()
+    .filter(|page| return page.blocks.is_empty() && !page.footnotes.is_empty())
+    .map(header_text)
+    .collect();
+}
+
+#[test]
+fn footnote_only_page_uses_the_call_section() {
+  let headers = footnote_only_headers(&carried_footnote_pages("continuous"));
+
+  assert!(!headers.is_empty(), "脚注だけのページがあるはず");
+  assert!(headers.iter().all(|header| return header == "|Alpha"), "呼出元の節を出すはず: {headers:?}");
+}
+
+#[test]
+fn footnote_only_page_with_per_page_numbering_uses_the_call_section() {
+  let headers = footnote_only_headers(&carried_footnote_pages("per_page"));
+
+  assert!(!headers.is_empty(), "脚注だけのページがあるはず");
+  assert!(headers.iter().all(|header| return header == "|Alpha"), "呼出元の節を出すはず: {headers:?}");
+}
+
+/// ヘッダー中央に「章|節」を置く style 差分
+fn chapter_section_header(table: &mut toml::value::Table) {
+  test_support::set(table, "header", "center", "{chapter}|{section}");
+}
+
+/// 本文 `source` をヘッダー中央に「章|節」を置いて組み、ページごとのヘッダーの字を返す。題目の空白は語間 glue に
+/// なって字に現れないので、題目は空白を含まない字面にする
+fn running_headers_of(source: &str, style: impl Fn(&mut toml::value::Table) + 'static) -> Vec<String> {
+  let pages = TestProject::builder()
+    .source_text(source)
+    .style_toml(chapter_section_header)
+    .style_toml(style)
+    .build()
+    .laid_out()
+    .pages;
+  return pages.iter().map(header_text).collect();
+}
+
+/// 章・節・小節・部の見出しをページ先頭とページ途中に置いたソース（`\\pagebreak` でページを固定する）
+const RUNNING_HEADS_SOURCE: &str = "\\chapter{Alpha}
+
+\\section{One}
+
+a
+
+\\pagebreak
+
+b
+
+\\section{Two}
+
+c
+
+\\pagebreak
+
+d
+
+\\subsection{Deep}
+
+e
+
+\\chapter{Beta}
+
+f
+
+\\part{Gamma}
+
+\\section{Three}
+
+g
+";
+
+#[test]
+fn running_heads_follow_the_first_block_of_each_page() {
+  let headers = running_headers_of(RUNNING_HEADS_SOURCE, |_| {});
+
+  assert_eq!(headers, vec!["Alpha|", "Alpha|One", "Alpha|Two", "Beta|", "|", "|Three"]);
+}
+
+#[test]
+fn running_heads_before_any_heading_are_empty() {
+  let headers = running_headers_of("a\n\n\\pagebreak\n\n\\section{One}\n\nb\n", |_| {});
+
+  assert_eq!(headers, vec!["|", "|One"]);
+}
+
+#[test]
+fn section_format_without_number_still_updates_the_heads() {
+  let headers = running_headers_of(RUNNING_HEADS_SOURCE, |table| {
+    test_support::set_heading(table, "section", "format", "{title}");
+  });
+
+  assert_eq!(headers, vec!["Alpha|", "Alpha|One", "Alpha|Two", "Beta|", "|", "|Three"]);
+}
+
+#[test]
+fn heading_moved_by_keep_with_next_shows_on_the_next_page() {
+  // keep_with_next_prevents_heading_orphan_end_to_end と同じ版面。題目の空白は字に現れない
+  let pages = TestProject::builder()
+    .sources(&["tests/text/keepwithnext.sei"])
+    .config_toml(|table| test_support::set(table, "pdf", "height", "45mm"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_top", "10mm");
+      test_support::set(table, "page", "margin_bottom", "10mm");
+      test_support::set(table, "header", "center", "{section}");
+    })
+    .build()
+    .laid_out()
+    .pages;
+
+  let moved = pages
+    .iter()
+    .position(|page| return !page.opening_headings.is_empty())
+    .expect("見出しで始まるページがあるはず");
+  assert!(moved > 0, "見出しが次のページへ送られているはず");
+  let title = header_text(&pages[moved]);
+  assert!(["AlphaHeading", "BetaHeading"].contains(&title.as_str()), "送られた見出しを出すはず: {title}");
+  assert_ne!(header_text(&pages[moved - 1]), title, "送られる前のページには出ないはず");
+}
+
+#[test]
+fn index_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("index")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+
+  let index_pages: Vec<&Page> = pages.iter().filter(|page| return is_index_page(page)).collect();
+  assert!(!index_pages.is_empty(), "索引のページがあるはず");
+  assert!(index_pages.iter().all(|page| return header_text(page) == "|"), "索引のページは本文外");
+  let last_body = pages.iter().rfind(|page| return !is_index_page(page)).expect("本文のページがあるはず");
+  assert_ne!(header_text(last_body), "|", "本文の最終ページは節を出すはず");
+}
+
+#[test]
+fn bibliography_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("cite")
+    .source_text("\\section{One}\n\n本文\\cite{kwan2014}。\n\n\\pagebreak\n")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+  let headers: Vec<String> = pages.iter().map(header_text).collect();
+
+  assert_eq!(headers.len(), 2, "本文 1 ページと書誌 1 ページのはず: {headers:?}");
+  assert_eq!(headers, vec!["|One", "|"]);
+}
+
+#[test]
+fn front_matter_pages_have_no_heads() {
+  let pages = TestProject::builder()
+    .golden_fixture("toc")
+    .style_toml(chapter_section_header)
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(
+    pages[0]
+      .links
+      .iter()
+      .any(|link| return matches!(link.target, LinkTarget::Internal(AnchorId::Heading(_)))),
+    "先頭は目次のページのはず"
+  );
+  assert_eq!(header_text(&pages[0]), "|");
+}
+
+#[test]
+fn blank_slot_with_absent_heading_draws_nothing() {
+  let pages = TestProject::builder()
+    .source_text("本文だけの文書。\n")
+    .style_toml(|table| {
+      test_support::set(table, "header", "left", "{chapter} ");
+      test_support::set(table, "header", "rule_thickness", "0.4pt");
+    })
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(pages.iter().all(|page| return page.header.is_empty()), "行も区切り線も出さないはず");
+}
+
+#[test]
+fn empty_body_with_running_content_compiles() {
+  // 本文ブロックの無い文書でも改ページは 1 ページを返し、柱はそのページに組む
+  for center in ["{page}", "{chapter}|{section}"] {
+    let pages = TestProject::builder()
+      .source_text("// コメントだけ\n")
+      .style_toml(move |table| test_support::set(table, "header", "center", center))
+      .build()
+      .laid_out()
+      .pages;
+
+    assert_eq!(pages.len(), 1, "{center}");
+  }
+}
+
+#[test]
+fn continued_table_keeps_the_section_it_started_in() {
+  let rows: String = (0..200).map(|row| return format!("\\row{{r{row}}}\n")).collect();
+  let source =
+    format!("\\section{{One}}\n\na\n\n\\section{{Two}}\n\n\\begin{{table}}[columns=left]\n{rows}\\end{{table}}\n");
+
+  let headers = running_headers_of(&source, |_| {});
+
+  assert!(headers.len() >= 2, "表がページをまたぐはず: {headers:?}");
+  assert_eq!(headers[0], "|One", "ページ途中の節はそのページを切り替えない");
+  assert!(headers[1..].iter().all(|header| return header == "|Two"), "表の続きは節 Two に属する: {headers:?}");
+}
+
+#[test]
+fn second_column_heading_does_not_switch_the_page() {
+  let filler = |count: usize| return "a\n\n".repeat(count);
+  let source = format!("\\section{{One}}\n\n{}\\section{{Two}}\n\n{}", filler(50), filler(10));
+  let pages = TestProject::builder()
+    .source_text(&source)
+    .style_toml(chapter_section_header)
+    .style_toml(|table| test_support::set(table, "columns", "count", 2))
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(
+    pages[0].anchors.iter().any(|anchor| return anchor.id == AnchorId::Heading(HeadingKey::new(1))),
+    "節 Two は 1 ページ目の 2 段目にあるはず"
+  );
+  assert_eq!(header_text(&pages[0]), "|One", "段ごとに柱を切り替えない");
 }

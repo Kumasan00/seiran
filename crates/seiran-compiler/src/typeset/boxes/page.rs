@@ -9,6 +9,7 @@
 use crate::{
   length::Length,
   project::ProjectPath,
+  semantics::HeadingKey,
   typeset::boxes::{
     hitem::{HBox, IndexTerm, PlacedHBox},
     line::Line,
@@ -31,6 +32,8 @@ pub(crate) struct Page {
   pub footnotes: Vec<PlacedFootnote>,
   /// このページに解決されたリンク到達先アンカー（機構 A）
   pub anchors: Vec<PlacedAnchor>,
+  /// 読み順で本文最初のブロックが解決した見出しアンカーのキー（文書順）。本文ブロックの無いページは空
+  pub opening_headings: Vec<HeadingKey>,
   /// このページに確定したクリック可能なリンク領域（機構 B）
   pub links: Vec<PlacedLink>,
   /// このページに出現した索引語（同一 word / reading の重複を 1 出現に畳んだもの、出現順）

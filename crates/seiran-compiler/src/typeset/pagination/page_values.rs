@@ -157,6 +157,7 @@ mod tests {
           };
         })
         .collect(),
+      opening_headings: Vec::new(),
       links: Vec::new(),
       index_entries: Vec::new(),
       background_color: None,
