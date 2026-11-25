@@ -322,17 +322,6 @@ keywords=["test", "seiran"]
   glyphs x=396.94 y=321.88 font=JapaneseSerif size=12.00 text="え" glyph_count=1
   glyphs x=408.94 y=321.88 font=JapaneseSerif size=12.00 text="る" glyph_count=1
   glyphs x=420.94 y=321.88 font=JapaneseSerif size=12.00 text="。" glyph_count=1
-  glyphs x=240.94 y=346.48 font=SerifBold size=20.00 text="2.1" glyph_count=3
-  glyphs x=270.96 y=346.48 font=JapaneseSerifBold size=20.00 text="外" glyph_count=1
-  glyphs x=290.96 y=346.48 font=JapaneseSerifBold size=20.00 text="部" glyph_count=1
-  glyphs x=315.66 y=346.48 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
-  glyphs x=335.66 y=346.48 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
-  glyphs x=355.66 y=346.48 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
-  glyphs x=375.66 y=338.48 font=Serif size=14.00 text="1" glyph_count=1 color=Color([0, 0, 255])
-  glyphs x=240.94 y=377.48 font=JapaneseSerif size=12.00 text="本" glyph_count=1
-  glyphs x=252.94 y=377.48 font=JapaneseSerif size=12.00 text="文" glyph_count=1
-  glyphs x=264.94 y=372.68 font=Serif size=8.40 text="2" glyph_count=1 color=Color([0, 0, 255])
-  glyphs x=269.10 y=377.48 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=240.94 y=28.00 font=Serif size=10.00 text="Chapter" glyph_count=7
   glyphs x=277.47 y=28.00 font=Serif size=10.00 text="1" glyph_count=1
   glyphs x=284.77 y=28.00 font=JapaneseSerif size=10.00 text="の" glyph_count=1
@@ -340,6 +329,32 @@ keywords=["test", "seiran"]
   glyphs x=304.77 y=28.00 font=JapaneseSerif size=10.00 text="き" glyph_count=1
   glyphs x=317.12 y=28.00 font=Serif size=10.00 text="[1]" glyph_count=3
   glyphs x=840.83 y=2358.77 font=Serif size=10.00 text="4" glyph_count=1
+  link target=Internal(page=0, x=240.94, y=251.85) x=321.69 y=251.85 w=112.75 h=35.92
+  link target=Internal(page=5, x=240.94, y=386.83) x=521.19 y=251.85 w=32.08 h=35.92
+=== page 4 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="2.1" glyph_count=3
+  glyphs x=270.96 y=280.63 font=JapaneseSerifBold size=20.00 text="外" glyph_count=1
+  glyphs x=290.96 y=280.63 font=JapaneseSerifBold size=20.00 text="部" glyph_count=1
+  glyphs x=315.66 y=280.63 font=JapaneseSerifBold size=20.00 text="と" glyph_count=1
+  glyphs x=335.66 y=280.63 font=JapaneseSerifBold size=20.00 text="脚" glyph_count=1
+  glyphs x=355.66 y=280.63 font=JapaneseSerifBold size=20.00 text="注" glyph_count=1
+  glyphs x=375.66 y=272.63 font=Serif size=14.00 text="1" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=240.94 y=311.63 font=JapaneseSerif size=12.00 text="本" glyph_count=1
+  glyphs x=252.94 y=311.63 font=JapaneseSerif size=12.00 text="文" glyph_count=1
+  glyphs x=264.94 y=306.83 font=Serif size=8.40 text="2" glyph_count=1 color=Color([0, 0, 255])
+  glyphs x=269.10 y=311.63 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=240.94 y=28.00 font=Serif size=10.00 text="Chapter" glyph_count=7
+  glyphs x=277.47 y=28.00 font=Serif size=10.00 text="1" glyph_count=1
+  glyphs x=284.77 y=28.00 font=JapaneseSerif size=10.00 text="の" glyph_count=1
+  glyphs x=294.77 y=28.00 font=JapaneseSerif size=10.00 text="続" glyph_count=1
+  glyphs x=304.77 y=28.00 font=JapaneseSerif size=10.00 text="き" glyph_count=1
+  glyphs x=317.12 y=28.00 font=Serif size=10.00 text="[1]" glyph_count=3
+  glyphs x=1393.32 y=28.00 font=JapaneseSerif size=10.00 text="外" glyph_count=1
+  glyphs x=1403.32 y=28.00 font=JapaneseSerif size=10.00 text="部" glyph_count=1
+  glyphs x=1415.67 y=28.00 font=JapaneseSerif size=10.00 text="と" glyph_count=1
+  glyphs x=1425.67 y=28.00 font=JapaneseSerif size=10.00 text="脚" glyph_count=1
+  glyphs x=1435.67 y=28.00 font=JapaneseSerif size=10.00 text="注" glyph_count=1
+  glyphs x=840.83 y=2358.77 font=Serif size=10.00 text="5" glyph_count=1
   fillrect x=240.94 y=2071.88 w=72.00 h=0.40 color=None
   glyphs x=240.94 y=2083.03 font=Serif size=6.30 text="1" glyph_count=1
   glyphs x=244.06 y=2086.63 font=JapaneseSerifBold size=9.00 text="柱" glyph_count=1
@@ -368,12 +383,10 @@ keywords=["test", "seiran"]
   glyphs x=370.06 y=2103.57 font=JapaneseSerif size=9.00 text="の" glyph_count=1
   glyphs x=379.06 y=2103.57 font=JapaneseSerif size=9.00 text="次" glyph_count=1
   glyphs x=388.06 y=2103.57 font=JapaneseSerif size=9.00 text="。" glyph_count=1
-  link target=Internal(page=0, x=240.94, y=251.85) x=321.69 y=251.85 w=112.75 h=35.92
-  link target=Internal(page=4, x=240.94, y=386.83) x=521.19 y=251.85 w=32.08 h=35.92
-  link target=External("https://example.com") x=270.96 y=323.46 w=40.00 h=28.74
-  link target=Internal(page=3, x=240.94, y=2076.28) x=375.66 y=323.46 w=6.93 h=28.74
-  link target=Internal(page=3, x=240.94, y=2093.21) x=264.94 y=363.67 w=4.16 h=17.24
-=== page 4 === box x=0.00 y=0.00 w=1686.61 h=2386.77
+  link target=External("https://example.com") x=270.96 y=257.61 w=40.00 h=28.74
+  link target=Internal(page=4, x=240.94, y=2076.28) x=375.66 y=257.61 w=6.93 h=28.74
+  link target=Internal(page=4, x=240.94, y=2093.21) x=264.94 y=297.82 w=4.16 h=17.24
+=== page 5 === box x=0.00 y=0.00 w=1686.61 h=2386.77
   glyphs x=240.94 y=280.63 font=SerifBold size=20.00 text="2.2" glyph_count=3
   glyphs x=270.96 y=280.63 font=JapaneseSerifBold size=20.00 text="前" glyph_count=1
   glyphs x=290.96 y=280.63 font=JapaneseSerifBold size=20.00 text="半" glyph_count=1
@@ -429,12 +442,12 @@ keywords=["test", "seiran"]
   glyphs x=1413.32 y=28.00 font=JapaneseSerif size=10.00 text="半" glyph_count=1
   glyphs x=1425.67 y=28.00 font=JapaneseSerif size=10.00 text="後" glyph_count=1
   glyphs x=1435.67 y=28.00 font=JapaneseSerif size=10.00 text="半" glyph_count=1
-  glyphs x=840.83 y=2358.77 font=Serif size=10.00 text="5" glyph_count=1
+  glyphs x=840.83 y=2358.77 font=Serif size=10.00 text="6" glyph_count=1
 outline:
   depth=1 text="1 柱の題目 E=mc²" page=0 x=240.94 y=251.85
   depth=2 text="1.1 分数 a/b と 太字" page=0 x=240.94 y=340.70
   depth=2 text="1.2 赤い code と 12\u{202f}345" page=1 x=240.94 y=282.21
   depth=1 text="2 Chapter 1 の続き [1]" page=3 x=240.94 y=251.85
-  depth=2 text="2.1 外部 と脚注" page=3 x=240.94 y=323.46
-  depth=2 text="2.2 前半 後半" page=4 x=240.94 y=257.61
-  depth=2 text="References" page=4 x=240.94 y=349.73
+  depth=2 text="2.1 外部 と脚注" page=4 x=240.94 y=257.61
+  depth=2 text="2.2 前半 後半" page=5 x=240.94 y=257.61
+  depth=2 text="References" page=5 x=240.94 y=349.73

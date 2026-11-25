@@ -51,6 +51,19 @@ pub(in crate::typeset) fn running_text_style(style: &RunningContentStyle) -> Tex
   };
 }
 
+/// 柱の欄 `running` に組む題目の写しを返す（その欄のどのスロットも `{chapter}` / `{section}` を使わなければ空）
+///
+/// `title` は欄の外側のスタイル（[`running_text_style`]）を受け取って写しを作るクロージャで、使う欄でだけ呼ぶ。
+pub(super) fn running_title(
+  running: &RunningContentStyle,
+  title: impl FnOnce(TextStyle) -> Vec<InlineNode>,
+) -> Vec<InlineNode> {
+  if !running.uses_titles() {
+    return Vec::new();
+  }
+  return title(running_text_style(running));
+}
+
 /// 見出しの題目を、紙面に組む生成物（目次の行・柱）の写しのインライン列へ lower する
 ///
 /// 本文と同じノード・書体規則で、外側のスタイルを `parent_style` にして組む。`\ref` / `\refs` / `\refrange` / `\cite` / `\href` / `\hyperref` / `\url` は表示だけを組んで
@@ -198,8 +211,8 @@ pub(super) fn lower_hir_heading(
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
   let entry_style = toc_entry_style(ctx.style);
   let toc = toc_label(&number, title_copy(ctx, &heading.title, entry_style, &*state), entry_style);
-  let header_title = title_copy(ctx, &heading.title, running_text_style(&ctx.style.header), &*state);
-  let footer_title = title_copy(ctx, &heading.title, running_text_style(&ctx.style.footer), &*state);
+  let header_title = running_title(&ctx.style.header, |style| return title_copy(ctx, &heading.title, style, &*state));
+  let footer_title = running_title(&ctx.style.footer, |style| return title_copy(ctx, &heading.title, style, &*state));
   let style = title_style(ctx, heading.level);
   let layout = lower_heading(
     ctx,
@@ -297,7 +310,7 @@ mod tests {
     color::Color,
     document::TextAlignment,
     semantics::CitationId,
-    style::{NumberTitleTemplate, Style as ReadStyle},
+    style::{NumberTitleTemplate, RunningTemplate, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::{
@@ -751,9 +764,29 @@ mod tests {
     assert_eq!(text_of(toc_label("1", title(), style)), vec!["1 T"]);
   }
 
+  /// ヘッダーとフッターの両方に `{section}` を置いた style
+  fn style_with_running_titles() -> ReadStyle {
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{section}");
+    style.footer.left = RunningTemplate::parse("{section}");
+    return style;
+  }
+
+  #[test]
+  fn running_titles_are_empty_when_no_slot_uses_them() {
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{page}");
+    style.footer.right = RunningTemplate::parse("{chapter}");
+
+    let headings = heading_records(&style, "\\section{Intro}\n");
+
+    assert!(headings[0].header_title.is_empty(), "ヘッダーは題目を使わない: {:?}", headings[0].header_title);
+    assert!(!headings[0].footer_title.is_empty(), "フッターは題目を使う");
+  }
+
   #[test]
   fn running_titles_use_the_header_and_footer_styles_without_the_number() {
-    let mut style = ReadStyle::default();
+    let mut style = style_with_running_titles();
     style.header.typeface = Typeface::SansSerif;
     style.header.font_size = Length::pt(7.0);
     style.footer.font_size = Length::pt(11.0);
@@ -774,8 +807,10 @@ mod tests {
 
   #[test]
   fn running_titles_have_no_links_or_footnotes() {
-    let headings =
-      heading_records(&ReadStyle::default(), "\\section{See \\href{https://example.com}{site}\\footnote{n} $x^{2}$}\n");
+    let headings = heading_records(
+      &style_with_running_titles(),
+      "\\section{See \\href{https://example.com}{site}\\footnote{n} $x^{2}$}\n",
+    );
 
     for title in [&headings[0].header_title, &headings[0].footer_title] {
       let nodes = flatten(title);
@@ -791,7 +826,7 @@ mod tests {
 
   #[test]
   fn running_titles_do_not_consume_footnote_numbers() {
-    let style = ReadStyle::default();
+    let style = style_with_running_titles();
     let document = analyzed("\\section{A\\footnote{x}}\n\n本文\\footnote{y}\n");
 
     let (layout, headings) =

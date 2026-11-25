@@ -681,6 +681,14 @@ impl RunningTemplate {
     return nodes;
   }
 
+  /// `{chapter}` / `{section}` を含むか
+  #[must_use]
+  pub(crate) fn uses_titles(&self) -> bool {
+    return self.0.parts.iter().any(|part| {
+      return matches!(part, Part::Placeholder(RunningPlaceholder::Chapter | RunningPlaceholder::Section));
+    });
+  }
+
   /// テンプレート文字列が空白のみかどうか
   #[must_use]
   pub(super) fn is_blank(&self) -> bool { return self.0.as_str().trim().is_empty(); }
@@ -878,6 +886,13 @@ mod tests {
       author: "",
       date: "",
     };
+  }
+
+  #[test]
+  fn running_template_reports_whether_it_uses_titles() {
+    assert!(RunningTemplate::parse("{page} {chapter}").uses_titles());
+    assert!(RunningTemplate::parse("{section}").uses_titles());
+    assert!(!RunningTemplate::parse("{page} / {pages} {title}").uses_titles());
   }
 
   #[test]

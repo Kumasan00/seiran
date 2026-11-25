@@ -138,7 +138,7 @@ pub(super) struct HeadingRecord {
   /// 目次の行に組む「番号 題目」。目次の行の書体で lower 済みで、リンク・脚注・索引を含まない
   pub toc_label: Vec<InlineNode>,
   /// ヘッダーの `{chapter}` / `{section}` に組む題目（番号を含まない）。`[header]` の書体・サイズで lower 済みで、
-  /// リンク・脚注・索引を含まない
+  /// リンク・脚注・索引を含まない。`[header]` のどのスロットも題目を使わなければ空
   pub header_title: Vec<InlineNode>,
   /// フッターの `{chapter}` / `{section}` に組む題目。`[footer]` の書体・サイズで lower 済みのほかは `header_title` と同じ
   pub footer_title: Vec<InlineNode>,

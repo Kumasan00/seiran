@@ -23,6 +23,8 @@
 
 新しい章は前の節の所属を終える。
 
+\pagebreak
+
 \section{\href{https://example.com}{外部} と脚注\footnote{柱に出ない脚注。}}
 
 本文\footnote{本文の脚注の番号は題目の脚注の次。}。

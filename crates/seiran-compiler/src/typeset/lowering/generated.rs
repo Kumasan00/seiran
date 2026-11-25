@@ -13,7 +13,7 @@ use crate::{
     boxes::{AnchorId, LinkTarget},
     lowering::{
       HeadingRecord, LoweringContext,
-      heading::{self, running_text_style, title_style, toc_entry_style},
+      heading::{self, running_title, title_style, toc_entry_style},
       inline,
       layout_node::{InlineNode, LayoutNode, TextStyle},
       paragraph::{assemble_paragraph, body_text_style},
@@ -63,14 +63,12 @@ pub(super) fn lower_bibliography(
       ctx.style.reference.title.clone(),
       toc_entry_style(ctx.style),
     )],
-    header_title: vec![InlineNode::Text(
-      ctx.style.reference.title.clone(),
-      running_text_style(&ctx.style.header),
-    )],
-    footer_title: vec![InlineNode::Text(
-      ctx.style.reference.title.clone(),
-      running_text_style(&ctx.style.footer),
-    )],
+    header_title: running_title(&ctx.style.header, |style| {
+      return vec![InlineNode::Text(ctx.style.reference.title.clone(), style)];
+    }),
+    footer_title: running_title(&ctx.style.footer, |style| {
+      return vec![InlineNode::Text(ctx.style.reference.title.clone(), style)];
+    }),
     footnote_start: footnote_count,
   }];
 
@@ -122,9 +120,9 @@ mod tests {
   use crate::{
     document::Typeface,
     semantics::CitationId,
-    style::Style as ReadStyle,
+    style::{RunningTemplate, Style as ReadStyle},
     typeset::lowering::{
-      lower_sources_with_headings,
+      lower_sources_with_headings, running_text_style,
       test_support::{analyzed, context, inlines, lower, paragraph_layout, paragraph_origins},
     },
   };
@@ -259,7 +257,8 @@ mod tests {
 
   #[test]
   fn bibliography_heading_record_has_toc_label() {
-    let style = ReadStyle::default();
+    let mut style = ReadStyle::default();
+    style.header.left = RunningTemplate::parse("{section}");
 
     let (_layout, headings) = lower_bibliography(&context(&style), Some(&bibliography()), 0, 0);
 

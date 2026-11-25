@@ -59,6 +59,12 @@ impl RunningContentStyle {
   pub(crate) fn is_blank(&self) -> bool {
     return self.left.is_blank() && self.center.is_blank() && self.right.is_blank();
   }
+
+  /// いずれかのスロットが `{chapter}` / `{section}` を含むかを返す。
+  #[must_use]
+  pub(crate) fn uses_titles(&self) -> bool {
+    return self.left.uses_titles() || self.center.uses_titles() || self.right.uses_titles();
+  }
 }
 
 impl Default for RunningContentStyle {

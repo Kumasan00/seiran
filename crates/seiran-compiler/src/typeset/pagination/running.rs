@@ -7,6 +7,7 @@ mod heads;
 
 use std::ops::Range;
 
+use heads::Heads;
 use tracing::debug;
 
 use crate::{
@@ -194,7 +195,7 @@ fn build_running_blocks(
   slots: &RunningSlots,
   text_width: Length,
   values: RunningValues<'_>,
-  heads: (Option<&HeadingRecord>, Option<&HeadingRecord>),
+  heads: Heads<'_>,
 ) -> Result<Vec<PlacedBlock>, ElementOverflow> {
   let left = shape_slot(ctx, shaper, slots, &slots.left, values, heads)?;
   let center = shape_slot(ctx, shaper, slots, &slots.center, values, heads)?;
@@ -250,14 +251,16 @@ fn place_slots(
 /// 1 スロットのテンプレートを組んだ `HBox` 列を返す
 ///
 /// 地の文字（値のトークンを埋めたもの）は `shaper` で組み、`{chapter}` / `{section}` の題目は見出しを起点とする
-/// シェーパーで本文と同じ規則の閉じた箱 1 つにする。地の文字が空白だけで題目も空なら何も組まない。
+/// シェーパーで本文と同じ規則の閉じた箱 1 つにする。地の文字と題目は別の箱なので、境界をまたぐカーニング・
+/// 和欧文間アキは入らない（地の文字の字の問題は生成元、題目の字の問題は見出しへ帰属させるため、1 つの箱には組めない）。
+/// 地の文字が空白だけで題目も空なら何も組まない。
 fn shape_slot(
   ctx: &TypesetContext<'_>,
   shaper: &mut Shaper<'_>,
   slots: &RunningSlots,
   template: &RunningTemplate,
   values: RunningValues<'_>,
-  (chapter, section): (Option<&HeadingRecord>, Option<&HeadingRecord>),
+  (chapter, section): Heads<'_>,
 ) -> Result<Vec<HBox>, ElementOverflow> {
   let chapter_title = chapter.map_or(&[][..], slots.title);
   let section_title = section.map_or(&[][..], slots.title);

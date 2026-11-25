@@ -9,7 +9,7 @@ use crate::{
 };
 
 /// ページの柱に出す（章, 節）の見出し記録
-type Heads<'h> = (Option<&'h HeadingRecord>, Option<&'h HeadingRecord>);
+pub(super) type Heads<'h> = (Option<&'h HeadingRecord>, Option<&'h HeadingRecord>);
 
 /// 本文ページごとに、最初の本文ブロック（読み順）が属する（章, 節）を返す
 ///
