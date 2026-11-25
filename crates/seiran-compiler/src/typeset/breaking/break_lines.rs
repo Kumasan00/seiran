@@ -27,6 +27,19 @@ pub(in crate::typeset) trait LineBreaker {
   ) -> Result<Vec<Line>, LengthOverflow>;
 }
 
+/// 水平リストを本文幅で行に分割する
+///
+/// # Errors
+///
+/// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+pub(in crate::typeset) fn break_lines(
+  items: &[HItem],
+  text_width: Length,
+  alignment: TextAlignment,
+) -> Result<Vec<Line>, LengthOverflow> {
+  return KnuthPlassBreaker.break_lines(items, text_width, alignment);
+}
+
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
 struct OpenLink {
   /// リンクの行き先

@@ -52,7 +52,6 @@ pub(super) fn paginate(
           generated: Generated::FrontMatter,
           images,
           column_width: ctx.geometry.front_geometry().column_width,
-          breaker: &ctx.breaker,
           default_font_size: ctx.style.text.font_size,
           line_height_factor: ctx.style.text.line_height_factor,
           // タイトルページはハイフネーションしない
@@ -76,7 +75,7 @@ pub(super) fn paginate(
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "front").entered();
-    break_pages(front_blocks, ctx.geometry.front_geometry(), &ctx.breaker)?
+    break_pages(front_blocks, ctx.geometry.front_geometry())?
   };
   return Ok((pages, overflows));
 }
