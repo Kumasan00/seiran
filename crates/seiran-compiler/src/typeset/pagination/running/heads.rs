@@ -14,14 +14,22 @@ type Heads<'h> = (Option<&'h HeadingRecord>, Option<&'h HeadingRecord>);
 /// 本文ページごとに、最初の本文ブロック（読み順）が属する（章, 節）を返す
 ///
 /// 基準はページ最初の本文ブロックで着地した見出し（[`Page::opening_headings`]）、無ければ前のページまでに着地した
-/// 最後の見出し。ページ途中の見出しはそのページを切り替えない。`headings` は `HeadingKey` の順に並ぶ
+/// 最後の見出し。ページ途中の見出しはそのページを切り替えない。本文ブロックの無い（繰越脚注だけの）ページは、その脚注の
+/// 呼出元のうち文書順で最初のものの直前の見出しを基準にする。`headings` は `HeadingKey` の順に並ぶ
 /// （`lowering::lower_sources_with_headings` が保証する）。
 pub(super) fn page_heads<'h>(body_pages: &[Page], headings: &'h [HeadingRecord]) -> Vec<Heads<'h>> {
   let after = heads_after_each_heading(headings);
   let mut passed: Option<usize> = None;
   let mut result = Vec::with_capacity(body_pages.len());
   for page in body_pages {
-    let basis = page.opening_headings.last().map(|key| return key.index()).or(passed);
+    let basis = if page.blocks.is_empty() {
+      let Some(first_call) = page.footnotes.iter().map(|footnote| return footnote.index).min() else {
+        unreachable!("本文ブロックも脚注も無いページは改ページが排出しない（PageDraft::has_content）")
+      };
+      headings.iter().rposition(|record| return record.footnote_start <= first_call)
+    } else {
+      page.opening_headings.last().map(|key| return key.index()).or(passed)
+    };
     result.push(basis.map_or((None, None), |index| {
       let Some(&heads) = after.get(index) else {
         unreachable!("見出しアンカーのキーは lowering が見出し記録と同じ文書順で振る: {index}")
@@ -90,6 +98,15 @@ mod tests {
       toc_label: Vec::new(),
       header_title: Vec::new(),
       footer_title: Vec::new(),
+      footnote_start: 0,
+    };
+  }
+
+  /// 脚注 `footnote_start` 番以降を従える本文の節見出しの記録
+  fn section(index: usize, footnote_start: u32) -> HeadingRecord {
+    return HeadingRecord {
+      footnote_start,
+      ..record(index, HeadingLevel::Section)
     };
   }
 
@@ -222,5 +239,44 @@ mod tests {
     ];
 
     assert_eq!(heads(&pages, &headings), vec![(None, Some(0)), (None, None)]);
+  }
+
+  #[test]
+  fn footnote_only_page_uses_the_call_heading() {
+    let headings = vec![section(0, 0), section(1, 1)];
+    let pages = vec![
+      page()
+        .opening_heading(HeadingKey::new(0))
+        .heading_anchor(HeadingKey::new(1), Length::ZERO, Length::pt(20.0))
+        .build(),
+      PageBuilder::new().continued_footnote(0).build(),
+    ];
+
+    assert_eq!(heads(&pages, &headings), vec![(None, Some(0)), (None, Some(0))]);
+  }
+
+  #[test]
+  fn footnote_only_page_takes_the_earliest_call() {
+    let headings = vec![section(0, 0), section(1, 1)];
+    let pages = vec![
+      page()
+        .opening_heading(HeadingKey::new(0))
+        .heading_anchor(HeadingKey::new(1), Length::ZERO, Length::pt(20.0))
+        .build(),
+      PageBuilder::new().continued_footnote(2).continued_footnote(0).build(),
+    ];
+
+    assert_eq!(heads(&pages, &headings), vec![(None, Some(0)), (None, Some(0))]);
+  }
+
+  #[test]
+  fn footnote_called_before_any_heading_has_no_heads() {
+    let headings = vec![section(0, 1)];
+    let pages = vec![
+      page().build(),
+      PageBuilder::new().continued_footnote(0).build(),
+    ];
+
+    assert_eq!(heads(&pages, &headings), vec![(None, None), (None, None)]);
   }
 }

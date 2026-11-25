@@ -142,6 +142,8 @@ pub(super) struct HeadingRecord {
   pub header_title: Vec<InlineNode>,
   /// フッターの `{chapter}` / `{section}` に組む題目。`[footer]` の書体・サイズで lower 済みのほかは `header_title` と同じ
   pub footer_title: Vec<InlineNode>,
+  /// この見出し（題目を含む）以降に出現する最初の脚注の出現 index。書誌の見出しは文書の脚注総数で、どの脚注もこれより前
+  pub footnote_start: u32,
 }
 
 impl HeadingRecord {
@@ -266,6 +268,9 @@ impl<'a> LoweringState<'a> {
     return index;
   }
 
+  /// これまでに払い出した脚注の個数（次の脚注の出現 index）
+  pub(super) fn footnote_count(&self) -> u32 { return self.footnote_count; }
+
   /// 引用箇所の表示インライン列を引く
   pub(super) fn citation_display(&self, site: NodeId) -> &'a [GeneratedInline] {
     return self.document.citation_display(site);
@@ -346,7 +351,7 @@ pub(super) fn lower_sources_with_headings(
 
   // 書誌は本文の後ろに置き、見出しキーは本文の見出し数の続きから振る。
   let (bibliography_nodes, bibliography_headings) =
-    generated::lower_bibliography(ctx, document.bibliography(), document.heading_count());
+    generated::lower_bibliography(ctx, document.bibliography(), document.heading_count(), state.footnote_count());
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
@@ -826,6 +831,7 @@ mod tests {
         toc_label: Vec::new(),
         header_title: Vec::new(),
         footer_title: Vec::new(),
+        footnote_start: 0,
       };
     };
     assert_eq!(record("1.2", "Intro").label(), "1.2 Intro");

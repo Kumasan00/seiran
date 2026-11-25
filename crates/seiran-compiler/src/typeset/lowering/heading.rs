@@ -191,6 +191,7 @@ pub(super) fn lower_hir_heading(
 ) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let key = state.heading_key(id);
   let label = state.declared_label(id).cloned();
+  let footnote_start = state.footnote_count();
   let number = state
     .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
@@ -220,6 +221,7 @@ pub(super) fn lower_hir_heading(
       toc_label: toc,
       header_title,
       footer_title,
+      footnote_start,
     },
   );
   return Ok(layout);
@@ -802,6 +804,17 @@ mod tests {
       );
     }
     assert_eq!(footnotes(inlines(&layout)), vec![(2, 1)], "本文の脚注は見出しの脚注の次: {layout:?}");
+  }
+
+  #[test]
+  fn footnote_start_counts_footnotes_before_the_heading() {
+    let headings = heading_records(
+      &ReadStyle::default(),
+      "前\\footnote{a}\n\n\\section{A\\footnote{b}}\n\n本文\\footnote{c}\n\n\\section{B}\n",
+    );
+
+    assert_eq!(headings[0].footnote_start, 1, "題目の脚注 b は A に属する");
+    assert_eq!(headings[1].footnote_start, 3);
   }
 
   /// `\section{title}` のしおりの題目（番号を除く平文）

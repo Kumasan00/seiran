@@ -5890,3 +5890,95 @@ fn trailing_negative_space_in_a_fence_body_pulls_the_next_atom_back() {
 
   assert_eq!(narrowed, plain + (font_size * -9) / 18.0f64, "中身の末尾の負の明示アキの分だけ後続が寄る");
 }
+
+/// ページのヘッダーに描く字を、箱の順（左のスロットから）につないで返すテストヘルパ（ヘッダーが無ければ空文字列）
+fn header_text(page: &Page) -> String {
+  let mut text = String::new();
+  for block in &page.header {
+    if let PlacedBlock::Line { line, .. } = block {
+      for placed in &line.boxes {
+        push_text(&placed.hbox.content, &mut text);
+      }
+    }
+  }
+  return text;
+}
+
+/// 節 Alpha の本文に版面を超える長い脚注を置き、続く節 Beta で文書が終わるソース。長い脚注の残りは文書末尾の後ろへ
+/// 繰り越され、本文の無い脚注だけのページになる
+const CARRIED_FOOTNOTE_SOURCE: &str = "\\section{Alpha}
+
+本文\\footnote{この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。\
+この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。\
+この脚注の本体は非常に長く、マーカーのある本文行と同じページの脚注領域には収まりきらない。\
+収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。繰越の部分には番号マーカーを再表示せず、\
+本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。次のページでも収まらない場合は同じ規則を\
+再帰的に適用し、繰越の連鎖が二ページ以上にまたがることもある。繰越が残っているページでも、その下の本文領域に入るだけの\
+本文は流し込む。繰越があるからといって本文を丸ごと次ページへ追い出してしまうと、本文が一行も無いページが並んでしまい\
+読み物として破綻するためである。したがって繰越の連鎖が続く間も、各ページには本文が流れ続けることになる。脚注の側から\
+見ると、ページごとに脚注領域へ入るだけの行を置き、残りをまた次のページへ送る、という動作を繰越が尽きるまで繰り返して\
+いる。この繰り返しは脚注の行数が必ず減っていくので必ず停止する。この脚注の本体は非常に長く、マーカーのある本文行と\
+同じページの脚注領域には収まりきらない。収まらなかった残りの行は、次のページの脚注領域の先頭へ繰り越されて組まれる。\
+繰越の部分には番号マーカーを再表示せず、本文の続きとしてそのまま組む。繰越先のページでも本文との区切り罫線は描く。}。
+
+\\section{Beta}
+
+短い本文。
+";
+
+/// [`CARRIED_FOOTNOTE_SOURCE`] を `footnote_split` の版面で、ヘッダー中央に「章|節」を置いて組んだページ列
+fn carried_footnote_pages(numbering: &'static str) -> Vec<Page> {
+  return TestProject::builder()
+    .golden_fixture("footnote_split")
+    .source_text(CARRIED_FOOTNOTE_SOURCE)
+    .style_toml(move |table| {
+      test_support::set(table, "header", "center", "{chapter}|{section}");
+      test_support::set(table, "footnote", "numbering", numbering);
+    })
+    .build()
+    .laid_out()
+    .pages;
+}
+
+/// 本文が無く繰越脚注だけのページのヘッダーの字を返す
+fn footnote_only_headers(pages: &[Page]) -> Vec<String> {
+  return pages
+    .iter()
+    .filter(|page| return page.blocks.is_empty() && !page.footnotes.is_empty())
+    .map(header_text)
+    .collect();
+}
+
+#[test]
+fn footnote_only_page_uses_the_call_section() {
+  let headers = footnote_only_headers(&carried_footnote_pages("continuous"));
+
+  assert!(!headers.is_empty(), "脚注だけのページがあるはず");
+  assert!(headers.iter().all(|header| return header == "|Alpha"), "呼出元の節を出すはず: {headers:?}");
+}
+
+#[test]
+fn footnote_only_page_with_per_page_numbering_uses_the_call_section() {
+  let headers = footnote_only_headers(&carried_footnote_pages("per_page"));
+
+  assert!(!headers.is_empty(), "脚注だけのページがあるはず");
+  assert!(headers.iter().all(|header| return header == "|Alpha"), "呼出元の節を出すはず: {headers:?}");
+}

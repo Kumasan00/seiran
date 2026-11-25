@@ -422,6 +422,16 @@ impl PageBuilder {
     return self;
   }
 
+  /// 前ページから繰り越した脚注の断片（出現 index `index`、本体ブロックなし）を追加する
+  pub(crate) fn continued_footnote(mut self, index: u32) -> Self {
+    self.page.footnotes.push(PlacedFootnote {
+      index,
+      continued: true,
+      blocks: Vec::new(),
+    });
+    return self;
+  }
+
   /// ラベル（図・表・式）の到達先アンカーを追加する
   pub(crate) fn label_anchor(mut self, label: LabelId, x: Length, y: Length) -> Self {
     self.page.anchors.push(PlacedAnchor {

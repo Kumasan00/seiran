@@ -315,6 +315,7 @@ mod tests {
       )],
       header_title: Vec::new(),
       footer_title: Vec::new(),
+      footnote_start: 0,
     };
   }
 
