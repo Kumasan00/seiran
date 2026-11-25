@@ -127,6 +127,9 @@ impl Reporter {
       .with_file(false)
       .with_line_number(false)
       .without_time()
+      // 端末へ書けない event は捨てる（module doc）。有効にすると失敗の報告を `eprintln!` で同じ stderr へ書き、
+      // stderr が閉じていると panic する。
+      .log_internal_errors(false)
       .with_filter(plan.stderr.filter);
     let file_layer = log.as_ref().zip(plan.file).map(|(sink, sink_plan)| {
       return fmt::layer()
