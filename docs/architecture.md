@@ -683,7 +683,7 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
 
 #### `boxing`
 
-`build_blocks`: `LayoutNode` → `Vec<Block>`。lowering のレイアウトノードを計測済みの縦リストにして `breaking` へ渡す。段落と脚注本体の行分割もこの段で済ませ、`Block::Paragraph` と
+`build_blocks`: `LayoutNode` → `Galley` へ `Block` を積む。lowering のレイアウトノードを計測済みの縦リストにして `breaking` へ渡す。段落と脚注本体の行分割もこの段で済ませ、`Block::Paragraph` と
 `FootnoteBody` は確定済みの行だけを運ぶ（`HItem` の列は `breaking` へ渡らない）。
 
 - **ブロック間アキ**（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Glue` として出す（下端
@@ -753,7 +753,7 @@ style は届かない。
 
 フォント非依存の純粋組版パスで、行を確定済みのブロック列をページへ配置するだけ。`break_pages` の interface は
 フォント・シェーパーを引数に取らず、`Galley`（区画の版面 `PageGeometry` と確定済みの `Block` 列）だけを受け取る。
-行分割はしない — 段落・脚注本体・表の行の脚注はすでに行になっていて、`HItem` の列も `break_lines` も `breaking` からは
+行分割はしない — 段落・脚注本体・表の行の脚注はすでに行になっていて、`HItem` の列は `breaking` へ渡らず、`break_lines` は `breaking` から
 見えない。版面の幾何は `geometry` が定義・構築する。数式内分割点 `HItem::MathBreak`（数式エンジンが積む）が使われるのは
 `boxing` の行分割の中だけ。
 

@@ -8,7 +8,7 @@
 //! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取る [`Galley`] の版面から読み、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
-//! 段落は [`ParagraphLayout`] ごとに水平リストを計測して段幅で行分割し（左字下げまでずらした行を `Block::Paragraph` が持つ）、内容が空でも段落後の固定アキを残す。
+//! 段落は [`ParagraphLayout`] ごとに水平リストを計測して使える幅（段幅から字下げを引いた `boxes::usable_width`）で行分割し（左字下げまでずらした行を `Block::Paragraph` が持つ）、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（数式エンジン — インライン・ディスプレイ数式の段・アキ・分割候補の組み立てと、構造ごとの計測・配置）と
@@ -863,41 +863,11 @@ mod tests {
   use crate::{
     document::TextAlignment,
     length::{Length, LengthOverflow},
-    typeset::boxes::{HBox, HBoxContent, HItem, LinkTarget},
+    typeset::{
+      boxes::{HItem, LinkTarget},
+      boxing::break_lines::test_support::{box_width, space_glue, stretch_glue, test_box},
+    },
   };
-
-  /// 幅 `width`・高さ 8・深さ 2 の、テキストを持たない箱
-  fn box_of_width(width: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: Length::pt(width),
-      height: Length::pt(8.0),
-      depth: Length::pt(2.0),
-    });
-  }
-
-  /// 幅 10 の箱
-  fn test_box() -> HItem { return box_of_width(10.0); }
-
-  /// 幅 5 で、伸縮が `stretch` / `shrink` の分割可能な glue
-  fn glue(stretch: f32, shrink: f32) -> HItem {
-    return HItem::Glue {
-      natural: Length::pt(5.0),
-      stretch: Length::pt(stretch),
-      shrink: Length::pt(shrink),
-      breakable: true,
-    };
-  }
-
-  /// 単語間スペース相当（幅 5・伸長 2.5・収縮 5/3）の glue
-  fn stretch_glue() -> HItem {
-    return HItem::Glue {
-      natural: Length::pt(5.0),
-      stretch: Length::pt(2.5),
-      shrink: Length::pt(5.0) / 3.0,
-      breakable: true,
-    };
-  }
 
   /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
   fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
@@ -917,9 +887,9 @@ mod tests {
   fn rigid_items() -> Vec<HItem> {
     return vec![
       test_box(),
-      glue(0.0, 0.0),
+      space_glue(),
       test_box(),
-      glue(0.0, 0.0),
+      space_glue(),
       test_box(),
     ];
   }
@@ -929,7 +899,7 @@ mod tests {
     let mut items = Vec::new();
     for i in 0..6 {
       if i > 0 {
-        items.push(glue(0.0, 0.0));
+        items.push(space_glue());
       }
       items.push(test_box());
     }
@@ -1005,7 +975,7 @@ mod tests {
 
   #[test]
   fn centered_overflowing_line_is_not_shifted_negative() {
-    let items = vec![box_of_width(50.0)];
+    let items = vec![box_width(50.0)];
 
     let lines =
       break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");

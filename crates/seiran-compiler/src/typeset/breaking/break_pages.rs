@@ -160,7 +160,7 @@ struct PageComposer {
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
 struct PendingFootnote {
-  /// このリージョンに置く分だけに切り詰め済みの本体
+  /// 行分割済みの本体（リージョンに積まれた時点では、そのリージョンに置く分だけに切り詰め済み）
   body: FootnoteBody,
   /// 前リージョンからの繰越（続き）か
   continued: bool,
@@ -1339,7 +1339,7 @@ fn place_table_row(
 
 #[cfg(test)]
 mod tests {
-  use std::iter::repeat_n;
+  use std::iter;
 
   use super::{
     ElementOverflow, FootnoteCharges, FootnoteDemand, Galley, Overflow, OverflowAxis, OverflowKind, PageGeometry,
@@ -1488,7 +1488,7 @@ mod tests {
   }
 
   /// `n` 行の合成段落を作る
-  fn paragraph_of_lines(n: usize) -> Block { return paragraph(repeat_n(body_line(), n).collect()); }
+  fn paragraph_of_lines(n: usize) -> Block { return paragraph(iter::repeat_n(body_line(), n).collect()); }
 
   /// 行 `body` を本体に持つ脚注（`index = number - 1`）を作るテストヘルパ
   fn footnote_item(number: u32, body: Vec<Line>, leading: Length) -> FootnoteBody {
@@ -1832,7 +1832,7 @@ mod tests {
 
   /// `lines` 行の本体を持つ脚注マーカーを作る（各行は [`body_line`] = 高さ 8・深さ 2）
   fn footnote_of_lines(number: u32, lines: usize) -> FootnoteBody {
-    return footnote_item(number, repeat_n(body_line(), lines).collect(), pt(12.0));
+    return footnote_item(number, iter::repeat_n(body_line(), lines).collect(), pt(12.0));
   }
 
   /// ページ 1 枚の要約: 本文行数と、脚注ごとの ([`footnote_item`] に渡した番号, 繰越か, 本体行数)
@@ -3279,7 +3279,7 @@ mod tests {
   #[test]
   fn composed_lines_break_across_pages() {
     let geom = test_geometry();
-    let blocks: Vec<Block> = repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
+    let blocks: Vec<Block> = iter::repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
 

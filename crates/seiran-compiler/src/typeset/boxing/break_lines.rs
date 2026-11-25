@@ -297,7 +297,7 @@ pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflo
 
 /// 行分割テストの共有フィクスチャ
 #[cfg(test)]
-mod test_support {
+pub(super) mod test_support {
   use crate::{
     length::Length,
     semantics::LabelId,
@@ -308,7 +308,7 @@ mod test_support {
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// テスト用の合成ボックス（幅 10、高さ 8、深さ 2）
-  pub(super) fn test_box() -> HItem {
+  pub(in crate::typeset::boxing) fn test_box() -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Atom(Vec::new()),
       width: pt(10.0),
@@ -318,7 +318,7 @@ mod test_support {
   }
 
   /// テスト用の指定幅ボックス（高さ 8・深さ 2）
-  pub(super) fn box_width(width: f32) -> HItem {
+  pub(in crate::typeset::boxing) fn box_width(width: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
@@ -328,7 +328,7 @@ mod test_support {
   }
 
   /// テスト用の breakable glue（幅 5・伸縮なし）
-  pub(super) fn space_glue() -> HItem {
+  pub(in crate::typeset::boxing) fn space_glue() -> HItem {
     return HItem::Glue {
       natural: pt(5.0),
       stretch: Length::ZERO,
@@ -348,7 +348,7 @@ mod test_support {
   }
 
   /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
-  pub(super) fn stretch_glue() -> HItem {
+  pub(in crate::typeset::boxing) fn stretch_glue() -> HItem {
     return HItem::Glue {
       natural: pt(5.0),
       stretch: pt(2.5),
