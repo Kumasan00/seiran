@@ -227,10 +227,11 @@ pub(super) fn aki_between(left: Edge, right: Edge) -> Option<HItem> {
     .iter()
     .any(|point| return point.byte == left_ch.len_utf8());
   let glue: Glue = boxing::boundary_glue(class_of(left_ch, left_em), class_of(right_ch, right_em), em, breakable)?;
-  if left_math && right_math {
-    return Some(HItem::Kern(glue.natural));
-  }
-  return Some(glue.into_item());
+  return if left_math && right_math {
+    Some(HItem::Kern(glue.natural))
+  } else {
+    Some(glue.into_item())
+  };
 }
 
 /// 本文テキストの字の端どうし（それぞれ（字, スクリプト区分, 1em））の境界に挟む和欧文間アキ

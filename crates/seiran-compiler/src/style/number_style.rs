@@ -67,10 +67,7 @@ fn render_roman(mut n: u32, lower: bool) -> String {
       n -= value;
     }
   }
-  if lower {
-    return out.to_ascii_lowercase();
-  }
-  return out;
+  return if lower { out.to_ascii_lowercase() } else { out };
 }
 
 /// アルファベット列（Excel 方式）へ変換: 1→A, 26→Z, 27→AA, 28→AB, ...
@@ -83,10 +80,7 @@ fn render_alpha(mut n: u32, lower: bool) -> String {
     n = (n - 1) / 26;
   }
   let s: String = chars.into_iter().rev().collect();
-  if lower {
-    return s.to_ascii_lowercase();
-  }
-  return s;
+  return if lower { s.to_ascii_lowercase() } else { s };
 }
 
 /// 漢数字の位取り表記に使う 0〜9 の文字

@@ -86,10 +86,11 @@ impl CompileFailure {
   /// 警告（[`CompileFailure::warnings`]）は含まない。
   #[must_use]
   pub fn into_report(self) -> miette::Report {
-    if self.rest.is_empty() {
-      return miette::Report::new_boxed(self.primary);
-    }
-    return miette::Report::new(self);
+    return if self.rest.is_empty() {
+      miette::Report::new_boxed(self.primary)
+    } else {
+      miette::Report::new(self)
+    };
   }
 }
 

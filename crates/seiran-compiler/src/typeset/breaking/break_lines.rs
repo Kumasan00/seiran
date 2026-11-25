@@ -20,10 +20,11 @@ pub(in crate::typeset) fn break_lines(
   text_width: Length,
   alignment: TextAlignment,
 ) -> Result<Vec<Line>, LengthOverflow> {
-  if alignment == TextAlignment::Justify {
-    return knuth_plass::break_lines(items, text_width);
-  }
-  return greedy::break_lines(items, text_width, alignment);
+  return if alignment == TextAlignment::Justify {
+    knuth_plass::break_lines(items, text_width)
+  } else {
+    greedy::break_lines(items, text_width, alignment)
+  };
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態

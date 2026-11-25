@@ -44,10 +44,11 @@ impl PathResolver {
   /// 解決済みの絶対パスを渡しても値は変わらない（冪等）。
   pub(crate) fn resolve(&self, path: impl AsRef<Path>) -> ProjectPath {
     let path = path.as_ref();
-    if path.is_absolute() {
-      return ProjectPath::new(path);
-    }
-    return ProjectPath::new(self.base_dir.join(path));
+    return if path.is_absolute() {
+      ProjectPath::new(path)
+    } else {
+      ProjectPath::new(self.base_dir.join(path))
+    };
   }
 
   /// 基準ディレクトリを返す。

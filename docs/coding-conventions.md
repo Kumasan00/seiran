@@ -22,6 +22,9 @@ use 規約・値と型の書き方・`unreachable!` / `expect` の根拠明記�
 関数の返り値には必ず `return` を使用する。末尾式による暗黙の返却は使わない。`implicit_return` が
 機械化しており、Clippy の `needless_return` を allow にしているのはこの規約の裏返し。
 
+条件で対等な 2 つの返り値を選ぶときは、`return if lower { s.to_ascii_lowercase() } else { s };` のように
+両方の値を同じ `if / else` 式に置く。入力不正など、その場で処理を打ち切る条件には早期 `return` を使う。
+
 ### 2. フォーマット
 
 正典は `rustfmt.toml`（インデント 2 スペース・最大行幅 120 文字ほか）。手書き時もこれに合わせ、適用は

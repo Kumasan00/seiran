@@ -347,10 +347,11 @@ impl Checker<'_> {
   /// ソースの字 `written` を写した字 `glyph`（写していなければ同じ字）を箇所 `site` で要求する
   fn written(&mut self, site: NodeId, written: char, glyph: char) {
     self.require(site, glyph, || {
-      if written == glyph {
-        return "ここで使っています".to_string();
-      }
-      return format!("`{written}` を {glyph} として組みます");
+      return if written == glyph {
+        "ここで使っています".to_string()
+      } else {
+        format!("`{written}` を {glyph} として組みます")
+      };
     });
     return;
   }

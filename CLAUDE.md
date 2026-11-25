@@ -150,6 +150,7 @@ seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler �
 ### 必須ルール（番号は Cargo.toml のコメントが参照する — 固定）
 
 1. **`return` キーワード必須**: 末尾式による暗黙の返却は使わない（`implicit_return`）
+   - 対等な 2 つの返り値を選ぶときは `return if 条件 { A } else { B };`、処理を打ち切るときは早期 `return` を使う
 2. **フォーマット**: 正典は `rustfmt.toml`（2 スペース・120 桁）。適用は `cargo +nightly fmt`（nightly 必須）
 3. **use 文**: 持ち込んだ名前の出自が呼び出し箇所の字面で一意に分かる範囲で最短パスを使う
    - 起点は `crate::` に統一し `super::` / `self::` は使わない。例外は 2 つだけ — (a) 同じファイルが `mod` 宣言する子 module からの相対 use、(b) `#[cfg(test)]` module が**直近の親**を `use super::` で取り込む形（`super::super::` は不可）

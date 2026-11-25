@@ -130,10 +130,11 @@ impl Measurer<'_> {
     // 約物を詰めない経路の字の端。和欧文間アキはアキ調整のある文書でだけ受ける
     let em = run.font_size();
     let letter = |ch: char| -> Edge {
-      if self.punctuation_spacing {
-        return Edge::text(ch, category, em);
-      }
-      return Edge::letter(ch);
+      return if self.punctuation_spacing {
+        Edge::text(ch, category, em)
+      } else {
+        Edge::letter(ch)
+      };
     };
     if !run.is_in_logical_order() {
       out.push(letter(first_char), vec![HItem::Box(run.into_hbox()?)], letter(last_char));

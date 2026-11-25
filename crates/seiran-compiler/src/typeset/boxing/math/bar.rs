@@ -31,10 +31,11 @@ fn rule_bottom(
   gap: Length,
   thickness: Length,
 ) -> Result<Length, LengthOverflow> {
-  if over {
-    return ink_height.try_add(gap);
-  }
-  return Ok(-ink_depth.try_add(gap)?.try_add(thickness)?);
+  return if over {
+    ink_height.try_add(gap)
+  } else {
+    Ok(-ink_depth.try_add(gap)?.try_add(thickness)?)
+  };
 }
 
 impl Measurer<'_> {
