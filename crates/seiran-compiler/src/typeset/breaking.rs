@@ -1,7 +1,5 @@
-//! フォント非依存の純粋組版パス（行分割・縦組版）
+//! 縦組版 — 行を確定済みのブロック列をページへ配置するフォント非依存の純粋パス
 
-mod break_lines;
 mod break_pages;
 
-pub(super) use break_lines::{break_lines, min_content_width};
 pub(super) use break_pages::{Overflow, OverflowAxis, OverflowKind, break_pages};

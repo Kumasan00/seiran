@@ -919,7 +919,7 @@ mod tests {
     let fonts = test_support::vendor_font_system(|_| return None);
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(&fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
-    let mut measurer = Measurer::new(shaper, Length::pt(10.0), 1.2, None, true, stretch_limit);
+    let mut measurer = Measurer::new(shaper, Length::pt(10.0), 1.2, None, true, stretch_limit, Length::pt(100_000.0));
     let (_, (top, bottom)) = measurer
       .stretch_vertically("(", Length::pt(10.0), None, target, None)
       .expect("テストの寸法は値域内");

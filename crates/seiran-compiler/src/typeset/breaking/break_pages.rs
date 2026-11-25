@@ -18,15 +18,14 @@ use region_cursor::RegionCursor;
 use tracing::debug;
 
 use crate::{
-  document::{NodeId, TextAlignment},
+  document::NodeId,
   length::{Length, LengthOverflow},
   project::ProjectPath,
   typeset::{
     boxes::{
-      self, Align, Block, HBox, HItem, Line, MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedMathNumber,
+      self, Align, Block, FootnoteBody, Galley, HBox, Line, MathRowNumber, Page, PlacedBlock, PlacedMathNumber,
       PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
     },
-    breaking,
     error::ElementOverflow,
     geometry::PageGeometry,
     observe,
@@ -161,18 +160,10 @@ struct PageComposer {
 
 /// 現在リージョンに集約された脚注 1 個（行分割済み、未確定座標）
 struct PendingFootnote {
-  /// 帰属する `\footnote` コマンド
-  origin: NodeId,
-  /// 発番済みの表示番号
-  number: u32,
-  /// 出現順の識別子（0 起点）
-  index: u32,
+  /// 行分割済みの本体（リージョンに積まれた時点では、そのリージョンに置く分だけに切り詰め済み）
+  body: FootnoteBody,
   /// 前リージョンからの繰越（続き）か
   continued: bool,
-  /// 行分割済みの本体（このリージョンに置く分だけに切り詰め済み）
-  lines: Vec<Line>,
-  /// 行送り
-  leading: Length,
 }
 
 impl PageComposer {
@@ -239,10 +230,11 @@ impl PageComposer {
       return Ok(());
     }
     let charges = FootnoteCharges::of(&self.geom);
-    let demands: Vec<FootnoteDemand> = self.carry.iter().map(footnote_demand).collect::<Result<_, _>>()?;
+    let demands: Vec<FootnoteDemand> =
+      self.carry.iter().map(|pending| return footnote_demand(&pending.body)).collect::<Result<_, _>>()?;
     // はみ出しの記録に使う繰越先頭の表示番号と起源（`pack_footnotes` が `overflowed` を立てるのは
     // 先頭の脚注に限られる）
-    let (leading_number, leading_origin) = (self.carry[0].number, self.carry[0].origin);
+    let (leading_number, leading_origin) = (self.carry[0].body.number, self.carry[0].body.origin);
     // 繰越は「そのページの自前の脚注より前」に置くので、常にエリア先頭（`base_reserved` = 0）から詰める
     let Some(packing) = pack_footnotes(
       &demands,
@@ -372,14 +364,14 @@ impl PageComposer {
   fn push_region_footnote(&mut self, head: PendingFootnote) -> Result<(), ElementOverflow> {
     let at = |LengthOverflow| {
       return ElementOverflow {
-        origin: Some(head.origin),
+        origin: Some(head.body.origin),
       };
     };
-    for line in &head.lines {
+    for line in &head.body.lines {
       let over = excess(line.width().map_err(at)?, self.geom.column_width).map_err(at)?;
       if let Some(excess) = over {
         self.record(OverflowKind::Line {
-          origin: Some(head.origin),
+          origin: Some(head.body.origin),
           excerpt: observe::summarize_line(line),
           axis: OverflowAxis::Horizontal,
           excess,
@@ -413,10 +405,9 @@ impl PageComposer {
 /// 数式は字下げを引いた利用幅）と実効の本文下限を基準に軸ごとに記録する。表は利用幅に対する幅（表 1 個につき 1 件）と、行ごとの横（折り返すセルの行の超過）・縦（空の領域でも
 /// 入らない行帯）を測る。
 /// 表の行の脚注は本文の行と同じく `FootnoteLine` を記録する。
-pub(in crate::typeset) fn break_pages(
-  blocks: Vec<Block>,
-  geom: &PageGeometry,
-) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
+pub(in crate::typeset) fn break_pages(galley: Galley) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
+  let (geometry, blocks) = galley.into_parts();
+  let geom = &geometry;
   // 改ページの判断（生成物・ページ単位の計算）は特定の要素に帰属しない
   let page_level = |LengthOverflow| return ElementOverflow { origin: None };
   let mut composer = PageComposer::new(*geom);
@@ -449,13 +440,10 @@ pub(in crate::typeset) fn break_pages(
     match block {
       Block::Paragraph {
         origin,
-        items,
+        lines,
         leading,
-        indent,
-        right_indent,
-        alignment,
       } => {
-        place_paragraph(&mut composer, &items, leading, indent, right_indent, alignment, origin)?;
+        place_paragraph(&mut composer, lines, leading, origin)?;
       },
       Block::ComposedLine {
         origin,
@@ -643,7 +631,7 @@ struct AtomicPlacement {
 
 /// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
 ///
-/// 表の脚注本体は `geom` の段幅に行分割して判定に含める（`place_table` と同じ判定関数を通す）。
+/// 表の脚注本体（行分割済みの `row.footnotes`）は判定に含める（`place_table` と同じ判定関数を通す）。
 fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Result<AtomicPlacement, ElementOverflow> {
   let at = |LengthOverflow| {
     return ElementOverflow {
@@ -678,23 +666,25 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Resu
         let first = table.head.first().or_else(|| return table.rows.first());
         match first {
           Some(row) => {
-            let demands = footnote_demands(&[pending_footnotes(&row.footnotes, geom.column_width)?])?;
+            let demands = footnote_demands(&row.footnotes)?;
             let row_at = |LengthOverflow| {
               return ElementOverflow {
                 origin: Some(row.origin),
               };
             };
             let need = FragmentFrame::of(table).for_head_rows().row_need(row, true).map_err(row_at)?;
-            defers_table_row(cursor, need, &demands[0], need, geom).map_err(row_at)?
+            defers_table_row(cursor, need, &demands, need, geom).map_err(row_at)?
           },
           None => false,
         }
       } else {
-        let demands: Vec<FootnoteDemand> = footnote_demands(&table_footnote_bodies(&table.head, geom.column_width)?)?
-          .into_iter()
-          .chain(footnote_demands(&table_footnote_bodies(&table.rows, geom.column_width)?)?)
-          .flatten()
-          .collect();
+        let demands: Vec<FootnoteDemand> = table
+          .head
+          .iter()
+          .chain(&table.rows)
+          .flat_map(|row| return &row.footnotes)
+          .map(footnote_demand)
+          .collect::<Result<_, _>>()?;
         defers_unbreakable_table(cursor, total, &demands, geom).map_err(at)?
       };
       return Ok(AtomicPlacement {
@@ -733,18 +723,11 @@ fn keep_group_orphaned(
       Block::Glue { natural, .. } => {
         cursor.y = cursor.y.try_add(*natural).map_err(at)?;
       },
-      Block::Paragraph {
-        origin,
-        items,
-        leading,
-        indent,
-        right_indent,
-        alignment,
-      } => {
-        let lines = break_paragraph(items, geom.column_width, *indent, *right_indent, *alignment, *origin)?;
-        let demands = footnote_demands(&footnote_bodies(&lines, geom.column_width)?)?;
+      Block::Paragraph { lines, leading, .. } => {
+        let demands: Vec<Vec<FootnoteDemand>> =
+          lines.iter().map(|line| return footnote_demands(&line.footnotes)).collect::<Result<_, _>>()?;
         let (plan, truncated) = plan_paragraph_lines(
-          &lines,
+          lines,
           cursor,
           *leading,
           geom.margin_top,
@@ -790,101 +773,41 @@ fn keep_group_orphaned(
   return Ok(false);
 }
 
-/// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
-///
-/// 行の幅の計算が溢れたら、段落の起点 `origin` を [`ElementOverflow`] で返す。
-fn break_paragraph(
-  items: &[HItem],
-  column_width: Length,
-  indent: Length,
-  right_indent: Length,
-  alignment: TextAlignment,
-  origin: Option<NodeId>,
-) -> Result<Vec<Line>, ElementOverflow> {
-  let available = boxes::usable_width(column_width, indent, right_indent)
-    .map_err(|LengthOverflow| return ElementOverflow { origin })?;
-  let mut lines =
-    breaking::break_lines(items, available, alignment).map_err(|LengthOverflow| return ElementOverflow { origin })?;
-  // 揃えのずらしは行分割が利用可能幅の中で済ませている。段オフセットは段をまたぐと行ごとに変わるため、
-  // ここでは足さず着地段が決まってから足す
-  for line in &mut lines {
-    line.shift_x(indent).map_err(|LengthOverflow| return ElementOverflow { origin })?;
-  }
-  return Ok(lines);
+/// 1 行（または表の 1 行）に付いた脚注から、分割可能な需要を作る（`footnotes` と同順・同長）
+fn footnote_demands(footnotes: &[FootnoteBody]) -> Result<Vec<FootnoteDemand>, ElementOverflow> {
+  return footnotes.iter().map(footnote_demand).collect();
 }
 
-/// 脚注を段幅で行分割し、未確定の脚注にする（`footnotes` と同順・同長）。本文の行と表の行が共用する
-///
-/// 行の幅の計算が溢れたら、その脚注の起点を [`ElementOverflow`] で返す。
-fn pending_footnotes(
-  footnotes: &[MeasuredFootnote],
-  column_width: Length,
-) -> Result<Vec<PendingFootnote>, ElementOverflow> {
-  return footnotes
-    .iter()
-    .map(|footnote| {
-      let lines =
-        breaking::break_lines(&footnote.items, column_width, TextAlignment::Left).map_err(|LengthOverflow| {
-          return ElementOverflow {
-            origin: Some(footnote.origin),
-          };
-        })?;
-      return Ok(PendingFootnote {
-        origin: footnote.origin,
-        number: footnote.number,
-        index: footnote.index,
-        continued: false,
-        lines,
-        leading: footnote.leading,
-      });
-    })
-    .collect();
+/// 行分割済みの脚注本体を、まだ分割も繰越もしていない脚注にする
+fn unplaced(body: FootnoteBody) -> PendingFootnote {
+  return PendingFootnote {
+    body,
+    continued: false,
+  };
 }
 
-/// 各行に付いた脚注（`line.footnotes`）を段幅で行分割し、未確定の脚注にする（`lines` と同順・同長）
-fn footnote_bodies(lines: &[Line], column_width: Length) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
-  return lines.iter().map(|line| return pending_footnotes(&line.footnotes, column_width)).collect();
-}
-
-/// 表の各行断片に付いた脚注を段幅で行分割し、未確定の脚注にする（`rows` と同順・同長）
-fn table_footnote_bodies(
-  rows: &[TableRowFragment],
-  column_width: Length,
-) -> Result<Vec<Vec<PendingFootnote>>, ElementOverflow> {
-  return rows.iter().map(|row| return pending_footnotes(&row.footnotes, column_width)).collect();
-}
-
-/// 行ごとの未確定脚注から、分割可能な需要（行ごとの積み上げ高さ）を作る（`bodies` と同順・同長）
-fn footnote_demands(bodies: &[Vec<PendingFootnote>]) -> Result<Vec<Vec<FootnoteDemand>>, ElementOverflow> {
-  return bodies.iter().map(|line_bodies| return line_bodies.iter().map(footnote_demand).collect()).collect();
-}
-
-/// 未確定の脚注 1 個の需要を作る。行の高さの積み上げが溢れたら、その脚注の起点を返す
-fn footnote_demand(pending: &PendingFootnote) -> Result<FootnoteDemand, ElementOverflow> {
-  return FootnoteDemand::new(&pending.lines, pending.leading).map_err(|LengthOverflow| {
+/// 脚注 1 個の需要を作る。行の高さの積み上げが溢れたら、その脚注の起点を返す
+fn footnote_demand(footnote: &FootnoteBody) -> Result<FootnoteDemand, ElementOverflow> {
+  return FootnoteDemand::new(&footnote.lines, footnote.leading).map_err(|LengthOverflow| {
     return ElementOverflow {
-      origin: Some(pending.origin),
+      origin: Some(footnote.origin),
     };
   });
 }
 
-/// 段落を行に割ってベースライン送りで配置する
+/// 確定済みの段落の行をベースライン送りで配置する
 fn place_paragraph(
   composer: &mut PageComposer,
-  items: &[HItem],
+  mut lines: Vec<Line>,
   leading: Length,
-  indent: Length,
-  right_indent: Length,
-  alignment: TextAlignment,
   origin: Option<NodeId>,
 ) -> Result<(), ElementOverflow> {
   let at = |LengthOverflow| return ElementOverflow { origin };
-  let mut lines = break_paragraph(items, composer.geom.column_width, indent, right_indent, alignment, origin)?;
-  // 脚注の行分割と需要は widow/orphan の再フローや chunk の再計画で再計算しない
+  // 脚注の需要は widow/orphan の再フローや chunk の再計画で再計算しない
   // （脚注の構成は改リージョン点の選び方で変わらないため）
   let charges = FootnoteCharges::of(&composer.geom);
-  let mut bodies = footnote_bodies(&lines, composer.geom.column_width)?;
-  let mut demands = footnote_demands(&bodies)?;
+  let mut demands: Vec<Vec<FootnoteDemand>> =
+    lines.iter().map(|line| return footnote_demands(&line.footnotes)).collect::<Result<_, _>>()?;
   // 段落を前から chunk 単位で確定する。繰越が生じない段落ではループは 1 周で終わる
   let mut last_baseline = composer.cursor.y;
   let mut is_paragraph_start = true;
@@ -910,15 +833,16 @@ fn place_paragraph(
       continue;
     }
     let chunk_lines: Vec<Line> = lines.drain(..chunk_len).collect();
-    let chunk_bodies: Vec<Vec<PendingFootnote>> = bodies.drain(..chunk_len).collect();
     demands.drain(..chunk_len);
-    for (mut line, footnotes, placement) in izip!(chunk_lines, chunk_bodies, plan) {
+    for (mut line, placement) in izip!(chunk_lines, plan) {
+      // 脚注は行から外して予約・分割・繰越へ渡す。着地する行は脚注を持たない
+      let footnotes: Vec<PendingFootnote> = std::mem::take(&mut line.footnotes).into_iter().map(unplaced).collect();
       if placement.starts_region {
         composer.advance_region()?;
       }
       if placement.overflowed {
         composer.record(OverflowKind::FootnoteLine {
-          footnotes: footnotes.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
+          footnotes: footnotes.iter().map(|footnote| return (footnote.body.number, footnote.body.origin)).collect(),
         });
       }
       let baseline = placement.baseline;
@@ -1188,8 +1112,8 @@ impl<'a> FragmentFrame<'a> {
 /// 表固有の判断は分割してよいか（`breakable`）と断片の開閉（[`FragmentFrame`]）だけで、断片と境界の中身（列幅・
 /// セル余白・罫線の太さと空き・再掲ヘッダの付随情報）は表エンジンが確定済み。ここで足すのは段オフセットと、
 /// 字下げ `indent` に利用幅 `available` の中での揃えを足したオフセット（全断片で同じ）と、行の脚注の予約・配置
-/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は区画の段幅に行分割
-/// する。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
+/// （[`place_table_row`]）。表の幅のはみ出しは利用幅に対して測る。セルの脚注本体は計測の段で区画の段幅に
+/// 行分割済み。未解決アンカーは行を持つ最初の断片の着地（[`PageDraft::place_table_fragment`]）で、その断片の上端に
 /// 解決する。先頭行の fit 判定より前に解決すると、先頭行が次リージョンへ送られたときアンカーが前リージョンに残る。
 fn place_table(
   composer: &mut PageComposer,
@@ -1206,14 +1130,14 @@ fn place_table(
   };
   // 揃えオフセットは段内のもの（字下げを含む）。段オフセットは着地段が決まる flush 時に断片ごとに足す
   let align_offset = indent.try_add(align.offset(available, table.width).map_err(at)?).map_err(at)?;
-  let head_bodies = table_footnote_bodies(&table.head, composer.geom.column_width)?;
-  let row_bodies = table_footnote_bodies(&table.rows, composer.geom.column_width)?;
   if !table.breakable {
-    let demands: Vec<FootnoteDemand> = footnote_demands(&head_bodies)?
-      .into_iter()
-      .chain(footnote_demands(&row_bodies)?)
-      .flatten()
-      .collect();
+    let demands: Vec<FootnoteDemand> = table
+      .head
+      .iter()
+      .chain(&table.rows)
+      .flat_map(|row| return &row.footnotes)
+      .map(footnote_demand)
+      .collect::<Result<_, _>>()?;
     if defers_unbreakable_table(composer.cursor, table.height().map_err(at)?, &demands, &composer.geom).map_err(at)? {
       composer.advance_region()?;
     }
@@ -1246,12 +1170,12 @@ fn place_table(
   };
   let head_frame = body_frame.for_head_rows();
   let mut pending: Option<PendingTableFragment> = None;
-  for (row, bodies) in head.into_iter().zip(head_bodies) {
-    place_table_row(composer, row, bodies, &head_frame, &mut pending, align_offset)?;
+  for row in head {
+    place_table_row(composer, row, &head_frame, &mut pending, align_offset)?;
     record_width_excess(composer);
   }
-  for (row, bodies) in rows.into_iter().zip(row_bodies) {
-    place_table_row(composer, row, bodies, &body_frame, &mut pending, align_offset)?;
+  for row in rows {
+    place_table_row(composer, row, &body_frame, &mut pending, align_offset)?;
     record_width_excess(composer);
   }
   record_width_excess(composer);
@@ -1303,7 +1227,7 @@ fn stack_row(fragment: &mut PendingTableFragment, row: TableRowFragment, top: Le
   return Ok(());
 }
 
-/// 表の行 1 本を、その脚注（行分割済みの `bodies`）と合わせて現在リージョンへ置く
+/// 表の行 1 本を、その脚注（`row.footnotes`）と合わせて現在リージョンへ置く
 ///
 /// 断片が開いていなければ開き（`frame` の上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線を積む）、行の上の境界は
 /// 捨てる — 断片の上端は枠罫の持ち場。開いていれば行の上の境界を積む。収まりはどちらも下端の枠罫を予約して判定する。
@@ -1314,8 +1238,7 @@ fn stack_row(fragment: &mut PendingTableFragment, row: TableRowFragment, top: Le
 /// 脚注の予約・分割・繰越は段落の行の確定（`place_paragraph`）と同じ順で行う。
 fn place_table_row(
   composer: &mut PageComposer,
-  row: TableRowFragment,
-  bodies: Vec<PendingFootnote>,
+  mut row: TableRowFragment,
   frame: &FragmentFrame<'_>,
   pending: &mut Option<PendingTableFragment>,
   align_offset: Length,
@@ -1323,7 +1246,9 @@ fn place_table_row(
   let row_origin = Some(row.origin);
   let at = |LengthOverflow| return ElementOverflow { origin: row_origin };
   let charges = FootnoteCharges::of(&composer.geom);
-  let demands: Vec<FootnoteDemand> = bodies.iter().map(footnote_demand).collect::<Result<_, _>>()?;
+  let demands = footnote_demands(&row.footnotes)?;
+  // 脚注は行から外して予約・分割・繰越へ渡す。断片へ積む行は脚注を持たない
+  let bodies: Vec<PendingFootnote> = std::mem::take(&mut row.footnotes).into_iter().map(unplaced).collect();
   let height = row.height();
   let fresh = frame.row_need(&row, true).map_err(at)?;
   let here = frame.row_need(&row, pending.is_none()).map_err(at)?;
@@ -1346,7 +1271,7 @@ fn place_table_row(
     LineFootnoteFit::Rejected => {
       if !bodies.is_empty() {
         composer.record(OverflowKind::FootnoteLine {
-          footnotes: bodies.iter().map(|footnote| return (footnote.number, footnote.origin)).collect(),
+          footnotes: bodies.iter().map(|footnote| return (footnote.body.number, footnote.body.origin)).collect(),
         });
       }
       (
@@ -1414,27 +1339,36 @@ fn place_table_row(
 
 #[cfg(test)]
 mod tests {
+  use std::iter;
+
   use super::{
-    ElementOverflow, FootnoteCharges, FootnoteDemand, Overflow, OverflowAxis, OverflowKind, PageGeometry, RegionCursor,
-    break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
+    ElementOverflow, FootnoteCharges, FootnoteDemand, Galley, Overflow, OverflowAxis, OverflowKind, PageGeometry,
+    RegionCursor, break_pages, is_content_block, keep_group_end, pack_footnotes, page_draft::placed_block_bottom,
   };
   use crate::{
-    document::{NodeId, TextAlignment},
+    document::NodeId,
     length::Length,
     project::{FontFace, FontType, ProjectPath},
     publication::GlyphRun,
     semantics::{HeadingKey, LabelId},
     source::SourceId,
     typeset::boxes::{
-      Align, AnchorId, Block, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, Line, LineLink, LinkTarget,
-      MathRowNumber, MeasuredFootnote, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow,
-      PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+      Align, AnchorId, Block, FootnoteBody, FootnoteId, HBox, HBoxContent, IndexTerm, Line, LineLink, LinkTarget,
+      MathRowNumber, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow, PlacedTableRule,
+      TableBoundary, TableBox, TableRowFragment,
     },
   };
 
+  /// テスト入力のブロック列と版面から区画を作る
+  fn galley_of(blocks: Vec<Block>, geom: &PageGeometry) -> Galley {
+    let mut galley = Galley::new(*geom);
+    galley.extend(blocks);
+    return galley;
+  }
+
   /// 値域内のテスト入力を `break_pages` で組む
   fn break_pages_in_range(blocks: Vec<Block>, geom: &PageGeometry) -> (Vec<Page>, Vec<Overflow>) {
-    return break_pages(blocks, geom).expect("テストの寸法は値域内");
+    return break_pages(galley_of(blocks, geom)).expect("テストの寸法は値域内");
   }
 
   /// pt 値から `Length` を作る短縮子
@@ -1493,44 +1427,78 @@ mod tests {
   /// [`footnote_item`] が作る `number` 番の脚注が帰属する `\footnote` コマンドの ID
   fn footnote_origin(number: u32) -> NodeId { return NodeId::for_test(SourceId::new(0), 100 + number); }
 
-  /// テスト用ボックス（幅 10、高さ 8、深さ 2）
-  fn test_box() -> HItem {
-    return HItem::Box(HBox {
+  /// 幅 `width`・高さ `height`・深さ `depth` の、テキストを持たない箱
+  fn wide_hbox(width: f32, height: f32, depth: f32) -> HBox {
+    return HBox {
       content: HBoxContent::Atom(Vec::new()),
-      width: Length::pt(10.0),
-      height: Length::pt(8.0),
-      depth: Length::pt(2.0),
-    });
-  }
-
-  /// `n` 行（ForcedBreak 区切り）の合成段落を作る
-  fn paragraph_of_lines(n: usize) -> Block {
-    let mut items = Vec::new();
-    for i in 0..n {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      items.push(test_box());
-    }
-    return Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
+      width: pt(width),
+      height: pt(height),
+      depth: pt(depth),
     };
   }
 
-  /// 幅 0 の脚注マーカー（`HItem::Footnote`）を作るテストヘルパ
-  fn footnote_item(number: u32, body: Vec<HItem>, leading: Length) -> HItem {
-    return HItem::Footnote(MeasuredFootnote {
+  /// 幅 `width`・高さ `height`・深さ `depth` の箱 1 個を `dx = 0` に置いた行（脚注・リンク・索引語なし）
+  fn box_line(width: f32, height: f32, depth: f32) -> Line {
+    return Line {
+      boxes: vec![PlacedHBox {
+        hbox: wide_hbox(width, height, depth),
+        dx: Length::ZERO,
+        dy: Length::ZERO,
+      }],
+      height: pt(height),
+      depth: pt(depth),
+      links: Vec::new(),
+      footnotes: Vec::new(),
+      index_marks: Vec::new(),
+    };
+  }
+
+  /// 幅 10・高さ 8・深さ 2 の箱 1 個だけの行
+  fn body_line() -> Line { return box_line(10.0, 8.0, 2.0); }
+
+  /// `target` へのリンクが 幅 10・高さ 8・深さ 2 の箱を `count` 個（`dx = 0, 10, ...`）覆う行
+  fn linked_line(target: LinkTarget, count: u8) -> Line {
+    let boxes = (0..count)
+      .map(|i| {
+        return PlacedHBox {
+          hbox: wide_hbox(10.0, 8.0, 2.0),
+          dx: pt(10.0 * f32::from(i)),
+          dy: Length::ZERO,
+        };
+      })
+      .collect();
+    return Line {
+      boxes,
+      links: vec![LineLink {
+        target,
+        x0: Length::ZERO,
+        x1: pt(10.0 * f32::from(count)),
+      }],
+      ..body_line()
+    };
+  }
+
+  /// 行列から行送り 12pt の段落を作る
+  fn paragraph(lines: Vec<Line>) -> Block {
+    return Block::Paragraph {
+      origin: None,
+      lines,
+      leading: Length::pt(12.0),
+    };
+  }
+
+  /// `n` 行の合成段落を作る
+  fn paragraph_of_lines(n: usize) -> Block { return paragraph(iter::repeat_n(body_line(), n).collect()); }
+
+  /// 行 `body` を本体に持つ脚注（`index = number - 1`）を作るテストヘルパ
+  fn footnote_item(number: u32, body: Vec<Line>, leading: Length) -> FootnoteBody {
+    return FootnoteBody {
       origin: footnote_origin(number),
       number,
       index: number - 1,
-      items: body,
+      lines: body,
       leading,
-    });
+    };
   }
 
   /// ページの脚注のうち、[`footnote_item`] に渡した番号の脚注（`index = number - 1`）を返す
@@ -1538,17 +1506,12 @@ mod tests {
     return page.footnotes.iter().find(|f| return f.index + 1 == number);
   }
 
-  /// 1 行だけの段落（widow/orphan 補正の対象外）を作る。`items` の末尾に脚注マーカーを追加できる
-  fn single_line_paragraph(mut items: Vec<HItem>) -> Block {
-    items.insert(0, test_box());
-    return Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    };
+  /// 1 行だけの段落（widow/orphan 補正の対象外）を作る。行に `footnotes` を付けられる
+  fn single_line_paragraph(footnotes: Vec<FootnoteBody>) -> Block {
+    return paragraph(vec![Line {
+      footnotes,
+      ..body_line()
+    }]);
   }
 
   /// ページの脚注のうち、指定番号の本体行ベースライン列を返す
@@ -1564,21 +1527,26 @@ mod tests {
       .collect();
   }
 
-  /// 幅 0 の索引マーカー（`HItem::IndexMark`）を作るテストヘルパ
-  fn index_mark_item(word: &str, reading: Option<&str>) -> HItem {
-    return HItem::IndexMark(IndexTerm {
+  /// 索引語（`word`・読み `reading`）を作るテストヘルパ
+  fn index_term(word: &str, reading: Option<&str>) -> IndexTerm {
+    return IndexTerm {
       word: word.to_string(),
       reading: reading.map(str::to_string),
-    });
+    };
+  }
+
+  /// 索引語を 1 つ持つ 1 行の段落を作る
+  fn indexed_paragraph(word: &str, reading: Option<&str>) -> Block {
+    return paragraph(vec![Line {
+      index_marks: vec![index_term(word, reading)],
+      ..body_line()
+    }]);
   }
 
   #[test]
   fn index_entries_collected_per_page_in_order() {
     let geom = test_geometry();
-    let blocks = vec![
-      single_line_paragraph(vec![index_mark_item("A", None)]),
-      single_line_paragraph(vec![index_mark_item("B", None)]),
-    ];
+    let blocks = vec![indexed_paragraph("A", None), indexed_paragraph("B", None)];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
 
@@ -1592,8 +1560,8 @@ mod tests {
   fn index_entries_different_reading_are_separate_entries() {
     let geom = test_geometry();
     let blocks = vec![
-      single_line_paragraph(vec![index_mark_item("語", None)]),
-      single_line_paragraph(vec![index_mark_item("語", Some("よみ"))]),
+      indexed_paragraph("語", None),
+      indexed_paragraph("語", Some("よみ")),
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -1603,18 +1571,20 @@ mod tests {
   }
 
   /// `lines` 行の脚注本体を作り、`at` 行目（0 起点）の行頭に索引マーカーを置く
-  fn footnote_of_lines_with_index_at(number: u32, lines: usize, at: usize, word: &str) -> HItem {
-    let mut items = Vec::new();
-    for i in 0..lines {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      if i == at {
-        items.push(index_mark_item(word, None));
-      }
-      items.push(test_box());
-    }
-    return footnote_item(number, items, pt(12.0));
+  fn footnote_of_lines_with_index_at(number: u32, lines: usize, at: usize, word: &str) -> FootnoteBody {
+    let body = (0..lines)
+      .map(|i| {
+        return if i == at {
+          Line {
+            index_marks: vec![index_term(word, None)],
+            ..body_line()
+          }
+        } else {
+          body_line()
+        };
+      })
+      .collect();
+    return footnote_item(number, body, pt(12.0));
   }
 
   #[test]
@@ -1653,21 +1623,17 @@ mod tests {
   }
 
   /// `lines` 行の脚注本体を作り、`at` 行目（0 起点）の箱を外部リンクで挟む
-  fn footnote_of_lines_with_link_at(number: u32, lines: usize, at: usize, uri: &str) -> HItem {
-    let mut items = Vec::new();
-    for i in 0..lines {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      if i == at {
-        items.push(HItem::LinkStart(LinkTarget::External(uri.to_string())));
-        items.push(test_box());
-        items.push(HItem::LinkEnd);
-      } else {
-        items.push(test_box());
-      }
-    }
-    return footnote_item(number, items, pt(12.0));
+  fn footnote_of_lines_with_link_at(number: u32, lines: usize, at: usize, uri: &str) -> FootnoteBody {
+    let body = (0..lines)
+      .map(|i| {
+        return if i == at {
+          linked_line(LinkTarget::External(uri.to_string()), 1)
+        } else {
+          body_line()
+        };
+      })
+      .collect();
+    return footnote_item(number, body, pt(12.0));
   }
 
   /// ページのリンクのうち、指定 URI の外部リンクだけを返す
@@ -1763,11 +1729,11 @@ mod tests {
   fn index_entries_split_across_pages_are_not_merged() {
     let geom = test_geometry();
     let blocks = vec![
-      single_line_paragraph(vec![index_mark_item("語", None)]),
+      indexed_paragraph("語", None),
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
-      single_line_paragraph(vec![index_mark_item("語", None)]),
+      indexed_paragraph("語", None),
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -1781,9 +1747,9 @@ mod tests {
   fn index_mark_does_not_affect_page_layout() {
     let geom = test_geometry();
     let with_marks = vec![
-      single_line_paragraph(vec![index_mark_item("A", None)]),
+      indexed_paragraph("A", None),
       single_line_paragraph(vec![]),
-      single_line_paragraph(vec![index_mark_item("B", Some("びー"))]),
+      indexed_paragraph("B", Some("びー")),
       single_line_paragraph(vec![]),
     ];
     let without_marks = vec![
@@ -1807,7 +1773,7 @@ mod tests {
     let geom = test_geometry();
     let blocks = vec![single_line_paragraph(vec![footnote_item(
       1,
-      vec![test_box()],
+      vec![body_line()],
       pt(12.0),
     )])];
 
@@ -1828,11 +1794,7 @@ mod tests {
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
-      single_line_paragraph(vec![footnote_item(
-        2,
-        vec![test_box(), HItem::ForcedBreak, test_box()],
-        pt(12.0),
-      )]),
+      single_line_paragraph(vec![footnote_item(2, vec![body_line(), body_line()], pt(12.0))]),
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -1853,8 +1815,8 @@ mod tests {
   fn multiple_footnotes_on_same_page_stack_in_order() {
     let geom = test_geometry();
     let blocks = vec![single_line_paragraph(vec![
-      footnote_item(1, vec![test_box()], pt(12.0)),
-      footnote_item(2, vec![test_box()], pt(12.0)),
+      footnote_item(1, vec![body_line()], pt(12.0)),
+      footnote_item(2, vec![body_line()], pt(12.0)),
     ])];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -1868,16 +1830,9 @@ mod tests {
     assert!(second.to_pt() > first.to_pt(), "脚注 2 は脚注 1 より下");
   }
 
-  /// `lines` 行の本体を持つ脚注マーカーを作る（各行は [`test_box`] 1 個 = 高さ 8・深さ 2）
-  fn footnote_of_lines(number: u32, lines: usize) -> HItem {
-    let mut items = Vec::new();
-    for i in 0..lines {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      items.push(test_box());
-    }
-    return footnote_item(number, items, pt(12.0));
+  /// `lines` 行の本体を持つ脚注マーカーを作る（各行は [`body_line`] = 高さ 8・深さ 2）
+  fn footnote_of_lines(number: u32, lines: usize) -> FootnoteBody {
+    return footnote_item(number, iter::repeat_n(body_line(), lines).collect(), pt(12.0));
   }
 
   /// ページ 1 枚の要約: 本文行数と、脚注ごとの ([`footnote_item`] に渡した番号, 繰越か, 本体行数)
@@ -1996,15 +1951,8 @@ mod tests {
     };
   }
 
-  /// 高さ `height` pt・深さ 2pt の箱（1 行がページ全高を超える脚注を作るため）
-  fn tall_box(height: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: pt(10.0),
-      height: pt(height),
-      depth: pt(2.0),
-    });
-  }
+  /// 高さ `height` pt・深さ 2pt の箱 1 個の行（1 行がページ全高を超える脚注を作るため）
+  fn tall_line(height: f32) -> Line { return box_line(10.0, height, 2.0); }
 
   #[test]
   fn footnotes_on_the_same_overflowing_line_are_reported_together() {
@@ -2033,22 +1981,15 @@ mod tests {
   fn each_overflowing_line_is_reported_once_in_page_order() {
     // 各行に脚注が付き、widow/orphan 補正で計画が立て直される長さの段落
     let geom = cramped_geometry();
-    let mut items = Vec::new();
-    for number in 1..=3u32 {
-      if number > 1 {
-        items.push(HItem::ForcedBreak);
-      }
-      items.push(test_box());
-      items.push(footnote_of_lines(number, 1));
-    }
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items,
-      leading: pt(12.0),
-      indent: Length::ZERO,
-      right_indent: Length::ZERO,
-      alignment: TextAlignment::Left,
-    }];
+    let lines = (1..=3u32)
+      .map(|number| {
+        return Line {
+          footnotes: vec![footnote_of_lines(number, 1)],
+          ..body_line()
+        };
+      })
+      .collect();
+    let blocks = vec![paragraph(lines)];
 
     let (_, overflows) = break_pages_in_range(blocks, &geom);
 
@@ -2072,17 +2013,7 @@ mod tests {
   fn carried_footnote_line_overflow_is_reported_once_per_page_it_lands_on() {
     // 繰越の 2 行がどちらもページ全高を超える（1 ページに 1 行ずつ置かれる）
     let geom = test_geometry();
-    let footnote = footnote_item(
-      1,
-      vec![
-        test_box(),
-        HItem::ForcedBreak,
-        tall_box(40.0),
-        HItem::ForcedBreak,
-        tall_box(40.0),
-      ],
-      pt(12.0),
-    );
+    let footnote = footnote_item(1, vec![body_line(), tall_line(40.0), tall_line(40.0)], pt(12.0));
     let blocks = vec![single_line_paragraph(vec![footnote])];
 
     let (pages, overflows) = break_pages_in_range(blocks, &geom);
@@ -2110,29 +2041,23 @@ mod tests {
     );
   }
 
-  /// `lines` 行の段落を作り、`at` 行目（0 起点）の末尾に脚注マーカーを置く
-  fn paragraph_with_footnote_at(lines: usize, at: usize, footnote: HItem) -> Block {
+  /// `lines` 行の段落を作り、`at` 行目（0 起点）に脚注を付ける
+  fn paragraph_with_footnote_at(lines: usize, at: usize, footnote: FootnoteBody) -> Block {
     let mut footnote = Some(footnote);
-    let mut items = Vec::new();
-    for i in 0..lines {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      items.push(test_box());
-      if i == at
-        && let Some(marker) = footnote.take()
-      {
-        items.push(marker);
-      }
-    }
-    return Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    };
+    return paragraph(
+      (0..lines)
+        .map(|i| {
+          return Line {
+            footnotes: if i == at {
+              footnote.take().into_iter().collect()
+            } else {
+              Vec::new()
+            },
+            ..body_line()
+          };
+        })
+        .collect(),
+    );
   }
 
   /// ページごとの「本文の下端」と「脚注エリアの上端」を返す（重なり検証用。無ければ `None`）
@@ -2331,8 +2256,8 @@ mod tests {
   fn footnote_rule_drawn_once_before_first_footnote_in_region() {
     let geom = geometry_with_footnote_rule();
     let blocks = vec![single_line_paragraph(vec![
-      footnote_item(1, vec![test_box()], pt(12.0)),
-      footnote_item(2, vec![test_box()], pt(12.0)),
+      footnote_item(1, vec![body_line()], pt(12.0)),
+      footnote_item(2, vec![body_line()], pt(12.0)),
     ])];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -2370,11 +2295,7 @@ mod tests {
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
       single_line_paragraph(vec![]),
-      single_line_paragraph(vec![footnote_item(
-        2,
-        vec![test_box(), HItem::ForcedBreak, test_box()],
-        pt(12.0),
-      )]),
+      single_line_paragraph(vec![footnote_item(2, vec![body_line(), body_line()], pt(12.0))]),
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -2384,7 +2305,7 @@ mod tests {
     assert_eq!(footnote_rule_count(&pages[1]), 1, "新リージョンにも罫線は 1 本だけのはず");
     let footnote_lines = footnote_baselines(&pages[1], 2);
     assert_eq!(footnote_lines.len(), 2, "脚注本体は 2 行");
-    let last_line_bottom = footnote_lines[1] + pt(2.0); // test_box() の depth=2
+    let last_line_bottom = footnote_lines[1] + pt(2.0); // body_line() の depth=2
     assert!(
       last_line_bottom.to_pt() <= geom.page_limit.to_pt() + 1e-3,
       "脚注の最終行が page_limit を超えないはず（見積りと配置の非対称バグの回帰）: {}",
@@ -3144,20 +3065,10 @@ mod tests {
   fn paragraph_link_becomes_placed_link() {
     use crate::typeset::boxes::LinkTarget;
     let geom = test_geometry();
-    let items = vec![
-      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
-      test_box(),
-      test_box(),
-      HItem::LinkEnd,
-    ];
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    }];
+    let blocks = vec![paragraph(vec![linked_line(
+      LinkTarget::External("https://example.com".to_string()),
+      2,
+    )])];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
 
@@ -3168,261 +3079,6 @@ mod tests {
     assert!(close(link.y, 2.0));
     assert!(close(link.width, 20.0));
     assert!(close(link.height, 10.0));
-  }
-
-  #[test]
-  fn paragraph_right_indent_reduces_available_width() {
-    let geom = PageGeometry {
-      column_width: Length::pt(60.0),
-      ..test_geometry()
-    };
-    let mut items = Vec::new();
-    for i in 0..6 {
-      if i > 0 {
-        items.push(HItem::Glue {
-          natural: Length::pt(5.0),
-          stretch: Length::pt(0.0),
-          shrink: Length::pt(0.0),
-          breakable: true,
-        });
-      }
-      items.push(test_box());
-    }
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(10.0),
-      right_indent: Length::pt(10.0),
-      alignment: TextAlignment::Left,
-    }];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let lines: Vec<&Line> = pages[0]
-      .blocks
-      .iter()
-      .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .collect();
-    assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
-    for line in &lines {
-      let first = line.boxes.first().expect("各行にボックスがあるはず");
-      assert!(first.dx.to_pt() >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.dx.to_pt());
-      for placed in &line.boxes {
-        assert!(
-          (placed.dx + placed.hbox.width).to_pt() <= 50.0 + f32::EPSILON,
-          "x+width={} <= 段幅 - right_indent = 50",
-          (placed.dx + placed.hbox.width).to_pt()
-        );
-      }
-    }
-  }
-
-  #[test]
-  fn paragraph_indent_shifts_links() {
-    use crate::typeset::boxes::LinkTarget;
-    let geom = test_geometry();
-    let items = vec![
-      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
-      test_box(),
-      test_box(),
-      HItem::LinkEnd,
-    ];
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(15.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    }];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    assert_eq!(pages[0].links.len(), 1, "{:?}", pages[0].links);
-    let link = &pages[0].links[0];
-    assert!(close(link.x, 15.0), "link.x={}", link.x.to_pt());
-    assert!(close(link.width, 20.0), "link.width={}", link.width.to_pt());
-  }
-
-  #[test]
-  fn right_aligned_paragraph_shifts_line_to_right_edge() {
-    let geom = test_geometry();
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items: vec![test_box()],
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Right,
-    }];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let line = pages[0]
-      .blocks
-      .iter()
-      .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .expect("行があるはず");
-    assert!(close(line.boxes[0].dx, 90.0), "box.x={}", line.boxes[0].dx.to_pt());
-  }
-
-  /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
-  fn stretch_glue() -> HItem {
-    return HItem::Glue {
-      natural: Length::pt(5.0),
-      stretch: Length::pt(2.5),
-      shrink: Length::pt(5.0) / 3.0,
-      breakable: true,
-    };
-  }
-
-  /// 伸縮能力付き glue で折り返す 2 行の段落（1 行目自然幅 25）を作る
-  fn stretchable_paragraph(alignment: TextAlignment) -> Block {
-    return Block::Paragraph {
-      origin: None,
-      items: vec![
-        test_box(),
-        stretch_glue(),
-        test_box(),
-        stretch_glue(),
-        test_box(),
-      ],
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment,
-    };
-  }
-
-  #[test]
-  fn justified_paragraph_stretches_glue() {
-    let geom = PageGeometry {
-      column_width: Length::pt(27.0),
-      ..test_geometry()
-    };
-    let blocks = vec![stretchable_paragraph(TextAlignment::Justify)];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let line = pages[0]
-      .blocks
-      .iter()
-      .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .expect("行があるはず");
-    assert!(close(line.boxes[1].dx + line.boxes[1].hbox.width, 27.0), "{:?}", line.boxes);
-  }
-
-  #[test]
-  fn centered_paragraph_does_not_stretch_glue() {
-    let geom = PageGeometry {
-      column_width: Length::pt(27.0),
-      ..test_geometry()
-    };
-    let blocks = vec![stretchable_paragraph(TextAlignment::Center)];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let line = pages[0]
-      .blocks
-      .iter()
-      .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .expect("行があるはず");
-    assert!(close(line.boxes[0].dx, 1.0), "{:?}", line.boxes);
-    assert!(close(line.boxes[1].dx - line.boxes[0].dx, 15.0), "glue は自然幅のまま: {:?}", line.boxes);
-  }
-
-  #[test]
-  fn centered_overflowing_line_is_not_shifted_negative() {
-    let geom = PageGeometry {
-      column_width: Length::pt(30.0),
-      ..test_geometry()
-    };
-    let wide = HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: Length::pt(50.0),
-      height: Length::pt(8.0),
-      depth: Length::pt(2.0),
-    });
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items: vec![wide],
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Center,
-    }];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let line = pages[0]
-      .blocks
-      .iter()
-      .find_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .expect("行があるはず");
-    assert!(close(line.boxes[0].dx, 0.0), "box.x={}", line.boxes[0].dx.to_pt());
-  }
-
-  #[test]
-  fn centered_wrapped_lines_are_each_independently_centered() {
-    let geom = PageGeometry {
-      column_width: Length::pt(35.0),
-      ..test_geometry()
-    };
-    let items = vec![
-      test_box(),
-      HItem::Glue {
-        natural: Length::pt(5.0),
-        stretch: Length::pt(0.0),
-        shrink: Length::pt(0.0),
-        breakable: true,
-      },
-      test_box(),
-      HItem::Glue {
-        natural: Length::pt(5.0),
-        stretch: Length::pt(0.0),
-        shrink: Length::pt(0.0),
-        breakable: true,
-      },
-      test_box(),
-    ];
-    let blocks = vec![Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Center,
-    }];
-
-    let (pages, _) = break_pages_in_range(blocks, &geom);
-
-    let lines: Vec<&Line> = pages[0]
-      .blocks
-      .iter()
-      .filter_map(|b| match b {
-        PlacedBlock::Line { line, .. } => return Some(line),
-        _ => return None,
-      })
-      .collect();
-    assert_eq!(lines.len(), 2, "段幅 35 で 2 行に折り返すはず: {} 行", lines.len());
-    assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
-    assert!(close(lines[1].boxes[0].dx, 12.5), "2 行目先頭 x={}", lines[1].boxes[0].dx.to_pt());
   }
 
   /// ページ内の最初の `PlacedBlock::Image` を取り出すヘルパ
@@ -3623,7 +3279,7 @@ mod tests {
   #[test]
   fn composed_lines_break_across_pages() {
     let geom = test_geometry();
-    let blocks: Vec<Block> = std::iter::repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
+    let blocks: Vec<Block> = iter::repeat_n(composed_line(20.0, 8.0, 2.0, None), 5).collect();
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
 
@@ -3668,19 +3324,10 @@ mod tests {
   fn two_column_paragraph_link_rect_uses_column_offset() {
     use crate::typeset::boxes::LinkTarget;
     let geom = two_column_geometry();
-    let link_para = Block::Paragraph {
-      origin: None,
-      items: vec![
-        HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
-        test_box(),
-        test_box(),
-        HItem::LinkEnd,
-      ],
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    };
+    let link_para = paragraph(vec![linked_line(
+      LinkTarget::External("https://example.com".to_string()),
+      2,
+    )]);
     let blocks = vec![paragraph_of_lines(5), link_para];
 
     let (pages, _) = break_pages_in_range(blocks, &geom);
@@ -3737,30 +3384,24 @@ mod tests {
   /// 左段と右段の両方に脚注が付く 8 行段落を作る（`two_column_geometry_with_footnote_rule` 前提）
   ///
   /// 脚注の予約でリージョンが縮むため、この版面では 0 行目が左段・2 行目が右段に着地する。
-  fn paragraph_with_footnotes_in_both_columns(left: HItem, right: HItem) -> Block {
+  fn paragraph_with_footnotes_in_both_columns(left: FootnoteBody, right: FootnoteBody) -> Block {
     let mut left = Some(left);
     let mut right = Some(right);
-    let mut items = Vec::new();
-    for i in 0..8 {
-      if i > 0 {
-        items.push(HItem::ForcedBreak);
-      }
-      items.push(test_box());
-      if i == 0 {
-        items.push(left.take().expect("左段の脚注はここだけ"));
-      }
-      if i == 2 {
-        items.push(right.take().expect("右段の脚注はここだけ"));
-      }
-    }
-    return Block::Paragraph {
-      origin: None,
-      items,
-      leading: Length::pt(12.0),
-      indent: Length::pt(0.0),
-      right_indent: Length::pt(0.0),
-      alignment: TextAlignment::Left,
-    };
+    return paragraph(
+      (0..8)
+        .map(|i| {
+          let footnote = match i {
+            0 => left.take(),
+            2 => right.take(),
+            _ => None,
+          };
+          return Line {
+            footnotes: footnote.into_iter().collect(),
+            ..body_line()
+          };
+        })
+        .collect(),
+    );
   }
 
   /// ページの脚注のうち、指定番号の区切り罫線の x（罫線が無ければ `None`）
@@ -3935,7 +3576,7 @@ mod tests {
       align,
     }];
 
-    let result = break_pages(blocks, &test_geometry());
+    let result = break_pages(galley_of(blocks, &test_geometry()));
 
     assert_eq!(
       result.err(),
@@ -3952,7 +3593,7 @@ mod tests {
       stretch: Length::ZERO,
     }];
 
-    let result = break_pages(blocks, &test_geometry());
+    let result = break_pages(galley_of(blocks, &test_geometry()));
 
     assert_eq!(result.err(), Some(ElementOverflow { origin: None }));
   }
@@ -4362,12 +4003,15 @@ mod tests {
     let blocks = vec![
       paragraph_of_lines(1), // baseline 10
       Block::stretchable_space(pt(4.0), pt(4.0)),
-      single_line_paragraph(vec![
-        HItem::LinkStart(LinkTarget::Internal(AnchorId::Label(LabelId::new("body")))),
-        test_box(),
-        HItem::LinkEnd,
-        footnote_of_lines_with_link_at(1, 1, 0, "https://example.com"),
-      ]), // baseline 26 → 揃え後 34
+      paragraph(vec![Line {
+        footnotes: vec![footnote_of_lines_with_link_at(
+          1,
+          1,
+          0,
+          "https://example.com",
+        )],
+        ..linked_line(LinkTarget::Internal(AnchorId::Label(LabelId::new("body"))), 1)
+      }]), // baseline 26 → 揃え後 34
       fixed_block(30.0), // 溢れて改ページ
     ];
 
@@ -4538,25 +4182,12 @@ mod tests {
     assert!(close(pages[1].anchors[0].y, 2.0), "{:?}", pages[1].anchors[0]);
   }
 
-  /// 幅 `width`・高さ `height`・深さ `depth` の、テキストを持たない箱
-  fn wide_box(width: f32, height: f32, depth: f32) -> HItem {
-    return HItem::Box(HBox {
-      content: HBoxContent::Atom(Vec::new()),
-      width: pt(width),
-      height: pt(height),
-      depth: pt(depth),
-    });
-  }
-
-  /// 箱 1 つだけの左揃え段落（[`paragraph_origin`] に帰属する）
-  fn one_box_paragraph(item: HItem) -> Block {
+  /// 幅 `width`・高さ `height`・深さ `depth` の箱 1 つだけの段落（[`paragraph_origin`] に帰属する）
+  fn one_box_paragraph(width: f32, height: f32, depth: f32) -> Block {
     return Block::Paragraph {
       origin: Some(paragraph_origin()),
-      items: vec![item],
+      lines: vec![box_line(width, height, depth)],
       leading: pt(12.0),
-      indent: pt(0.0),
-      right_indent: pt(0.0),
-      alignment: TextAlignment::Left,
     };
   }
 
@@ -4575,7 +4206,7 @@ mod tests {
 
   #[test]
   fn line_wider_than_column_is_recorded_once_with_its_excess() {
-    let blocks = vec![one_box_paragraph(wide_box(130.0, 8.0, 2.0))];
+    let blocks = vec![one_box_paragraph(130.0, 8.0, 2.0)];
 
     let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
@@ -4593,7 +4224,7 @@ mod tests {
   #[test]
   fn overflow_within_tolerance_is_not_recorded() {
     for width in [100.0, 100.05] {
-      let blocks = vec![one_box_paragraph(wide_box(width, 8.0, 2.0))];
+      let blocks = vec![one_box_paragraph(width, 8.0, 2.0)];
 
       let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
@@ -4604,7 +4235,7 @@ mod tests {
   #[test]
   fn line_wider_than_its_column_is_recorded_in_two_columns() {
     // 幅 50 は 2 段の段幅 45 を超えるが、単段（段幅 100）なら収まる
-    let blocks = vec![one_box_paragraph(wide_box(50.0, 8.0, 2.0))];
+    let blocks = vec![one_box_paragraph(50.0, 8.0, 2.0)];
 
     let (_, overflows) = break_pages_in_range(blocks, &two_column_geometry());
 
@@ -4662,7 +4293,7 @@ mod tests {
   #[test]
   fn line_deeper_than_region_is_recorded_as_vertical() {
     // ベースライン 10 + 深さ 45 = 55 が page_limit 50 を超える。送っても改善しないのでその場に置く
-    let blocks = vec![one_box_paragraph(wide_box(10.0, 8.0, 45.0))];
+    let blocks = vec![one_box_paragraph(10.0, 8.0, 45.0)];
 
     let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
 
@@ -4681,7 +4312,7 @@ mod tests {
   #[test]
   fn footnote_body_line_overflow_points_at_the_footnote() {
     // 本文段落ではなく、はみ出した本体行を持つ脚注を指す。記録はその脚注が着地したページで 1 回
-    let footnote = footnote_item(1, vec![wide_box(130.0, 8.0, 2.0)], pt(12.0));
+    let footnote = footnote_item(1, vec![box_line(130.0, 8.0, 2.0)], pt(12.0));
     let mut paragraph = single_line_paragraph(vec![footnote]);
     if let Block::Paragraph { origin, .. } = &mut paragraph {
       *origin = Some(paragraph_origin());
@@ -4704,13 +4335,10 @@ mod tests {
   fn carried_footnote_line_is_recorded_on_the_page_it_lands_on() {
     // 4 行の脚注のうち 3 行が 1 ページ目、幅 130 の最終行が 2 ページ目へ繰り越される
     let body = vec![
-      test_box(),
-      HItem::ForcedBreak,
-      test_box(),
-      HItem::ForcedBreak,
-      test_box(),
-      HItem::ForcedBreak,
-      wide_box(130.0, 8.0, 2.0),
+      body_line(),
+      body_line(),
+      body_line(),
+      box_line(130.0, 8.0, 2.0),
     ];
     let blocks = vec![
       single_line_paragraph(vec![footnote_item(1, body, pt(12.0))]),
@@ -5074,9 +4702,9 @@ mod tests {
   }
 
   #[test]
-  fn footnote_of_an_indented_table_breaks_at_the_column_width() {
-    // 脚注本体の箱 80 は利用幅 60 を超えるが段幅 100 に収まる（脚注は字下げされない）
-    let footnote = footnote_item(1, vec![wide_box(80.0, 8.0, 2.0)], pt(12.0));
+  fn indented_table_footnote_line_is_measured_against_the_column_width() {
+    // 脚注本体の行の幅 80 は利用幅 60 を超えるが段幅 100 に収まる（脚注は字下げされない）
+    let footnote = footnote_item(1, vec![box_line(80.0, 8.0, 2.0)], pt(12.0));
     let block = indented(table_block(vec![with_footnote(table_row("A"), footnote)]), 30.0, 10.0);
 
     let (pages, overflows) = break_pages_in_range(vec![block], &test_geometry());
@@ -5100,10 +4728,7 @@ mod tests {
         )],
       ),
     ] {
-      let blocks = vec![
-        paragraph_of_lines(4),
-        one_box_paragraph(wide_box(width, 8.0, 2.0)),
-      ];
+      let blocks = vec![paragraph_of_lines(4), one_box_paragraph(width, 8.0, 2.0)];
 
       let (pages, overflows) = break_pages_in_range(blocks, &two_column_geometry());
 
@@ -5112,11 +4737,8 @@ mod tests {
     }
   }
 
-  /// 表の行断片に脚注（[`footnote_item`] / [`footnote_of_lines`] が作るマーカー）を足すヘルパ
-  fn with_footnote(mut row: TableRowFragment, footnote: HItem) -> TableRowFragment {
-    let HItem::Footnote(footnote) = footnote else {
-      panic!("脚注マーカーを渡すこと: {footnote:?}");
-    };
+  /// 表の行断片に脚注（[`footnote_item`] / [`footnote_of_lines`] が作る脚注）を足すヘルパ
+  fn with_footnote(mut row: TableRowFragment, footnote: FootnoteBody) -> TableRowFragment {
     row.footnotes.push(footnote);
     return row;
   }
@@ -5149,7 +4771,7 @@ mod tests {
   }
 
   /// 本体 1 行（高さ 10。`test_geometry` の予約は 4 + 10 = 14）の脚注マーカー
-  fn one_line_footnote(number: u32) -> HItem { return footnote_item(number, vec![test_box()], pt(12.0)); }
+  fn one_line_footnote(number: u32) -> FootnoteBody { return footnote_item(number, vec![body_line()], pt(12.0)); }
 
   #[test]
   fn table_row_footnote_lands_below_the_table_in_the_row_page() {
@@ -5257,7 +4879,7 @@ mod tests {
   fn table_row_footnote_overflow_is_reported_like_a_body_line() {
     // 空のページでも行 10 + 予約（4 + 本体 52）が page_limit 50 を超える
     let geom = test_geometry();
-    let row = with_footnote(table_row("A"), footnote_item(1, vec![tall_box(50.0)], pt(12.0)));
+    let row = with_footnote(table_row("A"), footnote_item(1, vec![tall_line(50.0)], pt(12.0)));
 
     let (pages, overflows) = break_pages_in_range(vec![table_block(vec![row])], &geom);
 
@@ -5277,7 +4899,7 @@ mod tests {
     let mut rows: Vec<TableRowFragment> = (0..3).map(|i| return table_row(&format!("R{i}"))).collect();
     rows.push(with_footnote(
       table_fragment(table_text_box("R3"), 15.0, 10.0),
-      footnote_item(1, vec![tall_box(50.0)], pt(12.0)),
+      footnote_item(1, vec![tall_line(50.0)], pt(12.0)),
     ));
 
     let (pages, overflows) = break_pages_in_range(vec![table_block(rows)], &geom);

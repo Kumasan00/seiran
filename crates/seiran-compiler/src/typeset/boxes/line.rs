@@ -3,7 +3,7 @@
 use crate::{
   length::{Length, LengthOverflow},
   typeset::boxes::{
-    hitem::{IndexTerm, MeasuredFootnote, PlacedHBox},
+    hitem::{FootnoteBody, IndexTerm, PlacedHBox},
     link::LinkTarget,
     page::PlacedLink,
   },
@@ -25,7 +25,7 @@ pub(crate) struct Line {
   /// 1 つのリンクが折り返しをまたぐ場合は行ごとに 1 つの矩形へ分割される。
   pub links: Vec<LineLink>,
   /// この行に含まれる脚注（出現順）
-  pub footnotes: Vec<MeasuredFootnote>,
+  pub footnotes: Vec<FootnoteBody>,
   /// この行に含まれる索引語（`\index{語}`、出現順）
   pub index_marks: Vec<IndexTerm>,
 }

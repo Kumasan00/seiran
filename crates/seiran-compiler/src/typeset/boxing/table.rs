@@ -7,12 +7,11 @@
 //! 罫線と空きを確定した境界（断片の上端・下端の枠罫、ヘッダ下の罫線、各行の上の区切りと部分罫。規則は `arrange` の
 //! doc）で、配置（`breaking::break_pages`）は段オフセットと揃えを足して置くだけ。
 //!
-//! 列幅の基準 `available` は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた
-//! 利用幅（`boxes::usable_width`）。段の幅は区画の `PageGeometry::column_width` で、`break_pages` がその区画の段を
-//! 組む値そのもの。配置側も同じ式で利用幅を出し、揃えはこの利用幅と [`TableBox::width`] から決まる。
+//! 列幅の基準 `available` は表を置く段の幅（`build_blocks` が受け取る `Galley` の `column_width`）から囲む引用・リストの
+//! 字下げを引いた利用幅（`boxes::usable_width`）。`break_pages` も同じ `Galley` から段を読む。配置側も同じ式で利用幅を出し、揃えはこの利用幅と [`TableBox::width`] から決まる。
 //!
 //! 跨ぐ列のどれかが `Auto` 以外のセルは、帯幅から左右の余白を除いた内容幅で本文の段落と同じ行分割
-//! （`breaking::break_lines`）が折り返す。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く。
+//! （`break_lines::break_lines`）が折り返す。全列 `Auto` のセルは折り返さず、自然幅の 1 行のまま置く。
 //!
 //! decimal 列の値のセル（`MeasuredCell::decimal_split` が `Some`）は折り返さず、符号 + 整数部（L）と小数点以降（R）の
 //! 塊で揃える。塊は列ごとに本体行全体から 1 回だけ決め（[`decimal_blocks`]。改ページの断片で求め直さない）、列幅の
@@ -30,11 +29,10 @@ use crate::{
   typeset::{
     boxes::{HItem, Line, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
     boxing::{
-      self, Measurer,
+      self, Measurer, break_lines,
       composed_line::{measure_items_width, unwrapped_line},
       hlist::HList,
     },
-    breaking,
     error::ElementOverflow,
     lowering::{TableCellContent, TableColumn, TableLayout, TableRowLayout},
   },
@@ -436,7 +434,7 @@ fn resolve_column_widths(
       if column_span == 1 && column_index < column_count {
         naturals[column_index] = naturals[column_index].max(measure_items_width(&cell.items)?.try_add(double_padding)?);
         floors[column_index] =
-          floors[column_index].max(breaking::min_content_width(&cell.items)?.try_add(double_padding)?);
+          floors[column_index].max(break_lines::min_content_width(&cell.items)?.try_add(double_padding)?);
       }
       column_index += column_span;
     }
@@ -510,7 +508,7 @@ fn resolve_column_widths(
       let column_span = cell.column_span as usize;
       let spanned = column_index..column_index + column_span;
       if column_span > 1 && spanned.end <= column_count && wraps(&frame.columns[spanned.clone()]) {
-        let need = breaking::min_content_width(&cell.items)?.try_add(double_padding)?;
+        let need = break_lines::min_content_width(&cell.items)?.try_add(double_padding)?;
         let current = Length::try_sum(widths[spanned.clone()].iter().copied())?;
         if current < need {
           let mut flex_columns = Vec::new();
@@ -591,7 +589,7 @@ fn layout_row_cells(
       vec![line]
     } else if wraps(spanned_columns) {
       let content_width = band_width.try_sub(double_padding)?;
-      let mut lines = breaking::break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
+      let mut lines = break_lines::break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);
       let line_x = cell_x.try_add(frame.cell_padding)?;
@@ -861,8 +859,7 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{
-        AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote, TableBox,
-        TableRowFragment,
+        AnchorId, FootnoteBody, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, TableBox, TableRowFragment,
       },
       lowering::TableColumn,
     },
@@ -983,11 +980,11 @@ mod tests {
 
   /// 出現 index `index`（表示番号 `index + 1`）の脚注マーカーを作る
   fn footnote(index: u32) -> HItem {
-    return HItem::Footnote(MeasuredFootnote {
+    return HItem::Footnote(FootnoteBody {
       origin: NodeId::for_test(SourceId::new(0), index + 1),
       number: index + 1,
       index,
-      items: vec![text_free_box(30.0)],
+      lines: Vec::new(),
       leading: pt(10.0),
     });
   }

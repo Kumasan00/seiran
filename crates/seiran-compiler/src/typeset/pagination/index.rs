@@ -16,7 +16,7 @@ use crate::{
   length::{Length, LengthOverflow},
   style::Style,
   typeset::{
-    boxes::{Align, AnchorId, Block, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedAnchor},
+    boxes::{Align, AnchorId, Block, Galley, IndexTerm, Line, LineLink, LinkTarget, Page, PlacedAnchor},
     boxing::{LineAccum, Shaper, compose_left_line},
     error::ElementOverflow,
     glyph_issues::{Generated, GlyphOrigin},
@@ -56,9 +56,9 @@ struct IndexEntry {
   pages: Vec<IndexPageRef>,
 }
 
-/// 巻末索引の計測済みブロック列を組み立てる。
+/// 巻末索引の計測済みブロック列を組み立て、`galley` へ積む。
 ///
-/// `\index` が 1 個もなければ空の `Vec` を返す。
+/// `\index` が 1 個もなければ何も積まない。
 ///
 /// **副作用**: 索引語が出現する本文ページへ内部リンクの到達先アンカー（`AnchorId::IndexPage`）を
 /// 事後追加する（`body_pages` の破壊的更新）。
@@ -70,14 +70,16 @@ pub(super) fn build_index_blocks(
   ctx: &TypesetContext<'_>,
   body_pages: &mut [Page],
   facts: &BodyPageFacts,
-) -> Result<Vec<Block>, ElementOverflow> {
+  galley: &mut Galley,
+) -> Result<(), ElementOverflow> {
   let entries = collect_index_entries(body_pages, &facts.page_values);
   if entries.is_empty() {
-    return Ok(Vec::new());
+    return Ok(());
   }
-  let spec = build_index_spec(ctx.style, ctx.geometry.back_geometry().column_width);
+  let spec = build_index_spec(ctx.style, galley.column_width());
   let shaper = Shaper::new(ctx.fonts, &ctx.glyph_issues, GlyphOrigin::Generated(Generated::Index));
-  return compose_blocks(&spec, &entries, shaper);
+  galley.extend(compose_blocks(&spec, &entries, shaper)?);
+  return Ok(());
 }
 
 /// 本文の索引語を集約し、ソート済みの索引エントリを返す。

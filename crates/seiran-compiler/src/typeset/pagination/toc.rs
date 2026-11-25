@@ -8,7 +8,7 @@ use crate::{
   semantics::HeadingKey,
   style::{Style, TocStyle},
   typeset::{
-    boxes::{Align, AnchorId, Block, Line, LineLink, LinkTarget},
+    boxes::{Align, AnchorId, Block, Galley, Line, LineLink, LinkTarget},
     boxing::{LineAccum, Shaper, compose_left_line, inline_atom, row_width},
     error::ElementOverflow,
     font::FontSystem,
@@ -36,14 +36,14 @@ struct TocSpec {
   entry_style: TextStyle,
   /// 見出しレベルの深さ 1 段ごとに加える左インデント
   indent_per_level: Length,
-  /// エントリ行の揃え。字下げを含む行の自然幅を `text_width` の中で寄せる
+  /// エントリ行の揃え。字下げを含む行の自然幅を `column_width` の中で寄せる
   entry_align: Align,
   /// リーダー単位文字列（`None` でリーダー無し）。残り幅いっぱいに反復する
   leader: Option<String>,
   /// ページ番号を表示するか
   show_page_numbers: bool,
-  /// 本文幅。ページ番号の右端揃えと行の揃えの基準
-  text_width: Length,
+  /// 区画の 1 段の幅。ページ番号の右端揃えと行の揃えの基準
+  column_width: Length,
   /// 行高係数。各行の行送り = 書体サイズ × この値
   line_height_factor: f32,
   /// 目次ブロック全体の下余白
@@ -69,22 +69,27 @@ struct TocEntry {
   link_key: HeadingKey,
 }
 
-/// 目次の計測済みブロック列を組み立てる。
+/// 目次の計測済みブロック列を組み立て、`galley` へ積む。
 ///
-/// 目次に載る見出しが 1 つも無ければ空の `Vec` を返す。
+/// 目次に載る見出しが 1 つも無ければ何も積まない。
 ///
 /// # Errors
 ///
 /// 行の寸法が長さの値域を超えたら [`ElementOverflow`] を返す。
-pub(super) fn build_toc_blocks(ctx: &TypesetContext<'_>, facts: &BodyPageFacts) -> Result<Vec<Block>, ElementOverflow> {
-  let spec = build_toc_spec(ctx.style, ctx.geometry.text_width(), ctx.geometry.body_height());
+pub(super) fn build_toc_blocks(
+  ctx: &TypesetContext<'_>,
+  facts: &BodyPageFacts,
+  galley: &mut Galley,
+) -> Result<(), ElementOverflow> {
+  let spec = build_toc_spec(ctx.style, galley.column_width(), ctx.geometry.body_height());
   let entries = collect_toc_entries(&facts.headings, &facts.page_values, &ctx.style.toc);
   let toc_entry_count = entries.len();
   let blocks = compose_blocks(&spec, entries, ctx.fonts, &ctx.glyph_issues)?;
   if !blocks.is_empty() {
     debug!(toc_entry_count, "目次を生成");
   }
-  return Ok(blocks);
+  galley.extend(blocks);
+  return Ok(());
 }
 
 /// 見出しと本文内ページ序数から目次エントリを組み立てる。
@@ -120,7 +125,7 @@ fn collect_toc_entries(headings: &[HeadingRecord], page_values: &BodyPageValues,
 ///
 /// 目次見出しの書体と揃えは文書の節見出しスタイル（[`crate::document::HeadingLevel::Section`]）に揃える。
 /// 揃えが未指定なら見出しと同じく `[text].alignment` を継ぐ。
-fn build_toc_spec(style: &Style, text_width: Length, stretch_limit: Length) -> TocSpec {
+fn build_toc_spec(style: &Style, column_width: Length, stretch_limit: Length) -> TocSpec {
   let toc = &style.toc;
   let title_heading = &style.heading[HeadingLevel::Section];
   return TocSpec {
@@ -139,7 +144,7 @@ fn build_toc_spec(style: &Style, text_width: Length, stretch_limit: Length) -> T
     entry_align: Align::from(toc.alignment),
     leader: toc.leader.clone(),
     show_page_numbers: toc.show_page_numbers,
-    text_width,
+    column_width,
     line_height_factor: style.text.line_height_factor,
     bottom_margin: toc.bottom_margin,
     punctuation_spacing: style.text.punctuation_spacing,
@@ -165,7 +170,7 @@ fn compose_blocks(
   let generated = |LengthOverflow| return ElementOverflow { origin: None };
   let mut title = compose_left_line(&mut shaper, &spec.title, spec.title_style).map_err(generated)?;
   title
-    .shift_x(spec.title_align.offset(spec.text_width, title.width().map_err(generated)?).map_err(generated)?)
+    .shift_x(spec.title_align.offset(spec.column_width, title.width().map_err(generated)?).map_err(generated)?)
     .map_err(generated)?;
   blocks.push(Block::ComposedLine {
     origin: None,
@@ -234,12 +239,12 @@ fn compose_entry_line(
     let page_boxes = shaper.shape_text(&entry.page_label, spec.entry_style).map_err(generated)?;
     let page_width = row_width(&page_boxes).map_err(generated)?;
     // ページ番号を右端に揃える（左テキストと重なる場合は left_end まで戻す）
-    let page_x = spec.text_width.try_sub(page_width).map_err(generated)?.max(left_end);
+    let page_x = spec.column_width.try_sub(page_width).map_err(generated)?.max(left_end);
     if let Some(unit) = &spec.leader {
       fill_leader(shaper, unit, spec.entry_style, left_end, page_x, &mut acc).map_err(generated)?;
     }
     acc.place(page_boxes, page_x).map_err(generated)?;
-    right_edge = spec.text_width;
+    right_edge = spec.column_width;
   }
 
   let links = vec![LineLink {
@@ -249,7 +254,7 @@ fn compose_entry_line(
   }];
   let mut line = acc.into_line(links);
   line
-    .shift_x(spec.entry_align.offset(spec.text_width, line.width().map_err(generated)?).map_err(generated)?)
+    .shift_x(spec.entry_align.offset(spec.column_width, line.width().map_err(generated)?).map_err(generated)?)
     .map_err(generated)?;
   return Ok(line);
 }
@@ -364,7 +369,7 @@ mod tests {
     assert_eq!(spec.indent_per_level, Length::pt(7.0));
     assert_eq!(spec.bottom_margin, Length::pt(3.0));
     assert!(!spec.show_page_numbers);
-    assert_eq!(spec.text_width, Length::pt(333.0));
+    assert_eq!(spec.column_width, Length::pt(333.0));
     assert!((spec.line_height_factor - 1.5).abs() < f32::EPSILON);
     assert!(!spec.punctuation_spacing);
   }

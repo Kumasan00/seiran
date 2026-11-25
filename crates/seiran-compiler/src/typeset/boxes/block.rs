@@ -1,16 +1,10 @@
 //! 文書の縦リスト要素 [`Block`]。
 
 use crate::{
-  document::{NodeId, TextAlignment},
+  document::NodeId,
   length::{Length, LengthOverflow},
   project::ProjectPath,
-  typeset::boxes::{
-    align::Align,
-    hitem::{HBox, HItem},
-    line::Line,
-    link::AnchorId,
-    table_box::TableBox,
-  },
+  typeset::boxes::{align::Align, hitem::HBox, line::Line, link::AnchorId, table_box::TableBox},
 };
 
 /// 文書の縦リスト要素
@@ -20,21 +14,10 @@ pub(in crate::typeset) enum Block {
   Paragraph {
     /// 行のはみ出し警告が指す要素（`ParagraphLayout::origin`）
     origin: Option<NodeId>,
-    /// 段落内の水平リスト
-    items: Vec<HItem>,
+    /// 利用幅で行分割し左字下げまでずらした行（段オフセットは未加算）
+    lines: Vec<Line>,
     /// 行送り = 支配的フォントサイズ × 行高係数
     leading: Length,
-    /// 本文左端からの左インデント
-    ///
-    /// 全行（折り返し行を含む）に一律適用され、行折り返しの利用可能幅は
-    /// `text_width - indent - right_indent` に縮む。通常の段落は 0。
-    indent: Length,
-    /// 本文右端からの右インデント
-    ///
-    /// 全行（折り返し行を含む）の利用可能幅を縮める（行は左端 + `indent` から始まる）。通常の段落は 0。
-    right_indent: Length,
-    /// 段落の揃え（伸縮の有無と各行の水平ずらし）
-    alignment: TextAlignment,
   },
   /// 表（表エンジンが組んだ行断片の列）
   Table {

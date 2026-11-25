@@ -7,7 +7,7 @@ use crate::{
   document::NodeId,
   length::{Length, LengthOverflow},
   typeset::boxes::{
-    hitem::{IndexTerm, MeasuredFootnote},
+    hitem::{FootnoteBody, IndexTerm},
     page::{PlacedLink, PlacedTableRow, PlacedTableRule},
   },
 };
@@ -173,8 +173,8 @@ pub(in crate::typeset) struct TableRowFragment {
   pub links: Vec<PlacedLink>,
   /// セル内の索引語（左のセルから出現順）
   pub index_marks: Vec<IndexTerm>,
-  /// セル内の脚注（左のセルから出現順。本体は `break_pages` が行の着地と同時に置く）
-  pub footnotes: Vec<MeasuredFootnote>,
+  /// セル内の脚注（左のセルから出現順。本体は行分割済みで、`break_pages` が行の着地と同時に置く）
+  pub footnotes: Vec<FootnoteBody>,
 }
 
 impl TableRowFragment {

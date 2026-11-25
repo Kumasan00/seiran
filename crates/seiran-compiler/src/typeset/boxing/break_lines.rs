@@ -6,7 +6,7 @@ mod knuth_plass;
 use crate::{
   document::TextAlignment,
   length::{Length, LengthOverflow},
-  typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
+  typeset::boxes::{Align, FootnoteBody, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, PlacedHBox},
 };
 
 /// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
@@ -15,7 +15,7 @@ use crate::{
 /// # Errors
 ///
 /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
-pub(in crate::typeset) fn break_lines(
+pub(super) fn break_lines(
   items: &[HItem],
   text_width: Length,
   alignment: TextAlignment,
@@ -147,7 +147,7 @@ fn build_line(
 
   let mut boxes: Vec<PlacedHBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
-  let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
+  let mut footnotes: Vec<FootnoteBody> = Vec::new();
   let mut index_marks: Vec<IndexTerm> = Vec::new();
   let mut flush_right: Vec<&HBox> = Vec::new();
   let mut x = Length::ZERO;
@@ -259,7 +259,7 @@ fn build_line(
 /// # Errors
 ///
 /// 区間の幅の和が長さの値域を超えたら [`LengthOverflow`] を返す。
-pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
+pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
   let mut widest = Length::ZERO;
   let mut segment = Length::ZERO;
   for item in items {
@@ -297,7 +297,7 @@ pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Result<Length, L
 
 /// 行分割テストの共有フィクスチャ
 #[cfg(test)]
-mod test_support {
+pub(super) mod test_support {
   use crate::{
     length::Length,
     semantics::LabelId,
@@ -308,7 +308,7 @@ mod test_support {
   fn pt(value: f32) -> Length { return Length::pt(value); }
 
   /// テスト用の合成ボックス（幅 10、高さ 8、深さ 2）
-  pub(super) fn test_box() -> HItem {
+  pub(in crate::typeset::boxing) fn test_box() -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Atom(Vec::new()),
       width: pt(10.0),
@@ -318,7 +318,7 @@ mod test_support {
   }
 
   /// テスト用の指定幅ボックス（高さ 8・深さ 2）
-  pub(super) fn box_width(width: f32) -> HItem {
+  pub(in crate::typeset::boxing) fn box_width(width: f32) -> HItem {
     return HItem::Box(HBox {
       content: HBoxContent::Atom(Vec::new()),
       width: pt(width),
@@ -328,7 +328,7 @@ mod test_support {
   }
 
   /// テスト用の breakable glue（幅 5・伸縮なし）
-  pub(super) fn space_glue() -> HItem {
+  pub(in crate::typeset::boxing) fn space_glue() -> HItem {
     return HItem::Glue {
       natural: pt(5.0),
       stretch: Length::ZERO,
@@ -348,7 +348,7 @@ mod test_support {
   }
 
   /// テスト用の伸縮能力付き breakable glue（幅 5・伸長 2.5・収縮 5/3 = 単語間スペース相当）
-  pub(super) fn stretch_glue() -> HItem {
+  pub(in crate::typeset::boxing) fn stretch_glue() -> HItem {
     return HItem::Glue {
       natural: pt(5.0),
       stretch: pt(2.5),
@@ -412,7 +412,7 @@ mod test_support {
 #[cfg(test)]
 mod tests {
   use super::{HItem, Length, Line, TextAlignment, break_lines, greedy, knuth_plass, min_content_width};
-  use crate::typeset::breaking::break_lines::test_support::{
+  use crate::typeset::boxing::break_lines::test_support::{
     box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
   };
 

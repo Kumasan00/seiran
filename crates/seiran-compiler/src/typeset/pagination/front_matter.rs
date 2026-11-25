@@ -5,7 +5,7 @@
 use tracing::{debug, debug_span};
 
 use crate::typeset::{
-  boxes::{Block, Page},
+  boxes::{Galley, Page},
   boxing::{BlockBuildInputs, build_blocks},
   breaking::{Overflow, break_pages},
   error::ElementOverflow,
@@ -33,7 +33,7 @@ pub(super) fn paginate(
   facts: &BodyPageFacts,
   images: &ImageResources,
 ) -> Result<(Vec<Page>, Vec<Overflow>), ElementOverflow> {
-  let mut front_blocks: Vec<Block> = Vec::new();
+  let mut galley = Galley::new(*ctx.geometry.front_geometry());
 
   if ctx.style.title_page.enabled {
     let title_metadata = TitlePageMetadata {
@@ -44,14 +44,13 @@ pub(super) fn paginate(
     let title_nodes = lower_title_page(&title_metadata, &ctx.style.title_page);
     if !title_nodes.is_empty() {
       let _span = debug_span!("build_blocks", matter = "title").entered();
-      front_blocks.extend(build_blocks(
+      build_blocks(
         title_nodes,
         &BlockBuildInputs {
           fonts: ctx.fonts,
           issues: &ctx.glyph_issues,
           generated: Generated::FrontMatter,
           images,
-          column_width: ctx.geometry.front_geometry().column_width,
           default_font_size: ctx.style.text.font_size,
           line_height_factor: ctx.style.text.line_height_factor,
           // タイトルページはハイフネーションしない
@@ -60,22 +59,23 @@ pub(super) fn paginate(
           alignment: ctx.style.text.alignment,
           stretch_limit: ctx.geometry.body_height(),
         },
-      )?);
+        &mut galley,
+      )?;
       debug!("タイトルページを生成");
     }
   }
 
   if ctx.style.toc.enabled {
-    front_blocks.extend(toc::build_toc_blocks(ctx, facts)?);
+    toc::build_toc_blocks(ctx, facts, &mut galley)?;
   }
 
-  if front_blocks.is_empty() {
+  if galley.is_empty() {
     return Ok((Vec::new(), Vec::new()));
   }
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "front").entered();
-    break_pages(front_blocks, ctx.geometry.front_geometry())?
+    break_pages(galley)?
   };
   return Ok((pages, overflows));
 }

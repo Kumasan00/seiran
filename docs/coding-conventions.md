@@ -534,7 +534,7 @@ clippy の未処分 84 lint と `clippy.toml` のノブ・rustdoc lint は #473�
 - **共有ヘルパ**: 3 つ以上の test module が同じヘルパを必要としたら、各 module へ複製せず `#[cfg(test)]`
   で閉じた `test_support` module に切り出して 1 箇所に集める（現在は `frontend` / `frontend::evaluator` /
   `semantics::analyze` / `semantics::citation` / `typeset` / `typeset::lowering` /
-  `typeset::breaking::break_lines` / `publication` / `compiler` の 9 つ）。本番の入口を注入して通すヘルパも、値をコンストラクタで組み立てるだけの fixture も
+  `typeset::boxing::break_lines` / `publication` / `compiler` の 9 つ）。本番の入口を注入して通すヘルパも、値をコンストラクタで組み立てるだけの fixture も
   同じ名前にする — 1 つの module に両方が載りうるので、module 名で役割を分けない。切り出し先は
   「そのヘルパが組み立てる値・注入する本番の仕組みを持つ module」で、呼び出し側は `test_support::parse(...)`
   のように module 経由で呼ぶ。

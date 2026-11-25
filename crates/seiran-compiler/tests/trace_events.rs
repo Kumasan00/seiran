@@ -156,13 +156,14 @@ fn trace_reports_each_line_and_each_glyph() {
 
 #[test]
 fn trace_target_filter_selects_a_single_area() {
-  let breaking_only = compile_and_capture_log("seiran_compiler::typeset::breaking=trace");
-  let boxing_only = compile_and_capture_log("seiran_compiler::typeset::boxing=trace");
+  let line_breaking_only = compile_and_capture_log("seiran_compiler::typeset::boxing::break_lines=trace");
+  let shaping_only =
+    compile_and_capture_log("seiran_compiler::typeset::boxing=trace,seiran_compiler::typeset::boxing::break_lines=off");
 
-  assert!(breaking_only.contains("行を確定"));
-  assert!(!breaking_only.contains("グリフをシェーピング"), "行分割だけに絞れるはず");
-  assert!(boxing_only.contains("グリフをシェーピング"));
-  assert!(!boxing_only.contains("行を確定"), "シェーピングだけに絞れるはず");
+  assert!(line_breaking_only.contains("行を確定"));
+  assert!(!line_breaking_only.contains("グリフをシェーピング"), "行分割だけに絞れるはず");
+  assert!(shaping_only.contains("グリフをシェーピング"));
+  assert!(!shaping_only.contains("行を確定"), "シェーピングだけに絞れるはず");
 }
 
 #[test]

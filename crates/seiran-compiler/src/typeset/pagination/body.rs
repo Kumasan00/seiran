@@ -1,4 +1,4 @@
-//! 本文パス（lowering → 計測（画像寸法の確定を含む）→ 改行・改ページ）と、その反復制御
+//! 本文パス（lowering → 計測（画像寸法と行の確定を含む）→ 改ページ）と、その反復制御
 
 use tracing::debug_span;
 
@@ -6,7 +6,7 @@ use crate::{
   semantics::SemanticDocument,
   style::FootnoteNumbering,
   typeset::{
-    boxes::Page,
+    boxes::{Galley, Page},
     boxing::{BlockBuildInputs, build_blocks},
     breaking::{Overflow, break_pages},
     error::{ComposeError, ElementOverflow},
@@ -65,7 +65,8 @@ fn run_body_pass(
   }
   let (body_layout_nodes, headings) = lower_sources_with_headings(&lowering_ctx, document)?;
 
-  let body_blocks = {
+  let mut galley = Galley::new(*ctx.geometry.body_geometry());
+  {
     let _span = debug_span!("build_blocks", matter = "body").entered();
     build_blocks(
       body_layout_nodes,
@@ -74,7 +75,6 @@ fn run_body_pass(
         issues: &ctx.glyph_issues,
         generated: Generated::Bibliography,
         images,
-        column_width: ctx.geometry.body_geometry().column_width,
         default_font_size: ctx.style.text.font_size,
         line_height_factor: ctx.style.text.line_height_factor,
         language: ctx.config.document.language.as_deref(),
@@ -82,12 +82,13 @@ fn run_body_pass(
         alignment: ctx.style.text.alignment,
         stretch_limit: ctx.geometry.body_height(),
       },
-    )?
-  };
+      &mut galley,
+    )?;
+  }
 
   let (pages, overflows) = {
     let _span = debug_span!("break_pages", matter = "body").entered();
-    break_pages(body_blocks, ctx.geometry.body_geometry())?
+    break_pages(galley)?
   };
   return Ok(BodyLayout {
     pages,

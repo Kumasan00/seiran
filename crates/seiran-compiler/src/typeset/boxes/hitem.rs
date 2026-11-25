@@ -5,7 +5,7 @@ use crate::{
   document::NodeId,
   length::{Length, LengthOverflow},
   publication::GlyphRun,
-  typeset::boxes::link::LinkTarget,
+  typeset::boxes::{line::Line, link::LinkTarget},
 };
 
 /// 水平リストの最小単位（段落内）
@@ -78,18 +78,18 @@ pub(crate) enum HItem {
   /// リンク領域（機構 B）の終了マーカー（幅 0・分割不可）
   LinkEnd,
   /// 脚注本体（`\footnote{...}`）の運搬マーカー（幅 0・分割不可）
-  Footnote(MeasuredFootnote),
+  Footnote(FootnoteBody),
   /// 索引語（`\index{語}`）の運搬マーカー（幅 0・分割不可）
   ///
   /// この行が置かれるページが索引語の「出現ページ」になる。
   IndexMark(IndexTerm),
 }
 
-/// 計測済みの脚注 1 個（`\footnote{...}`）
+/// 行分割済みの脚注 1 個（`\footnote{...}`）
 ///
-/// 本体は計測済みだが未行分割（行分割はページ下部に置くとき）。
+/// 本体は計測の段で区画の段幅に行分割済みで、`break_pages` は行を置くだけ。
 #[derive(Debug, Clone)]
-pub(crate) struct MeasuredFootnote {
+pub(crate) struct FootnoteBody {
   /// はみ出し警告が指す `\footnote` コマンド
   pub origin: NodeId,
   /// 発番済みの表示番号（マーカーのグリフとして既に焼き込まれている値）
@@ -101,8 +101,8 @@ pub(crate) struct MeasuredFootnote {
   ///
   /// 表示番号と違い採番方式に依存せず、同じ文書なら常に同じ脚注を指す。
   pub index: u32,
-  /// 脚注本体（計測済みの水平アイテム列）
-  pub items: Vec<HItem>,
+  /// 区画の段幅で行分割済みの脚注本体
+  pub lines: Vec<Line>,
   /// 脚注本体の行送り（支配的フォントサイズ × 行高係数。`Block::Paragraph` と同じ規則）
   pub leading: Length,
 }

@@ -788,7 +788,8 @@ mod tests {
     });
     let issues = GlyphIssues::default();
     let shaper = Shaper::new(&fonts, &issues, GlyphOrigin::Generated(Generated::Bibliography));
-    let mut measurer = Measurer::new(shaper, Length::pt(10.0), 1.2, None, false, Length::pt(100_000.0));
+    let mut measurer =
+      Measurer::new(shaper, Length::pt(10.0), 1.2, None, false, Length::pt(100_000.0), Length::pt(100_000.0));
     let style = TextStyle {
       font_size: Length::pt(10.0),
       typeface: Typeface::Serif,

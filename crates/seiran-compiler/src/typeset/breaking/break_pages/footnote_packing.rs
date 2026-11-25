@@ -3,7 +3,10 @@
 use super::PendingFootnote;
 use crate::{
   length::{Length, LengthOverflow},
-  typeset::{boxes::Line, geometry::PageGeometry},
+  typeset::{
+    boxes::{FootnoteBody, Line},
+    geometry::PageGeometry,
+  },
 };
 
 /// `demands` を全行そのまま積んだときの脚注エリアの高さ（固定費込み）を返す
@@ -209,17 +212,19 @@ pub(super) fn split_pending(
   mut footnote: PendingFootnote,
   placed: usize,
 ) -> (Option<PendingFootnote>, Option<PendingFootnote>) {
-  if placed >= footnote.lines.len() {
+  if placed >= footnote.body.lines.len() {
     return (Some(footnote), None);
   }
-  let rest = footnote.lines.split_off(placed);
+  let rest = footnote.body.lines.split_off(placed);
   let tail = PendingFootnote {
-    origin: footnote.origin,
-    number: footnote.number,
-    index: footnote.index,
+    body: FootnoteBody {
+      origin: footnote.body.origin,
+      number: footnote.body.number,
+      index: footnote.body.index,
+      lines: rest,
+      leading: footnote.body.leading,
+    },
     continued: true,
-    lines: rest,
-    leading: footnote.leading,
   };
   if placed == 0 {
     return (None, Some(tail));

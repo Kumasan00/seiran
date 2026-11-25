@@ -1,14 +1,14 @@
 //! 計測 — テキスト・数式・約物を寸法確定済みの箱へ変換する仕組み
 //!
-//! 本文の入口は [`build_blocks`]（`LayoutNode` → `Vec<Block>`）。生成コンテンツ（目次・索引・
+//! 本文の入口は [`build_blocks`]（`LayoutNode` → [`Galley`] へブロックを積む）。生成コンテンツ（目次・索引・
 //! 走り文）向けには [`Shaper`] と [`LineAccum`] と、インライン列を本文と同じ規則で自然幅の閉じた箱にする
 //! [`inline_atom`] を出し、機能固有の入力型・並び順・区分は持たない。
 //!
 //! [`build_blocks`] は画像ブロックの描画寸法の確定も兼ねる（`typeset::image` の `ImageResources` /
-//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取り、寸法を省略した画像と表の `Ratio` /
+//! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取る [`Galley`] の版面から読み、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
-//! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
+//! 段落は [`ParagraphLayout`] ごとに水平リストを計測して使える幅（段幅から字下げを引いた `boxes::usable_width`）で行分割し（左字下げまでずらした行を `Block::Paragraph` が持つ）、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（数式エンジン — インライン・ディスプレイ数式の段・アキ・分割候補の組み立てと、構造ごとの計測・配置）と
@@ -20,12 +20,13 @@
 //! 生成コンテンツと表のセルが使う 1 行組み立ての仕組み（[`LineAccum`] / [`inline_atom`] と自然幅の 1 行）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・
 //! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
-//! 本文の段落と同じ行分割（`breaking::break_lines`）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
+//! 本文の段落と同じ行分割（`break_lines`。`boxing` の非公開 module）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
 //! 積み場所で、run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の
 //! 約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 
+mod break_lines;
 mod break_opportunities;
 mod composed_line;
 mod hlist;
@@ -53,7 +54,7 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
+    boxes::{self, Align, Block, FootnoteBody, Galley, HBox, HBoxContent, HItem, Line, PlacedHBox},
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -91,8 +92,6 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) generated: Generated,
   /// 読込済みの画像資源（自然寸法の参照元）
   pub(super) images: &'a ImageResources,
-  /// この縦リストを組む段の幅（寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く）
-  pub(super) column_width: Length,
   /// 既定のフォントサイズ
   pub(super) default_font_size: Length,
   /// 行送りに掛ける倍率
@@ -107,7 +106,9 @@ pub(super) struct BlockBuildInputs<'a> {
   pub(super) stretch_limit: Length,
 }
 
-/// レイアウトノードを計測済みのブロック列に変換する
+/// レイアウトノードを計測済みのブロック列に変換し、`galley` へ積む
+///
+/// 段幅は `galley` の版面の 1 段の幅で、寸法を省略した画像と表の `Ratio` / `Flex` 列の基準の利用幅は、ここから字下げを引く。
 ///
 /// # Errors
 ///
@@ -115,7 +116,8 @@ pub(super) struct BlockBuildInputs<'a> {
 pub(super) fn build_blocks(
   layout_nodes: Vec<LayoutNode>,
   inputs: &BlockBuildInputs<'_>,
-) -> Result<Vec<Block>, ElementOverflow> {
+  galley: &mut Galley,
+) -> Result<(), ElementOverflow> {
   let hyphenation = hyphenation::resolve(inputs.language);
   let mut builder = BlockBuilder {
     measurer: Measurer::new(
@@ -125,15 +127,17 @@ pub(super) fn build_blocks(
       hyphenation,
       inputs.punctuation_spacing,
       inputs.stretch_limit,
+      galley.column_width(),
     ),
     images: inputs.images,
-    column_width: inputs.column_width,
+    column_width: galley.column_width(),
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
   let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
-  return Ok(blocks);
+  galley.extend(blocks);
+  return Ok(());
 }
 
 /// 縦リストの走査で使う状態 — 計測器と、画像寸法の確定に要る資源。
@@ -304,15 +308,41 @@ impl BlockBuilder<'_> {
             origin: paragraph.origin,
           };
         })?;
+    let lines =
+      break_paragraph(&items, self.column_width, indent, right_indent, alignment).map_err(|LengthOverflow| {
+        return ElementOverflow {
+          origin: paragraph.origin,
+        };
+      })?;
     return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
-      items,
+      lines,
       leading,
-      indent,
-      right_indent,
-      alignment,
     }));
   }
+}
+
+/// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
+///
+/// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
+/// ここでは足さず着地段が決まってから足す。
+///
+/// # Errors
+///
+/// 利用幅・行の幅の計算が長さの値域を超えたら [`LengthOverflow`]。
+fn break_paragraph(
+  items: &[HItem],
+  column_width: Length,
+  indent: Length,
+  right_indent: Length,
+  alignment: TextAlignment,
+) -> Result<Vec<Line>, LengthOverflow> {
+  let available = boxes::usable_width(column_width, indent, right_indent)?;
+  let mut lines = break_lines::break_lines(items, available, alignment)?;
+  for line in &mut lines {
+    line.shift_x(indent)?;
+  }
+  return Ok(lines);
 }
 
 /// 段落構築のポリシーを持つ計測器
@@ -329,6 +359,8 @@ struct Measurer<'a> {
   punctuation_spacing: bool,
   /// 伸縮字形の縦の大きさの上限（本文領域の高さ）
   stretch_limit: Length,
+  /// 脚注本体を行分割する幅（区画の 1 段の幅）
+  footnote_width: Length,
 }
 
 impl<'a> Measurer<'a> {
@@ -340,6 +372,7 @@ impl<'a> Measurer<'a> {
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
     stretch_limit: Length,
+    footnote_width: Length,
   ) -> Self {
     return Measurer {
       shaper,
@@ -348,6 +381,7 @@ impl<'a> Measurer<'a> {
       hyphenation,
       punctuation_spacing,
       stretch_limit,
+      footnote_width,
     };
   }
 
@@ -445,11 +479,17 @@ impl<'a> Measurer<'a> {
             origin: Some(origin),
           };
         })?;
-        out.push_marker(HItem::Footnote(MeasuredFootnote {
+        let lines =
+          break_lines::break_lines(&items, self.footnote_width, TextAlignment::Left).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(origin),
+            };
+          })?;
+        out.push_marker(HItem::Footnote(FootnoteBody {
           origin,
           number,
           index,
-          items,
+          lines,
           leading,
         }));
       },
@@ -814,5 +854,155 @@ mod max_font_size_tests {
     .expect("値域内");
 
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(Length::pt(20.0)));
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::break_paragraph;
+  use crate::{
+    document::TextAlignment,
+    length::{Length, LengthOverflow},
+    typeset::{
+      boxes::{HItem, LinkTarget},
+      boxing::break_lines::test_support::{box_width, space_glue, stretch_glue, test_box},
+    },
+  };
+
+  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
+
+  /// 箱 3 個を伸縮 glue 2 個で並べた、段幅 27 で 2 行に折り返す入力（1 行目自然幅 25）
+  fn stretchable_items() -> Vec<HItem> {
+    return vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+  }
+
+  /// 箱 3 個を伸縮なし glue 2 個で並べた入力
+  fn rigid_items() -> Vec<HItem> {
+    return vec![
+      test_box(),
+      space_glue(),
+      test_box(),
+      space_glue(),
+      test_box(),
+    ];
+  }
+
+  #[test]
+  fn right_indent_narrows_the_line_width() {
+    let mut items = Vec::new();
+    for i in 0..6 {
+      if i > 0 {
+        items.push(space_glue());
+      }
+      items.push(test_box());
+    }
+
+    let lines = break_paragraph(&items, Length::pt(60.0), Length::pt(10.0), Length::pt(10.0), TextAlignment::Left)
+      .expect("値域内");
+
+    assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
+    for line in &lines {
+      let first = line.boxes.first().expect("各行にボックスがあるはず");
+      assert!(first.dx.to_pt() >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.dx.to_pt());
+      for placed in &line.boxes {
+        assert!(
+          (placed.dx + placed.hbox.width).to_pt() <= 50.0 + f32::EPSILON,
+          "x+width={} <= 段幅 - right_indent = 50",
+          (placed.dx + placed.hbox.width).to_pt()
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn indent_shifts_boxes_and_links() {
+    let items = vec![
+      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+
+    let lines =
+      break_paragraph(&items, Length::pt(100.0), Length::pt(15.0), Length::ZERO, TextAlignment::Left).expect("値域内");
+
+    assert_eq!(lines.len(), 1);
+    let links = &lines[0].links;
+    assert_eq!(links.len(), 1, "{links:?}");
+    assert!(close(links[0].x0, 15.0), "link.x0={}", links[0].x0.to_pt());
+    assert!(close(links[0].x1 - links[0].x0, 20.0), "link 幅={}", (links[0].x1 - links[0].x0).to_pt());
+  }
+
+  #[test]
+  fn right_alignment_moves_the_line_to_the_right_edge() {
+    let items = vec![test_box()];
+
+    let lines =
+      break_paragraph(&items, Length::pt(100.0), Length::ZERO, Length::ZERO, TextAlignment::Right).expect("値域内");
+
+    assert!(close(lines[0].boxes[0].dx, 90.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn justify_stretches_glue_to_the_width() {
+    let items = stretchable_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Justify).expect("値域内");
+
+    let boxes = &lines[0].boxes;
+    assert!(close(boxes[1].dx + boxes[1].hbox.width, 27.0), "{boxes:?}");
+  }
+
+  #[test]
+  fn center_keeps_glue_natural() {
+    let items = stretchable_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    let boxes = &lines[0].boxes;
+    assert!(close(boxes[0].dx, 1.0), "{boxes:?}");
+    assert!(close(boxes[1].dx - boxes[0].dx, 15.0), "glue は自然幅のまま: {boxes:?}");
+  }
+
+  #[test]
+  fn centered_overflowing_line_is_not_shifted_negative() {
+    let items = vec![box_width(50.0)];
+
+    let lines =
+      break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    assert!(close(lines[0].boxes[0].dx, 0.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn centered_wrapped_lines_are_each_independently_centered() {
+    let items = rigid_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(35.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    assert_eq!(lines.len(), 2, "段幅 35 で 2 行に折り返すはず: {} 行", lines.len());
+    assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
+    assert!(close(lines[1].boxes[0].dx, 12.5), "2 行目先頭 x={}", lines[1].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn break_paragraph_rejects_shift_outside_the_length_range() {
+    let items = vec![test_box(), test_box()];
+    // 2 個目の箱の位置（10pt）に足すと値域の上端を超える字下げ
+    let indent = Length::from_sp(i64::MAX) - Length::pt(5.0);
+
+    let result = break_paragraph(&items, Length::pt(100.0), indent, Length::ZERO, TextAlignment::Left);
+
+    assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));
   }
 }
