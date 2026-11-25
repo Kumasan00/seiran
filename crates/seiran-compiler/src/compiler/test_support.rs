@@ -569,6 +569,13 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "page", "margin_left", "250mm");
       set(table, "page", "margin_right", "250mm");
     },
+    // 句読点のぶら下げを有効にし、本文幅を 12pt の仮名 9 字（108pt）に、引用の利用幅を 7 字に揃えて溢れる位置を決める版面
+    "hanging_punctuation" => {
+      set(table, "text", "hanging_punctuation", true);
+      set(table, "page", "margin_left", "20pt");
+      set(table, "page", "margin_right", "20pt");
+      set(table, "quote", "indent", "12pt");
+    },
     _ => {},
   }
 }
@@ -597,6 +604,8 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "pdf", "width", "120mm");
       set(table, "pdf", "height", "85mm");
     },
+    // 左右余白 20pt と合わせて本文幅を 108pt にする用紙幅
+    "hanging_punctuation" => set(table, "pdf", "width", "148pt"),
     // serif は先頭の STIX Two Text の後ろに sans_serif と同じ Noto Sans を足し、japanese_serif は先頭を
     // japanese_monospace と同じ Source Han Code JP にして既存の Noto Serif JP を 2 つ目へ回す（先頭のままでは代替が起きない）
     "font_fallback" => {

@@ -240,6 +240,10 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   持つ。`[heading.<level>].alignment` は `Option` で、未指定は外側の縦リストの揃え（既定では `[text].alignment`）を継ぐ単純継承。
   継承は読込時に解決せず、組版の `LayoutNode::VBox` の `None` で解く（寄せ環境 `flushleft` / `center` / `flushright` は本体を `Some(<向き>)` の `VBox` で包み、本体が継ぐ揃えだけを置き換える）。
   脚注本体・コードブロック・図表・タイトルページ・数式ブロック・表のセル・柱は従わない
+- **句読点のぶら下げ**: `[text].hanging_punctuation` は約物アキ調整（`punctuation_spacing`）で後ろのアキを除いた句読点の箱を
+  前提にするので、`punctuation_spacing = false` との併用を garde のフィールド検証で拒否する。適用範囲（本文系の段落 × 両端揃え）は
+  style の値ではなく、lowering が段落ごとに決める可否（`ParagraphLayout::hanging_punctuation`。本文・リスト項目・引用・定理の本体・
+  文献リストの段落だけ真）と、boxing が見る段落の実効の揃え（両端揃えだけ。寄せ環境の中も実効の揃えで決まる）の積で決まる
 - **目次・索引の揃え**: `[toc].alignment`（エントリ行）・`[index].alignment`（エントリ行と区分見出し）・`[index].title_alignment` は
   `[math.block].alignment` と共有する 3 値 `BlockAlignment`（両端揃えは型に無い）。目次の題目行は `[toc]` にキーを持たず、
   解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` の `left` 以外と
@@ -704,6 +708,11 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   任意の位置に置けるため、分割すると Knuth–Plass の行分割結果が変わる（受け入れ条件は「`\index` を取り
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
+- **句読点のぶら下げ**: 和文句読点（、。，．）の約物アキ調整後の箱は `HItem::Comma` で積み、行分割だけがこれを行末の
+  ぶら下げ候補として `HItem::Box` と区別する。段落のぶら下げてよい幅 `hang_room` は右字下げ + `PageGeometry::right_clearance`
+  （単段は右余白、複数段は段間と右余白の小さい方）で、段落の可否が偽か揃えが両端揃えでなければ 0。行は着地段が決まる前に
+  確定するので、どの段に着地しても隣の段・用紙端へ届かない保守値をとる。脚注本体と表のセルは 0。ぶら下げを認めても
+  Knuth–Plass で実現可能な分割が無く貪欲法へ落ちたサブ段落はぶら下げない。ぶら下げた行は箱の幅を `Line::hanging` に持つ
 
 行分割（`break_lines`）と最小内容幅（`min_content_width`）は計測済みの `HItem` を読むだけのフォント非依存の
 純粋関数で、`boxing` の非公開 module に置く。`boxing` から `breaking` への依存は無く、改ページ（`break_pages`）は
@@ -766,6 +775,9 @@ style は届かない。
 見えない。版面の幾何は `geometry` が定義・構築する。数式内分割点 `HItem::MathBreak`（数式エンジンが積む）が使われるのは
 `boxing` の行分割の中だけ。
 
+**行の横のはみ出し**は段幅と `Line::width_without_hanging`（ぶら下げた句読点の箱を除いた行の幅）で判定する。許したぶら下げは
+`boxing` が段の外の安全な幅に収めているので警告せず、それ以外のはみ出しは記録する（本文の行と脚注本体の行で同じ）。
+
 **改ページ制御は glue と 2 つの制御**（強制改ページ `Block::PageBreak`・分割禁止 `Block::KeepWithNext`）で、widow / orphan・keep-with-next・下端揃え（`flush_bottom`）を扱う。
 
 **強制改ページは冪等**: `Block::PageBreak`（見出しの `page_break_before` / `page_break_after`・
@@ -789,7 +801,7 @@ style は届かない。
 | `dump` | 確定ページ列の決定的テキストダンプ `dump_pages` | `typeset` root facade から関数 1 つだけ |
 
 `test_support` の**不変条件**: `pub(crate)` の関数・メソッドの引数型にも返り値型にも、`typeset` root が
-`#[cfg(test)]` で再エクスポートしていない `boxes` の中間型（`HBox` / `Line` 等）を現さない。受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、
+`#[cfg(test)]` で再エクスポートしていない `boxes` の中間型（`HBox` / `TableBox` 等）を現さない。受け取るのは意味的な値（テキスト・座標・寸法・構造）だけで、
 箱と行の寸法は専用の引数まとめ型で渡す。この規約が破れると外側のテストが再び中間型のフィールド構成へ
 結合する。
 

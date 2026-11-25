@@ -214,9 +214,9 @@
 //!
 //! # カバレッジの注意
 //!
-//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
+//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げは既定 config では
 //! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
