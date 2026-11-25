@@ -223,7 +223,7 @@ seiran-fuzz        frontend の fuzz target（cargo-fuzz）。seiran-compiler �
 - garde 組込の値ルール（`length` / `range` 等）は文言が英語で受け取った値も載らないので使わない。`custom` に `project` の `validators` か `length` の検証器を渡す（lint は属性の中を見ないので人が守る）
 - 外部資源の read error は低水準 cause として leaf diagnostic の `#[source]` へ。warning は error と公開型を共用せず（`Warnings`）、同じ問題を診断と tracing の両方で出さない
 - `map_err(|_| ...)` で元のエラーを捨てない（`map_err_ignore`）。`Result` を `.ok()` で捨てず `let _ = f();` と書く（`unused_result_ok`）
-- ライブラリ 2 crate で `println!` / `eprintln!` を使わない（`print_stdout` / `print_stderr`。CLI の crate root だけ `print_stderr` を `#![expect]`。stdout の一覧出力も `println!` ではなく `subcommand::listing` の書き出し 1 箇所）
+- `println!` / `eprintln!` はどの crate でも使わない（`print_stdout` / `print_stderr`。CLI の stderr は `reporting` と `termination` が直接書いて書き込み失敗を捨て、stdout の一覧出力は `subcommand::listing` の書き出し 1 箇所）
 - 決定性が要る場所で `HashMap` / `HashSet` を `for` 反復しない（`iter_over_hash_type`）。`BTreeMap` かキーで `sort` した `Vec` へ。順序非依存の集計だけ例外
 - `result_large_err` は workspace の allow（種類の判断 1 個の帰結）。`cast_*` / `too_many_arguments` / `ref_option` は箇所ごとに根拠が違うので per-site の `#[expect]`
 
