@@ -7,7 +7,7 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{HItem, Line},
-    breaking::break_lines::{OpenLink, build_line, glue_metrics, greedy, strip_leading_glue, trim_trailing_glue},
+    boxing::break_lines::{OpenLink, build_line, glue_metrics, greedy, strip_leading_glue, trim_trailing_glue},
     observe,
   },
 };
@@ -419,7 +419,7 @@ mod tests {
     length::Length,
     typeset::{
       boxes::{HItem, Line},
-      breaking::break_lines::{
+      boxing::break_lines::{
         greedy,
         test_support::{box_width, discretionary, flush_right_box, link_target, math_break, stretch_glue, test_box},
       },

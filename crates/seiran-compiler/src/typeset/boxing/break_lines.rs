@@ -15,7 +15,7 @@ use crate::{
 /// # Errors
 ///
 /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
-pub(in crate::typeset) fn break_lines(
+pub(super) fn break_lines(
   items: &[HItem],
   text_width: Length,
   alignment: TextAlignment,
@@ -259,7 +259,7 @@ fn build_line(
 /// # Errors
 ///
 /// 区間の幅の和が長さの値域を超えたら [`LengthOverflow`] を返す。
-pub(in crate::typeset) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
+pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflow> {
   let mut widest = Length::ZERO;
   let mut segment = Length::ZERO;
   for item in items {
@@ -412,7 +412,7 @@ mod test_support {
 #[cfg(test)]
 mod tests {
   use super::{HItem, Length, Line, TextAlignment, break_lines, greedy, knuth_plass, min_content_width};
-  use crate::typeset::breaking::break_lines::test_support::{
+  use crate::typeset::boxing::break_lines::test_support::{
     box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
   };
 

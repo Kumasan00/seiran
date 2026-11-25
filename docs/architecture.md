@@ -435,10 +435,12 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
 流すだけ）、`typeset` の内部がフォント資源の構築と配置の 2 段に分かれていることは知らない。
 
 段順序と、その間に成立する不変条件（box 計測は
-1 回だけ・`breaking` はフォントに触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
+1 回だけ・`breaking` はフォントにも行分割にも触れない・脚注のページ単位採番だけが反復する）はすべて実装側に閉じる。
 各機能 module の入口と入力型は組版の前半から到達する非公開実装で、個別には公開しない。行分割の入口は
-`breaking::break_lines` 1 つで、どの方式で組むか（両端揃えは Knuth–Plass、それ以外と実現可能な分割が無い
-サブ段落は貪欲法）を外へ出さない。
+`boxing` の非公開 module `break_lines` の 1 つで、どの方式で組むか（両端揃えは Knuth–Plass、それ以外と実現可能な分割が無い
+サブ段落は貪欲法）を外へ出さない。行は計測の段（`boxing`）で段落・脚注本体・表セルの分が確定し、`breaking` はこの module を
+参照できない。区画の版面（`PageGeometry`）は `Galley` が `Block` 列と一緒に 1 つだけ運び、`build_blocks` の段幅と
+`break_pages` の段の幾何は同じ `Galley` からだけ読む。
 
 境界:
 
@@ -529,7 +531,7 @@ PDF 生成時に実施する）。描画契約の値型（`FontMetrics` / `FontF
 本文 / 前付け / 後付けの `PageGeometry`（区画ごとの段数・段間と、そこから確定した段幅 `column_width`）を載せる。
 フィールドは非公開で構築経路は `prepare` だけなので、
 「検証を通っていない版面が組版へ流れない」ことが型で保証される。`PageGeometry` の型自体もこの module が
-定義する — 構築する module と型を定義する module を一致させ、依存の辺を `breaking → geometry` の 1 方向に
+定義する — 構築する module と型を定義する module を一致させ、依存の辺を `geometry` へ向かう 1 方向に
 保つため。段幅の算出式もここだけが持ち、`pagination` も改ページ（`break_pages`）も区画の `PageGeometry` の段幅を
 読むだけで再計算しない。
 
@@ -681,7 +683,8 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
 
 #### `boxing`
 
-`build_blocks`: `LayoutNode` → `Vec<Block>`。lowering のレイアウトノードを計測済みの縦リストにして `breaking` へ渡す。
+`build_blocks`: `LayoutNode` → `Vec<Block>`。lowering のレイアウトノードを計測済みの縦リストにして `breaking` へ渡す。段落と脚注本体の行分割もこの段で済ませ、`Block::Paragraph` と
+`FootnoteBody` は確定済みの行だけを運ぶ（`HItem` の列は `breaking` へ渡らない）。
 
 - **ブロック間アキ**（`VBox::margin_bottom`）は自然値に比例した stretch を持つ縦 `Glue` として出す（下端
   揃えの配分先）。段落の `spacing_after` と `Vkern` は固定アキのまま
@@ -693,10 +696,9 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   除いたレイアウトと一致する」）。テキストを畳み直して run 境界を作らせないのは上流（`frontend` の
   評価器と `lowering` のテキスト結合）の責務
 
-`boxing` から `breaking` への依存は表エンジンがセルを折り返すための `breaking` の 2 つ（行分割
-`breaking::break_lines` と最小内容幅 `breaking::min_content_width`）だけで、どちらも計測済みの `HItem` を
-読むだけのフォント非依存の純粋関数。改ページ（`break_pages`）は段順序どおり
-`boxing` の下流のまま。
+行分割（`break_lines`）と最小内容幅（`min_content_width`）は計測済みの `HItem` を読むだけのフォント非依存の
+純粋関数で、`boxing` の非公開 module に置く。`boxing` から `breaking` への依存は無く、改ページ（`break_pages`）は
+段順序どおり `boxing` の下流のまま。
 
 #### 数式エンジン（`boxing::math`）
 
@@ -715,10 +717,11 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
 内容・セル余白・罫線の太さと空きと色・行の区切り（`document::RowSeparator`）まで解決した `TableLayout` で、HIR の表語彙と
 style は届かない。
 
-- **列幅の基準幅**は表を置く段の幅（`BlockBuildInputs::column_width`）から囲む引用・リストの字下げを引いた利用幅
+- **列幅の基準幅**は表を置く段の幅（`build_blocks` が受け取る `Galley` の `column_width`）から囲む引用・リストの字下げを引いた利用幅
   （`boxes::usable_width`。段落の行の幅と同じ式で、字下げが段の幅を使い切ると 0）。段の幅は区画の
-  `PageGeometry::column_width`（本文・前付けとも）で、`break_pages` がその区画の段を組む値そのもの
-- **最小内容幅**（`breaking::min_content_width`。`Flex` 列の下限と結合セルの不足に使う）はハイフネーションでは行分割の
+  `PageGeometry::column_width`（本文・前付けとも）で、`break_pages` が同じ `Galley` から読んでその区画の段を組む値そのもの。
+  セルの折り返し幅と表の行断片の脚注本体の幅もこの段幅から決まる
+- **最小内容幅**（`break_lines::min_content_width`。`Flex` 列の下限と結合セルの不足に使う）はハイフネーションでは行分割の
   真の下限にならず、下限に止まった列でも稀に行がセルからはみ出し得る — 下限の計算を締めて直さず、行の warning を安全網に
   する（本文の ragged 段落と同じ制約）
 - **はみ出しの事実**はエンジンが出し、記録は配置が持つ — `TableBox` は起源（表環境の `NodeId`）、行断片は起源（`\row`）と
@@ -748,9 +751,11 @@ style は届かない。
 
 #### `breaking`
 
-フォント非依存の純粋組版パス。`break_pages` の interface はフォント・シェーパーを引数に取らず、フォント
-非依存を型境界で固定する。版面の幾何は `geometry` が定義・構築し、この module は `&PageGeometry` を受け取って
-分割する側。数式内分割点 `HItem::MathBreak`（数式エンジンが積む）は、行分割が他の分割点で組めないときだけ使う。
+フォント非依存の純粋組版パスで、行を確定済みのブロック列をページへ配置するだけ。`break_pages` の interface は
+フォント・シェーパーを引数に取らず、`Galley`（区画の版面 `PageGeometry` と確定済みの `Block` 列）だけを受け取る。
+行分割はしない — 段落・脚注本体・表の行の脚注はすでに行になっていて、`HItem` の列も `break_lines` も `breaking` からは
+見えない。版面の幾何は `geometry` が定義・構築する。数式内分割点 `HItem::MathBreak`（数式エンジンが積む）が使われるのは
+`boxing` の行分割の中だけ。
 
 **改ページ制御は glue と 2 つの制御**（強制改ページ `Block::PageBreak`・分割禁止 `Block::KeepWithNext`）で、widow / orphan・keep-with-next・下端揃え（`flush_bottom`）を扱う。
 
@@ -922,7 +927,7 @@ crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compil
 - `tests/determinism.rs`: 同じ入力で `compile()` を 2 回呼んでも `Publication` が完全に一致すること
   （網羅目的の fixture 追加はしない）と、エラー経路の報告順（画像欠落はパス昇順・ソース欠落は宣言順・
   診断 `code` 列が実行間で一致）を固定する（#306）
-- `tests/trace_events.rs`: 同じ入力で `typeset::breaking` / `typeset::boxing` の TRACE ログが実行間で一致する
+- `tests/trace_events.rs`: 同じ入力で `typeset::breaking` / `typeset::boxing`（行分割の `boxing::break_lines` を含む）の TRACE ログが実行間で一致する
   こと（event の発行順の決定性。比較できるよう、この 2 module の event には所要時間を載せない）と、compiler の INFO（`-v` 相当）の工程構造（「tracing の phase 構造」）を
   固定する（CLI が足す `render` / `write` は `seiran` の統合テスト）
 

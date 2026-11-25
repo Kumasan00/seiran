@@ -20,12 +20,13 @@
 //! 生成コンテンツと表のセルが使う 1 行組み立ての仕組み（[`LineAccum`] / [`inline_atom`] と自然幅の 1 行）。`quantity` は数値・単位・量（`\num` / `\unit` / `\qty`）の閉じた箱を本文・数式の
 //! 両方へ組む `Measurer` の `impl`。`table`（表エンジン — 列幅の決定・セルの組版と計測・
 //! `auto` 以外の列のセルの折り返し・行断片の生成）も `Measurer` の `impl` を続け、セルの折り返しには
-//! 本文の段落と同じ行分割（`breaking::break_lines`）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
+//! 本文の段落と同じ行分割（`break_lines`。`boxing` の非公開 module）を使う。`hlist` は本文・脚注本文・表のセルの水平リストの
 //! 積み場所で、run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の
 //! 約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
 //! 伸縮率の定数を持つ。
 
+mod break_lines;
 mod break_opportunities;
 mod composed_line;
 mod hlist;
@@ -54,7 +55,6 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{self, Align, Block, FootnoteBody, Galley, HBox, HBoxContent, HItem, Line, PlacedHBox},
-    breaking,
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -338,7 +338,7 @@ fn break_paragraph(
   alignment: TextAlignment,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = breaking::break_lines(items, available, alignment)?;
+  let mut lines = break_lines::break_lines(items, available, alignment)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -480,7 +480,7 @@ impl<'a> Measurer<'a> {
           };
         })?;
         let lines =
-          breaking::break_lines(&items, self.footnote_width, TextAlignment::Left).map_err(|LengthOverflow| {
+          break_lines::break_lines(&items, self.footnote_width, TextAlignment::Left).map_err(|LengthOverflow| {
             return ElementOverflow {
               origin: Some(origin),
             };
