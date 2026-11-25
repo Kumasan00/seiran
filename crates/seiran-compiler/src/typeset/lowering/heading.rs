@@ -9,7 +9,7 @@ use crate::{
     boxes::AnchorId,
     error::ElementOverflow,
     lowering::{
-      LoweringContext, LoweringState, code, counter, inline,
+      HeadingRecord, LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
       math::{lower_inline_math, unicode_math_text},
       quantity,
@@ -186,9 +186,8 @@ pub(super) fn lower_hir_heading(
   let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
   let entry_style = toc_entry_style(ctx.style);
   let toc = toc_label(&number, toc_title(ctx, &heading.title, entry_style, &*state), entry_style);
-  state.record_heading_title(id, plain, toc);
   let style = title_style(ctx, heading.level);
-  return lower_heading(
+  let layout = lower_heading(
     ctx,
     heading.level,
     &number,
@@ -196,7 +195,19 @@ pub(super) fn lower_hir_heading(
     label,
     key,
     Some(id),
+  )?;
+  state.record_heading(
+    id,
+    HeadingRecord {
+      node: Some(id),
+      index: key.index(),
+      level: heading.level,
+      number,
+      title_plain: plain,
+      toc_label: toc,
+    },
   );
+  return Ok(layout);
 }
 
 /// 見出しをレイアウトノードに変換する

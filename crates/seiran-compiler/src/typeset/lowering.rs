@@ -239,8 +239,8 @@ pub(super) struct LoweringState<'a> {
   document: &'a SemanticDocument,
   /// これまでに払い出した脚注の個数（次の脚注の出現 index になる）
   footnote_count: u32,
-  /// 見出しノード → （タイトルのプレーンテキスト, 目次の行に組む「番号 題目」）
-  heading_titles: NodeMap<(String, Vec<InlineNode>)>,
+  /// 見出しノード → 走査で組んだ見出し記録
+  heading_records: NodeMap<HeadingRecord>,
 }
 
 impl<'a> LoweringState<'a> {
@@ -249,7 +249,7 @@ impl<'a> LoweringState<'a> {
     return LoweringState {
       document,
       footnote_count: 0,
-      heading_titles: NodeMap::default(),
+      heading_records: NodeMap::default(),
     };
   }
 
@@ -311,22 +311,22 @@ impl<'a> LoweringState<'a> {
   /// 参照箇所（`\ref` / `\hyperref` / `[of=...]`）の参照先を引く
   pub(super) fn ref_target(&self, site: NodeId) -> &'a LabelId { return self.document.ref_target(site); }
 
-  /// 見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を記録する
-  pub(super) fn record_heading_title(&mut self, node: NodeId, plain: String, toc_label: Vec<InlineNode>) {
-    self.heading_titles.insert(node, (plain, toc_label));
+  /// 見出しノードの記録を残す
+  pub(super) fn record_heading(&mut self, node: NodeId, record: HeadingRecord) {
+    self.heading_records.insert(node, record);
     return;
   }
 
-  /// 記録済みの見出しタイトルのプレーンテキストと、目次の行に組む「番号 題目」を引く
+  /// 記録済みの見出し記録を引く
   ///
   /// # Panics
   ///
   /// 走査で記録していない見出しノードを渡した場合にパニックします。
-  pub(super) fn heading_title(&self, node: NodeId) -> (&str, &[InlineNode]) {
-    let Some((plain, toc_label)) = self.heading_titles.get(node) else {
-      unreachable!("見出しのタイトルは HIR の走査で必ず記録される: {node:?}")
+  pub(super) fn heading_record(&self, node: NodeId) -> &HeadingRecord {
+    let Some(record) = self.heading_records.get(node) else {
+      unreachable!("見出しの記録は HIR の走査で必ず残る: {node:?}")
     };
-    return (plain, toc_label);
+    return record;
   }
 }
 
@@ -344,22 +344,8 @@ pub(super) fn lower_sources_with_headings(
   result.extend(bibliography_nodes);
 
   // 見出し一覧は facts の順（= `analyze` が振った `HeadingKey` の順）で組む。走査順に依存しない。
-  let mut headings: Vec<HeadingRecord> = document
-    .headings()
-    .map(|heading| {
-      let (title_plain, toc_label) = state.heading_title(heading.node);
-      return HeadingRecord {
-        node: Some(heading.node),
-        index: heading.key.index(),
-        level: heading.level,
-        number: document
-          .counter_value(heading.node)
-          .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value)),
-        title_plain: title_plain.to_string(),
-        toc_label: toc_label.to_vec(),
-      };
-    })
-    .collect();
+  let mut headings: Vec<HeadingRecord> =
+    document.headings().map(|heading| return state.heading_record(heading.node).clone()).collect();
   headings.extend(bibliography_headings);
 
   let input_node_count: usize = document.hir().source_nodes().iter().map(Vec::len).sum::<usize>()
