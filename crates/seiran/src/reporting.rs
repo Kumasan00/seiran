@@ -6,10 +6,18 @@
 //!
 //! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。実行記録と終了記録は
 //! tracing を通さないので、フィルタに依らず残る。
+//!
+//! 端末へ書けないとき（読み手が先に閉じたパイプ等）は、その報告を捨てて処理を続ける。終了コードとログファイルへの
+//! 記録は、端末へ書けたかに依らない。
 
 mod log_file;
 
-use std::{ffi::OsStr, io::IsTerminal, path::Path, time::Duration};
+use std::{
+  ffi::OsStr,
+  io::{self, IsTerminal, Write},
+  path::Path,
+  time::Duration,
+};
 
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
@@ -103,7 +111,7 @@ impl Reporter {
     let timer = log_timer();
     let raw_filter = std::env::var("RUST_LOG").ok();
     let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log_file.is_some());
-    let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), std::io::stderr().is_terminal());
+    let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), io::stderr().is_terminal());
     let log = log_file.map(LogSink::open).transpose()?;
     // 実行記録の先頭は subscriber を設置する前に書く — 以後のどの event・通知よりも前に来ることを、
     // 書く順序そのもので保証する。
@@ -114,7 +122,7 @@ impl Reporter {
     let stderr_layer = fmt::layer()
       .compact()
       .with_target(plan.stderr.show_target)
-      .with_writer(std::io::stderr)
+      .with_writer(io::stderr)
       .with_ansi(ansi)
       .with_file(false)
       .with_line_number(false)
@@ -164,7 +172,7 @@ impl Reporter {
   /// ログファイルへは `--quiet` でも省かない。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
-      eprintln!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic));
+      write_terminal(format_args!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic)));
     }
     if let Some(log) = &self.log {
       log.write_block(&render_diagnostic_plain(diagnostic));
@@ -180,7 +188,7 @@ impl Reporter {
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
     let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     if !self.quiet {
-      eprintln!("{}", summary_line(&compilation.pdf_path, page_count, elapsed_ms, self.ansi));
+      write_terminal(format_args!("{}", summary_line(&compilation.pdf_path, page_count, elapsed_ms, self.ansi)));
     }
     if let Some(log) = &self.log {
       log.write_block(&summary_line(&compilation.pdf_path, page_count, elapsed_ms, false));
@@ -216,6 +224,12 @@ impl Reporter {
     return log.finish();
   }
 }
+
+/// 端末（stderr）へ 1 件の報告を改行付きで書く。
+///
+/// 書けないとき（読み手が先に閉じたパイプ等）は報告を捨てる — 失敗を伝えられる出力先が無く、終了コードと
+/// ログファイルへの記録は端末と独立に決まる（`termination::Outcome::report` と同じ扱い）。
+fn write_terminal(text: std::fmt::Arguments<'_>) { let _ = writeln!(io::stderr().lock(), "{text}"); }
 
 /// ビルド成功サマリの 1 行を組み立てる。
 fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool) -> String {

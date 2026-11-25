@@ -3,10 +3,15 @@
 //!
 //! compiler 内の工程（`compile` とその子）の契約は `seiran-compiler` の `tests/trace_events.rs` が固定する。
 //! ここでは CLI が開く `render` / `write` の工程と、出力先ごとの振り分け（`Reporter` の構造）を見る。
+//! 端末（stderr）へ書けない実行でも、終了コードとログファイルへの記録が変わらないことも見る。
 
 mod common;
 
-use std::{fs, path::Path};
+use std::{
+  fs, io,
+  path::Path,
+  process::{Command, ExitStatus},
+};
 
 use common::{seiran, stderr_text, write_project};
 
@@ -300,4 +305,51 @@ fn terminal_without_flags_shows_only_the_summary() {
   assert!(stderr.contains("out/doc.pdf · 1 ページ · "), "サマリは保存先・ページ数・所要時間を出す: {stderr}");
   assert!(!stderr.contains("工程を開始"), "既定では工程の event は出ない: {stderr}");
   assert!(!stderr.contains("# seiran 実行記録"), "実行記録はファイルだけ: {stderr}");
+}
+
+/// 拡張子が `.sei` でないソースに付く警告の code。
+const SOURCE_EXTENSION_CODE: &str = "project::config::source_extension";
+
+/// 読み手を閉じたパイプを stderr にして binary を `dir` をカレントディレクトリにして起動し、終了状態を返す。
+///
+/// 読み手は起動前に閉じるので、子の stderr への書き込みはすべて `BrokenPipe` で失敗する（Rust の実行時は
+/// SIGPIPE を無視するので、シグナルで死なずに書き込みエラーになる）。
+fn seiran_with_closed_stderr(dir: &Path, args: &[&str]) -> ExitStatus {
+  let (reader, writer) = io::pipe().expect("パイプを作れるはず");
+  drop(reader);
+  return Command::new(env!("CARGO_BIN_EXE_seiran"))
+    .args(args)
+    .current_dir(dir)
+    .env_remove("RUST_LOG")
+    .stderr(writer)
+    .status()
+    .expect("seiran を起動できるはず");
+}
+
+#[test]
+fn closed_terminal_still_saves_the_pdf_and_records_the_log() {
+  // `.txt` 入力で警告を 1 件出し、警告と成功サマリの両方を端末へ書かせる
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_project(dir.path(), "doc.txt", BODY, "out");
+
+  let status = seiran_with_closed_stderr(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"]);
+
+  assert_eq!(status.code(), Some(0), "端末へ書けなくても成功した build は終了 0（panic なら 101）");
+  assert!(dir.path().join("out/doc.pdf").is_file(), "PDF は保存される");
+  let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
+  assert!(log.contains(SOURCE_EXTENSION_CODE), "警告はログへ残る: {log}");
+  assert!(log.contains('\u{2713}'), "成功サマリはログへ残る: {log}");
+  assert!(log.contains("終了状態: 成功"), "終了記録は成功: {log}");
+}
+
+#[test]
+fn closed_terminal_with_verbose_does_not_stop_a_build() {
+  // 工程行は tracing の stderr layer が書く
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+
+  let status = seiran_with_closed_stderr(dir.path(), &["build", "-c", "config.toml", "-vvv"]);
+
+  assert_eq!(status.code(), Some(0), "工程行を書けなくても終了 0（panic なら 101）");
+  assert!(dir.path().join("out/doc.pdf").is_file(), "PDF は保存される");
 }
