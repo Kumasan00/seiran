@@ -730,6 +730,26 @@ fn diagnostic_link_in_link_display() {
 }
 
 #[test]
+fn diagnostic_eval_errors_per_unit() {
+  // 1 ソースの中の独立な単位（段落・環境）ごとに 1 件ずつ、ソースの宣言順 → 出現順に並ぶ
+  let failure = compile_err(&[
+    "tests/text/diagnostics/eval_errors_per_unit_a.sei",
+    "tests/text/diagnostics/eval_errors_per_unit_b.sei",
+  ]);
+
+  assert_eq!(
+    codes(&failure),
+    vec![
+      "frontend::eval::unknown_command".to_string(),
+      "frontend::eval::unknown_command".to_string(),
+      "frontend::eval::unknown_environment".to_string(),
+      "frontend::eval::unknown_command".to_string(),
+    ]
+  );
+  assert_matches_golden("eval_errors_per_unit", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_empty_link_display() {
   // 空白だけの `\href` の表示と、強制改行だけの `\hyperref` の表示
   let failure = compile_err(&[

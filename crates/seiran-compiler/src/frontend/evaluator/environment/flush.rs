@@ -3,35 +3,27 @@
 use crate::{
   document::{HirFlush, HirNode, HirNodeKind, TextAlignment},
   frontend::{
-    evaluator::{self, EvalContext, EvalError},
+    evaluator::{self, EvalContext},
     syntax::view::EnvironmentView,
   },
 };
 
-/// 寄せ環境（`flushleft` / `center` / `flushright`）を評価する
-///
-/// # Errors
-///
-/// 本体の評価エラーを返します。
-pub(super) fn flush(
-  view: &EnvironmentView<'_>,
-  ctx: &EvalContext<'_>,
-  alignment: TextAlignment,
-) -> Result<HirNode, EvalError> {
+/// 寄せ環境（`flushleft` / `center` / `flushright`）を評価する（本体の評価エラーは `ctx` へ報告する）
+pub(super) fn flush(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, alignment: TextAlignment) -> HirNode {
   let id = ctx.alloc(view.span());
   let body = match view.body() {
-    Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), ctx, body),
     None => Vec::new(),
   };
 
-  return Ok(HirNode::new(id, HirNodeKind::Flush(HirFlush { alignment, body })));
+  return HirNode::new(id, HirNodeKind::Flush(HirFlush { alignment, body }));
 }
 
 #[cfg(test)]
 mod tests {
   use super::*;
   use crate::{
-    frontend::{ParseError, test_support},
+    frontend::{ParseError, evaluator::EvalError, test_support},
     source::SourceId,
   };
 
@@ -103,21 +95,21 @@ mod tests {
 
   #[test]
   fn flush_rejects_extra_argument() {
-    let result = evaluate(r"\begin{flushright}{余分}本文\end{flushright}");
+    let Err(ParseError::Eval(failures)) = evaluate(r"\begin{flushright}{余分}本文\end{flushright}") else {
+      panic!("評価エラーになるはず")
+    };
 
-    assert!(matches!(
-      result,
-      Err(ParseError::Eval(EvalError::ExtraEnvironmentArgument { ref name, .. })) if name == "flushright"
-    ));
+    assert!(
+      matches!(failures.into_sole(), EvalError::ExtraEnvironmentArgument { ref name, .. } if name == "flushright")
+    );
   }
 
   #[test]
   fn flush_rejects_opt_args() {
-    let result = evaluate(r"\begin{center}[align=right]本文\end{center}");
+    let Err(ParseError::Eval(failures)) = evaluate(r"\begin{center}[align=right]本文\end{center}") else {
+      panic!("評価エラーになるはず")
+    };
 
-    assert!(matches!(
-      result,
-      Err(ParseError::Eval(EvalError::UnknownOptArgKey { ref key, .. })) if key == "align"
-    ));
+    assert!(matches!(failures.into_sole(), EvalError::UnknownOptArgKey { ref key, .. } if key == "align"));
   }
 }

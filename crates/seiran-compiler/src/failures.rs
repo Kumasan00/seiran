@@ -58,6 +58,16 @@ impl<E> Failures<E> {
   /// 主から順にすべての失敗を借用で返す。
   #[cfg(test)]
   pub(crate) fn iter(&self) -> impl Iterator<Item = &E> { return std::iter::once(&self.first).chain(self.rest.iter()); }
+
+  /// 1 件だけのはずの集合から、その 1 件を取り出す（2 件以上なら panic してテストを落とす）。
+  #[cfg(test)]
+  pub(crate) fn into_sole(self) -> E
+  where
+    E: std::fmt::Debug,
+  {
+    assert!(self.rest.is_empty(), "失敗は 1 件だけのはず: {:?} / {:?}", self.first, self.rest);
+    return self.first;
+  }
 }
 
 /// 入力順に並んだ検査結果を、成功なら値の列・失敗なら**入力順**の失敗集合へまとめる
@@ -164,5 +174,18 @@ mod tests {
     let failures = Failures::from_vec(vec!["a", "b"]).expect("2 件あるので構築できるはず");
 
     assert_eq!(format!("{failures:>3}"), "  a");
+  }
+
+  #[test]
+  fn into_sole_returns_the_only_failure() {
+    assert_eq!(Failures::single(TestError(1)).into_sole(), TestError(1));
+  }
+
+  #[test]
+  #[should_panic(expected = "1 件だけのはず")]
+  fn into_sole_rejects_more_than_one_failure() {
+    let failures = Failures::from_vec(vec![TestError(1), TestError(2)]).expect("2 件あるので構築できるはず");
+
+    let _ = failures.into_sole();
   }
 }

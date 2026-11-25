@@ -1,0 +1,5 @@
+\xa の段落
+
+\begin{theorem}定理の \xb\end{theorem}
+
+\begin{itemize}\item{項目の \xc}\item{\xd}\end{itemize}

@@ -46,8 +46,10 @@ pub fn check_source(source: &str) -> Outcome {
 
   return match hir_invariants::parse_checked(source) {
     Ok(_) => Outcome::Evaluated,
-    Err(ParseError::Eval(error)) => {
-      assert_labels_inside(&error, source);
+    Err(ParseError::Eval(errors)) => {
+      for error in errors {
+        assert_labels_inside(&error, source);
+      }
       Outcome::EvalError
     },
     Err(ParseError::Syntax(_)) => unreachable!("同じ入力・同じ ModeResolver の parse_cst が直前に成功している"),

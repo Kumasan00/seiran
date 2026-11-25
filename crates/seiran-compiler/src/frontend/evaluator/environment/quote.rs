@@ -3,24 +3,20 @@
 use crate::{
   document::{HirNode, HirNodeKind, HirQuote, QuoteKind},
   frontend::{
-    evaluator::{self, EvalContext, EvalError},
+    evaluator::{self, EvalContext},
     syntax::view::EnvironmentView,
   },
 };
 
-/// 引用環境（`quote` / `quotation`）を評価する
-///
-/// # Errors
-///
-/// 本体の評価エラーを返します。
-pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: QuoteKind) -> Result<HirNode, EvalError> {
+/// 引用環境（`quote` / `quotation`）を評価する（本体の評価エラーは `ctx` へ報告する）
+pub(super) fn quote(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, kind: QuoteKind) -> HirNode {
   let id = ctx.alloc(view.span());
   let body = match view.body() {
-    Some(body) => evaluator::evaluate_children(view.source(), ctx, body)?,
+    Some(body) => evaluator::evaluate_children(view.source(), ctx, body),
     None => Vec::new(),
   };
 
-  return Ok(HirNode::new(id, HirNodeKind::Quote(HirQuote { kind, body })));
+  return HirNode::new(id, HirNodeKind::Quote(HirQuote { kind, body }));
 }
 
 #[cfg(test)]
@@ -28,7 +24,7 @@ mod tests {
   use bumpalo::Bump;
 
   use super::*;
-  use crate::frontend::evaluator::{evaluate_children_to_hir, test_support};
+  use crate::frontend::evaluator::{EvalError, evaluate_children_to_hir, test_support};
 
   #[test]
   fn quote_carries_kind_and_body() {

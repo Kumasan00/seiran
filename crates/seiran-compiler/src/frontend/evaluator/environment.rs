@@ -98,9 +98,9 @@ impl EnvironmentKind {
   fn evaluate(self, view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &OptArgs) -> Result<HirNode, EvalError> {
     return match self {
       Self::List { ordered } => list::list(view, ctx, opts, ordered),
-      Self::Theorem(class) => theorem::theorem(view, ctx, opts, class),
-      Self::Quote(kind) => quote::quote(view, ctx, kind),
-      Self::Flush(alignment) => flush::flush(view, ctx, alignment),
+      Self::Theorem(class) => Ok(theorem::theorem(view, ctx, opts, class)),
+      Self::Quote(kind) => Ok(quote::quote(view, ctx, kind)),
+      Self::Flush(alignment) => Ok(flush::flush(view, ctx, alignment)),
       Self::Figure => figure::figure(view, ctx, opts),
       Self::Table => table::table(view, ctx, opts),
       Self::Code => Ok(code::code(view, ctx)),
