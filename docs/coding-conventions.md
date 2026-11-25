@@ -449,7 +449,7 @@ lint の増減と根拠の更新が同じ diff に閉じるように、個々の
 | 字面に意味（G1 の読み側） | 字面から意味が一意に取れる                                                  | `clone_on_ref_ptr` / `map_err_ignore` / `elided_lifetimes_in_paths` |
 | 表記の固定（G1 の書き側） | 同じ意味を 2 通りに書かない                                                 | `separated_literal_suffix` / `pub_without_shorthand`                |
 | 決定性                    | 成果物のバイト再現性を壊すものを拒む                                        | `iter_over_hash_type` / `float_cmp_const`                           |
-| crate の責務境界          | ライブラリ 2 crate はプロセス境界の効果（終了・表示）を持たない             | `exit` / `print_stdout`                                             |
+| crate の責務境界          | プロセス境界の効果（終了・表示）は CLI の決まった経路だけが持つ             | `exit` / `print_stdout`                                             |
 | 誤りの検出                | 取り違え・バグ源になる形を拒む                                              | `rc_mutex` / `unit_bindings`                                        |
 | 残骸を残さない            | 死んだコード・デバッグ残りを残さない                                        | `dbg_macro` / `unused_macro_rules`                                  |
 | nursery                   | group が未安定なので目的別に散らさず 1 節に集める（目的は各行の根拠コメント） | `redundant_clone` / `fallible_impl_from`                            |
