@@ -126,6 +126,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
 
     assert_eq!(summarize_line(&line), "外中");

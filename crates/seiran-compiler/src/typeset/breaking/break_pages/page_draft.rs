@@ -579,6 +579,7 @@ mod tests {
           reading: None,
         }];
       }),
+      hanging: Length::ZERO,
     };
   }
 

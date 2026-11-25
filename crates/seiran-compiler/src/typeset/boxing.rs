@@ -338,7 +338,7 @@ fn break_paragraph(
   alignment: TextAlignment,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = break_lines::break_lines(items, available, alignment)?;
+  let mut lines = break_lines::break_lines(items, available, alignment, Length::ZERO)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -479,12 +479,13 @@ impl<'a> Measurer<'a> {
             origin: Some(origin),
           };
         })?;
-        let lines =
-          break_lines::break_lines(&items, self.footnote_width, TextAlignment::Left).map_err(|LengthOverflow| {
+        let lines = break_lines::break_lines(&items, self.footnote_width, TextAlignment::Left, Length::ZERO).map_err(
+          |LengthOverflow| {
             return ElementOverflow {
               origin: Some(origin),
             };
-          })?;
+          },
+        )?;
         out.push_marker(HItem::Footnote(FootnoteBody {
           origin,
           number,

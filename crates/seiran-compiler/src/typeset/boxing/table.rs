@@ -589,7 +589,8 @@ fn layout_row_cells(
       vec![line]
     } else if wraps(spanned_columns) {
       let content_width = band_width.try_sub(double_padding)?;
-      let mut lines = break_lines::break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align))?;
+      let mut lines =
+        break_lines::break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align), Length::ZERO)?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);
       let line_x = cell_x.try_add(frame.cell_padding)?;

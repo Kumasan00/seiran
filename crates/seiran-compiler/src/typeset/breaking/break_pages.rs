@@ -1450,6 +1450,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
@@ -2334,6 +2335,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
@@ -3291,6 +3293,7 @@ mod tests {
         links,
         footnotes: Vec::new(),
         index_marks: Vec::new(),
+        hanging: Length::ZERO,
       },
       leading: Length::pt(12.0),
     };
@@ -3546,6 +3549,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 

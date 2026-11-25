@@ -28,6 +28,8 @@ pub(crate) struct Line {
   pub footnotes: Vec<FootnoteBody>,
   /// この行に含まれる索引語（`\index{語}`、出現順）
   pub index_marks: Vec<IndexTerm>,
+  /// 行末にぶら下げた句読点の箱の幅。ぶら下げていない行は 0
+  pub hanging: Length,
 }
 
 impl Line {
@@ -44,6 +46,15 @@ impl Line {
       .boxes
       .iter()
       .try_fold(Length::ZERO, |widest, placed| return Ok(widest.max(placed.dx.try_add(placed.hbox.width)?)));
+  }
+
+  /// ぶら下げた句読点を除いた行の実効幅（[`Line::width`] − [`Line::hanging`]）。はみ出しの判定に使う
+  ///
+  /// # Errors
+  ///
+  /// 行の実効幅の計算が長さの値域に収まらないとき [`LengthOverflow`]。
+  pub(crate) fn width_without_hanging(&self) -> Result<Length, LengthOverflow> {
+    return self.width()?.try_sub(self.hanging);
   }
 
   /// 行内の水平位置（ボックスとクリック矩形）をまとめて `dx` だけ右へずらす
@@ -109,5 +120,44 @@ impl LineLink {
       width: self.x1.try_sub(self.x0)?,
       height,
     }));
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::Line;
+  use crate::{
+    length::Length,
+    typeset::boxes::{HBox, HBoxContent, PlacedHBox},
+  };
+
+  /// 指定位置・指定幅の配置済み箱
+  fn placed(dx: f32, width: f32) -> PlacedHBox {
+    return PlacedHBox {
+      hbox: HBox {
+        content: HBoxContent::Atom(Vec::new()),
+        width: Length::pt(width),
+        height: Length::pt(8.0),
+        depth: Length::pt(2.0),
+      },
+      dx: Length::pt(dx),
+      dy: Length::ZERO,
+    };
+  }
+
+  #[test]
+  fn width_without_hanging_drops_the_hanging_box() {
+    let line = Line {
+      boxes: vec![placed(0.0, 30.0), placed(30.0, 5.0)],
+      height: Length::pt(8.0),
+      depth: Length::pt(2.0),
+      links: Vec::new(),
+      footnotes: Vec::new(),
+      index_marks: Vec::new(),
+      hanging: Length::pt(5.0),
+    };
+
+    assert_eq!(line.width().expect("値域内"), Length::pt(35.0));
+    assert_eq!(line.width_without_hanging().expect("値域内"), Length::pt(30.0));
   }
 }

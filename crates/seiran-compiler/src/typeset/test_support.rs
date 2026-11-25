@@ -195,6 +195,7 @@ fn single_box_line(hbox: HBox, x: Length, dy: Length, baseline_y: Length) -> Pla
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     },
     baseline_y,
   };

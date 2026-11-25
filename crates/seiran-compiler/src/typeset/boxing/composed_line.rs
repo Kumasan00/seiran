@@ -55,6 +55,7 @@ impl LineAccum {
       links,
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 }
@@ -109,6 +110,7 @@ pub(super) fn unwrapped_line(items: &[HItem]) -> Result<Line, LengthOverflow> {
     links: Vec::new(),
     footnotes: Vec::new(),
     index_marks: Vec::new(),
+    hanging: Length::ZERO,
   };
   let mut cursor = Length::ZERO;
   let mut open: Vec<(LinkTarget, Length)> = Vec::new();

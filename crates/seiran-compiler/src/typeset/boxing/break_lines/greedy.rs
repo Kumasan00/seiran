@@ -7,7 +7,7 @@ use crate::{
   length::{Length, LengthOverflow},
   typeset::{
     boxes::{HItem, Line},
-    boxing::break_lines::{OpenLink, build_line},
+    boxing::break_lines::{LineEnd, OpenLink, build_line},
     observe,
   },
 };
@@ -37,7 +37,7 @@ pub(super) fn break_lines(
   for item in items {
     match item {
       HItem::ForcedBreak => {
-        let line = build_line(&buffer, true, text_width, alignment, open_links, None)?;
+        let line = build_line(&buffer, true, text_width, alignment, open_links, LineEnd::Plain)?;
         push_line(&mut lines, line, true, false)?;
         buffer.clear();
         width_so_far = Length::ZERO;
@@ -89,12 +89,12 @@ pub(super) fn break_lines(
         while width_so_far.try_add(item_width)? > text_width
           && let Some(break_index) = last_break.or(last_math_break)
         {
-          let trailing_hyphen = match buffer[break_index] {
-            HItem::Discretionary { hyphen } => Some(hyphen),
-            _ => None,
+          let (end, hyphenated) = match buffer[break_index] {
+            HItem::Discretionary { hyphen } => (LineEnd::Hyphen(hyphen), true),
+            _ => (LineEnd::Plain, false),
           };
-          let line = build_line(&buffer[..break_index], false, text_width, alignment, open_links, trailing_hyphen)?;
-          push_line(&mut lines, line, false, trailing_hyphen.is_some())?;
+          let line = build_line(&buffer[..break_index], false, text_width, alignment, open_links, end)?;
+          push_line(&mut lines, line, false, hyphenated)?;
           let carried: Vec<&HItem> = buffer[break_index + 1..].to_vec();
           buffer = carried;
           while matches!(
@@ -119,7 +119,7 @@ pub(super) fn break_lines(
   }
 
   if !buffer.is_empty() || lines.is_empty() {
-    let line = build_line(&buffer, true, text_width, alignment, open_links, None)?;
+    let line = build_line(&buffer, true, text_width, alignment, open_links, LineEnd::Plain)?;
     push_line(&mut lines, line, true, false)?;
   }
   return Ok(lines);
