@@ -6,7 +6,7 @@ mod knuth_plass;
 use crate::{
   document::TextAlignment,
   length::{Length, LengthOverflow},
-  typeset::boxes::{Align, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, MeasuredFootnote, PlacedHBox},
+  typeset::boxes::{Align, FootnoteBody, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, PlacedHBox},
 };
 
 /// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
@@ -147,7 +147,7 @@ fn build_line(
 
   let mut boxes: Vec<PlacedHBox> = Vec::new();
   let mut links: Vec<LineLink> = Vec::new();
-  let mut footnotes: Vec<MeasuredFootnote> = Vec::new();
+  let mut footnotes: Vec<FootnoteBody> = Vec::new();
   let mut index_marks: Vec<IndexTerm> = Vec::new();
   let mut flush_right: Vec<&HBox> = Vec::new();
   let mut x = Length::ZERO;

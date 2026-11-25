@@ -53,7 +53,7 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, Galley, HBox, HBoxContent, HItem, Line, MeasuredFootnote, PlacedHBox},
+    boxes::{self, Align, Block, FootnoteBody, Galley, HBox, HBoxContent, HItem, Line, PlacedHBox},
     breaking,
     error::ElementOverflow,
     font::FontSystem,
@@ -127,6 +127,7 @@ pub(super) fn build_blocks(
       hyphenation,
       inputs.punctuation_spacing,
       inputs.stretch_limit,
+      galley.column_width(),
     ),
     images: inputs.images,
     column_width: galley.column_width(),
@@ -358,6 +359,8 @@ struct Measurer<'a> {
   punctuation_spacing: bool,
   /// 伸縮字形の縦の大きさの上限（本文領域の高さ）
   stretch_limit: Length,
+  /// 脚注本体を行分割する幅（区画の 1 段の幅）
+  footnote_width: Length,
 }
 
 impl<'a> Measurer<'a> {
@@ -369,6 +372,7 @@ impl<'a> Measurer<'a> {
     hyphenation: Option<Lang>,
     punctuation_spacing: bool,
     stretch_limit: Length,
+    footnote_width: Length,
   ) -> Self {
     return Measurer {
       shaper,
@@ -377,6 +381,7 @@ impl<'a> Measurer<'a> {
       hyphenation,
       punctuation_spacing,
       stretch_limit,
+      footnote_width,
     };
   }
 
@@ -474,11 +479,17 @@ impl<'a> Measurer<'a> {
             origin: Some(origin),
           };
         })?;
-        out.push_marker(HItem::Footnote(MeasuredFootnote {
+        let lines =
+          breaking::break_lines(&items, self.footnote_width, TextAlignment::Left).map_err(|LengthOverflow| {
+            return ElementOverflow {
+              origin: Some(origin),
+            };
+          })?;
+        out.push_marker(HItem::Footnote(FootnoteBody {
           origin,
           number,
           index,
-          items,
+          lines,
           leading,
         }));
       },

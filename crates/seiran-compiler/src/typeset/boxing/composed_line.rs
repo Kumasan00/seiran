@@ -159,9 +159,9 @@ pub(in crate::typeset) fn inline_atom(
   punctuation_spacing: bool,
   stretch_limit: Length,
 ) -> Result<HBox, ElementOverflow> {
-  // 既定サイズ・行送りを読むのは `collect_inline` の `Footnote` と `BlockBuilder` の段落・ディスプレイ数式・表だけで、
+  // 既定サイズ・行送り・脚注の幅を読むのは `collect_inline` の `Footnote` と `BlockBuilder` の段落・ディスプレイ数式・表だけで、
   // 脚注を含まないインライン列の計測では読まれない
-  let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing, stretch_limit);
+  let mut measurer = Measurer::new(shaper, Length::ZERO, 1.0, None, punctuation_spacing, stretch_limit, Length::ZERO);
   let mut list = HList::default();
   for node in nodes {
     measurer.collect_inline(node, &mut list)?;

@@ -861,8 +861,7 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{
-        AnchorId, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, MeasuredFootnote, TableBox,
-        TableRowFragment,
+        AnchorId, FootnoteBody, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, TableBox, TableRowFragment,
       },
       lowering::TableColumn,
     },
@@ -983,11 +982,11 @@ mod tests {
 
   /// 出現 index `index`（表示番号 `index + 1`）の脚注マーカーを作る
   fn footnote(index: u32) -> HItem {
-    return HItem::Footnote(MeasuredFootnote {
+    return HItem::Footnote(FootnoteBody {
       origin: NodeId::for_test(SourceId::new(0), index + 1),
       number: index + 1,
       index,
-      items: vec![text_free_box(30.0)],
+      lines: Vec::new(),
       leading: pt(10.0),
     });
   }

@@ -50,7 +50,7 @@ pub(crate) struct Page {
 /// [`PlacedFootnote`] が複数ページに現れる（`continued` で区別する）。
 #[derive(Debug, Clone)]
 pub(crate) struct PlacedFootnote {
-  /// 出現順の識別子（0 起点。[`crate::typeset::boxes::MeasuredFootnote`] から素通し）
+  /// 出現順の識別子（0 起点。[`crate::typeset::boxes::FootnoteBody`] から素通し）
   pub index: u32,
   /// 前ページからの繰越（長い脚注の続き）か
   ///
