@@ -246,6 +246,7 @@ use crate::{
   length::Length,
   project::{FontFace, FontType},
   publication::{GlyphRun, PaintOp},
+  semantics::HeadingKey,
   typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
 
@@ -6146,4 +6147,51 @@ fn blank_slot_with_absent_heading_draws_nothing() {
     .pages;
 
   assert!(pages.iter().all(|page| return page.header.is_empty()), "行も区切り線も出さないはず");
+}
+
+#[test]
+fn empty_body_with_running_content_compiles() {
+  // 本文ブロックの無い文書でも改ページは 1 ページを返し、柱はそのページに組む
+  for center in ["{page}", "{chapter}|{section}"] {
+    let pages = TestProject::builder()
+      .source_text("// コメントだけ\n")
+      .style_toml(move |table| test_support::set(table, "header", "center", center))
+      .build()
+      .laid_out()
+      .pages;
+
+    assert_eq!(pages.len(), 1, "{center}");
+  }
+}
+
+#[test]
+fn continued_table_keeps_the_section_it_started_in() {
+  let rows: String = (0..200).map(|row| return format!("\\row{{r{row}}}\n")).collect();
+  let source =
+    format!("\\section{{One}}\n\na\n\n\\section{{Two}}\n\n\\begin{{table}}[columns=left]\n{rows}\\end{{table}}\n");
+
+  let headers = running_headers_of(&source, |_| {});
+
+  assert!(headers.len() >= 2, "表がページをまたぐはず: {headers:?}");
+  assert_eq!(headers[0], "|One", "ページ途中の節はそのページを切り替えない");
+  assert!(headers[1..].iter().all(|header| return header == "|Two"), "表の続きは節 Two に属する: {headers:?}");
+}
+
+#[test]
+fn second_column_heading_does_not_switch_the_page() {
+  let filler = |count: usize| return "a\n\n".repeat(count);
+  let source = format!("\\section{{One}}\n\n{}\\section{{Two}}\n\n{}", filler(50), filler(10));
+  let pages = TestProject::builder()
+    .source_text(&source)
+    .style_toml(chapter_section_header)
+    .style_toml(|table| test_support::set(table, "columns", "count", 2))
+    .build()
+    .laid_out()
+    .pages;
+
+  assert!(
+    pages[0].anchors.iter().any(|anchor| return anchor.id == AnchorId::Heading(HeadingKey::new(1))),
+    "節 Two は 1 ページ目の 2 段目にあるはず"
+  );
+  assert_eq!(header_text(&pages[0]), "|One", "段ごとに柱を切り替えない");
 }
