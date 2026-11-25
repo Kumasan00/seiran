@@ -8,7 +8,7 @@
 //! `resolve_image_size` に依存し、推論した辺が長さの値域を超えたら失敗する）。段幅はこの入口が受け取る [`Galley`] の版面から読み、寸法を省略した画像と表の `Ratio` /
 //! `Flex` 列はそこから囲む引用・リストの字下げを引いた利用幅（`boxes::usable_width`。配置の `break_pages` と同じ式）を
 //! 基準にする。確定済みの寸法だけが `Block::Image` として下流へ渡る。
-//! 段落は [`ParagraphLayout`] ごとに水平リストを計測し、内容が空でも段落後の固定アキを残す。
+//! 段落は [`ParagraphLayout`] ごとに水平リストを計測して段幅で行分割し（左字下げまでずらした行を `Block::Paragraph` が持つ）、内容が空でも段落後の固定アキを残す。
 //!
 //! 子 module のうち `Measurer` の `impl` を続けるのは `text_run`（テキストのスクリプト分割・break 注入と、数式内の文章をその水平リストの自然幅で閉じた箱に並べる処理）と
 //! `math`（数式エンジン — インライン・ディスプレイ数式の段・アキ・分割候補の組み立てと、構造ごとの計測・配置）と
@@ -53,7 +53,8 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, Galley, HBox, HBoxContent, HItem, MeasuredFootnote, PlacedHBox},
+    boxes::{self, Align, Block, Galley, HBox, HBoxContent, HItem, Line, MeasuredFootnote, PlacedHBox},
+    breaking,
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -306,15 +307,41 @@ impl BlockBuilder<'_> {
             origin: paragraph.origin,
           };
         })?;
+    let lines =
+      break_paragraph(&items, self.column_width, indent, right_indent, alignment).map_err(|LengthOverflow| {
+        return ElementOverflow {
+          origin: paragraph.origin,
+        };
+      })?;
     return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
-      items,
+      lines,
       leading,
-      indent,
-      right_indent,
-      alignment,
     }));
   }
+}
+
+/// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
+///
+/// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
+/// ここでは足さず着地段が決まってから足す。
+///
+/// # Errors
+///
+/// 利用幅・行の幅の計算が長さの値域を超えたら [`LengthOverflow`]。
+fn break_paragraph(
+  items: &[HItem],
+  column_width: Length,
+  indent: Length,
+  right_indent: Length,
+  alignment: TextAlignment,
+) -> Result<Vec<Line>, LengthOverflow> {
+  let available = boxes::usable_width(column_width, indent, right_indent)?;
+  let mut lines = breaking::break_lines(items, available, alignment)?;
+  for line in &mut lines {
+    line.shift_x(indent)?;
+  }
+  return Ok(lines);
 }
 
 /// 段落構築のポリシーを持つ計測器
@@ -816,5 +843,185 @@ mod max_font_size_tests {
     .expect("値域内");
 
     assert_eq!(max_font_size_in_items(&[HItem::Box(atom)]), Some(Length::pt(20.0)));
+  }
+}
+
+#[cfg(test)]
+mod tests {
+  use super::break_paragraph;
+  use crate::{
+    document::TextAlignment,
+    length::{Length, LengthOverflow},
+    typeset::boxes::{HBox, HBoxContent, HItem, LinkTarget},
+  };
+
+  /// 幅 `width`・高さ 8・深さ 2 の、テキストを持たない箱
+  fn box_of_width(width: f32) -> HItem {
+    return HItem::Box(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: Length::pt(width),
+      height: Length::pt(8.0),
+      depth: Length::pt(2.0),
+    });
+  }
+
+  /// 幅 10 の箱
+  fn test_box() -> HItem { return box_of_width(10.0); }
+
+  /// 幅 5 で、伸縮が `stretch` / `shrink` の分割可能な glue
+  fn glue(stretch: f32, shrink: f32) -> HItem {
+    return HItem::Glue {
+      natural: Length::pt(5.0),
+      stretch: Length::pt(stretch),
+      shrink: Length::pt(shrink),
+      breakable: true,
+    };
+  }
+
+  /// 単語間スペース相当（幅 5・伸長 2.5・収縮 5/3）の glue
+  fn stretch_glue() -> HItem {
+    return HItem::Glue {
+      natural: Length::pt(5.0),
+      stretch: Length::pt(2.5),
+      shrink: Length::pt(5.0) / 3.0,
+      breakable: true,
+    };
+  }
+
+  /// `Length` が pt 値 `expected` に（sp 丸め精度内で）一致するか
+  fn close(actual: Length, expected: f32) -> bool { return (actual.to_pt() - expected).abs() < 1e-3; }
+
+  /// 箱 3 個を伸縮 glue 2 個で並べた、段幅 27 で 2 行に折り返す入力（1 行目自然幅 25）
+  fn stretchable_items() -> Vec<HItem> {
+    return vec![
+      test_box(),
+      stretch_glue(),
+      test_box(),
+      stretch_glue(),
+      test_box(),
+    ];
+  }
+
+  /// 箱 3 個を伸縮なし glue 2 個で並べた入力
+  fn rigid_items() -> Vec<HItem> {
+    return vec![
+      test_box(),
+      glue(0.0, 0.0),
+      test_box(),
+      glue(0.0, 0.0),
+      test_box(),
+    ];
+  }
+
+  #[test]
+  fn right_indent_narrows_the_line_width() {
+    let mut items = Vec::new();
+    for i in 0..6 {
+      if i > 0 {
+        items.push(glue(0.0, 0.0));
+      }
+      items.push(test_box());
+    }
+
+    let lines = break_paragraph(&items, Length::pt(60.0), Length::pt(10.0), Length::pt(10.0), TextAlignment::Left)
+      .expect("値域内");
+
+    assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
+    for line in &lines {
+      let first = line.boxes.first().expect("各行にボックスがあるはず");
+      assert!(first.dx.to_pt() >= 10.0 - f32::EPSILON, "先頭ボックス x={} は indent(10) 以上", first.dx.to_pt());
+      for placed in &line.boxes {
+        assert!(
+          (placed.dx + placed.hbox.width).to_pt() <= 50.0 + f32::EPSILON,
+          "x+width={} <= 段幅 - right_indent = 50",
+          (placed.dx + placed.hbox.width).to_pt()
+        );
+      }
+    }
+  }
+
+  #[test]
+  fn indent_shifts_boxes_and_links() {
+    let items = vec![
+      HItem::LinkStart(LinkTarget::External("https://example.com".to_string())),
+      test_box(),
+      test_box(),
+      HItem::LinkEnd,
+    ];
+
+    let lines =
+      break_paragraph(&items, Length::pt(100.0), Length::pt(15.0), Length::ZERO, TextAlignment::Left).expect("値域内");
+
+    assert_eq!(lines.len(), 1);
+    let links = &lines[0].links;
+    assert_eq!(links.len(), 1, "{links:?}");
+    assert!(close(links[0].x0, 15.0), "link.x0={}", links[0].x0.to_pt());
+    assert!(close(links[0].x1 - links[0].x0, 20.0), "link 幅={}", (links[0].x1 - links[0].x0).to_pt());
+  }
+
+  #[test]
+  fn right_alignment_moves_the_line_to_the_right_edge() {
+    let items = vec![test_box()];
+
+    let lines =
+      break_paragraph(&items, Length::pt(100.0), Length::ZERO, Length::ZERO, TextAlignment::Right).expect("値域内");
+
+    assert!(close(lines[0].boxes[0].dx, 90.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn justify_stretches_glue_to_the_width() {
+    let items = stretchable_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Justify).expect("値域内");
+
+    let boxes = &lines[0].boxes;
+    assert!(close(boxes[1].dx + boxes[1].hbox.width, 27.0), "{boxes:?}");
+  }
+
+  #[test]
+  fn center_keeps_glue_natural() {
+    let items = stretchable_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    let boxes = &lines[0].boxes;
+    assert!(close(boxes[0].dx, 1.0), "{boxes:?}");
+    assert!(close(boxes[1].dx - boxes[0].dx, 15.0), "glue は自然幅のまま: {boxes:?}");
+  }
+
+  #[test]
+  fn centered_overflowing_line_is_not_shifted_negative() {
+    let items = vec![box_of_width(50.0)];
+
+    let lines =
+      break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    assert!(close(lines[0].boxes[0].dx, 0.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn centered_wrapped_lines_are_each_independently_centered() {
+    let items = rigid_items();
+
+    let lines =
+      break_paragraph(&items, Length::pt(35.0), Length::ZERO, Length::ZERO, TextAlignment::Center).expect("値域内");
+
+    assert_eq!(lines.len(), 2, "段幅 35 で 2 行に折り返すはず: {} 行", lines.len());
+    assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
+    assert!(close(lines[1].boxes[0].dx, 12.5), "2 行目先頭 x={}", lines[1].boxes[0].dx.to_pt());
+  }
+
+  #[test]
+  fn break_paragraph_rejects_shift_outside_the_length_range() {
+    let items = vec![test_box(), test_box()];
+    // 2 個目の箱の位置（10pt）に足すと値域の上端を超える字下げ
+    let indent = Length::from_sp(i64::MAX) - Length::pt(5.0);
+
+    let result = break_paragraph(&items, Length::pt(100.0), indent, Length::ZERO, TextAlignment::Left);
+
+    assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));
   }
 }
