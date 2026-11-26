@@ -71,6 +71,7 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 ```
 
 コマンドの必須引数と数式の上付き・下付きには `{...}` を使います。
+「本当？　次の文」のように書いた全角空白（U+3000）は 1 字分のアキになり、行頭・行末では消えます（`[text].punctuation_spacing = false` のときは字として組みます）。
 機能別の例は [tests/text/](tests/text/)、構文の原則は [言語設計](docs/language-design.md)を参照してください。
 
 ### 画像
@@ -225,6 +226,8 @@ font_size = "12pt"             # 本文フォントサイズ
 line_height_factor = 1.05      # 行間係数（> 0）
 # alignment = "justify"        # 段落の揃え: "justify"（既定） / "left" / "center" / "right"
 # hanging_punctuation = false  # 両端揃えの本文で、行末に収まらない和文句読点を 1 字ぶら下げる（既定 false）
+# open_bracket_paragraph_start = "none"  # 段落先頭の始め括弧の前アキ: "none"（既定） / "half"（二分を残す）
+# open_bracket_line_start = "none"       # 折返し後・明示改行後の行頭の始め括弧の前アキ: "none"（既定） / "half"
 
 [heading.part]                 # 見出しレベルは part / chapter / section /
 format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 6 種

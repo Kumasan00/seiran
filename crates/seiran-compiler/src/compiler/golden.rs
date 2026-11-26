@@ -39,6 +39,13 @@
 //!   [`link_rect_follows_the_prioritized_adjustment`] / [`line_starting_with_an_open_bracket_has_no_leading_aki`]
 //!   （共通ヘルパ [`narrow_project`] / [`body_lines`] / [`line_runs`] 経由。句点後と読点後のアキ・境界をまたぐ座標・リンク矩形・
 //!   行頭括弧を固定する）
+//! - **`Line` へ直接アサート（全角空白のアキ）**: `ideographic_space_*` /
+//!   [`question_mark_inside_a_sentence_gets_no_aki`]（`gap_before` / `line_gaps` / [`body_lines`] 経由。区切り約物の後ろの
+//!   1em・隣の約物アキの吸収・装飾境界・行端と段落端で消えること・アキ調整を切った文書と結合文字付きでは字のままを固定する）
+//! - **`Line` へ直接アサート（行頭の始め括弧の前アキ）**: [`open_bracket_at_line_start_is_flush_by_default`] /
+//!   [`paragraph_start_half_adds_half_em_after_the_indent`] / [`line_start_key_covers_wrapped_and_forced_line_starts`] ほか
+//!   （共通ヘルパ [`bracket_project`] / [`first_glyph_dx`] 経由。段落先頭・折返し後・明示改行後の前アキ・字下げとの合成・
+//!   文字サイズ・両端揃えと左揃え・リンク矩形・見出しへ効かないことを固定する）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -224,9 +231,9 @@
 //!
 //! # カバレッジの注意
 //!
-//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げは既定 config では
-//! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation`）。これらの経路を触ったら、該当 fixture が
+//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げ・行頭の始め括弧の二分は
+//! 既定 config では無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation` / `open_bracket_half`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
