@@ -54,10 +54,10 @@ keywords=["test", "seiran"]
   glyphs x=56.60 y=405.21 font=JapaneseSerif size=12.00 text="本" glyph_count=1
   glyphs x=69.20 y=405.21 font=JapaneseSerif size=12.00 text="語" glyph_count=1
   glyphs x=20.00 y=422.45 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=35.06 y=422.45 font=Serif size=12.00 text="English" glyph_count=7
-  glyphs x=76.83 y=422.45 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=88.88 y=422.45 font=JapaneseSerif size=12.00 text="混" glyph_count=1
-  glyphs x=100.94 y=422.45 font=JapaneseSerif size=12.00 text="ぜ" glyph_count=1
+  glyphs x=35.14 y=422.45 font=Serif size=12.00 text="English" glyph_count=7
+  glyphs x=77.00 y=422.45 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=89.00 y=422.45 font=JapaneseSerif size=12.00 text="混" glyph_count=1
+  glyphs x=101.00 y=422.45 font=JapaneseSerif size=12.00 text="ぜ" glyph_count=1
   glyphs x=113.00 y=422.45 font=JapaneseSerif size=12.00 text="た" glyph_count=1
   glyphs x=20.00 y=439.69 font=JapaneseSerif size=12.00 text="文" glyph_count=1
   glyphs x=32.00 y=439.69 font=JapaneseSerif size=12.00 text="も" glyph_count=1

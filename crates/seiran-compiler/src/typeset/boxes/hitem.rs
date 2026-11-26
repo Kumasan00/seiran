@@ -21,7 +21,8 @@ pub(crate) enum HItem {
   ///
   /// Latin 単語間スペース由来（自然幅あり・伸長 / 収縮つき）のほか、和文字間の
   /// 分割可能位置にも幅 0・微小伸長・収縮なしの glue を置く（和文の両端揃え用）。
-  /// 両端揃え以外（左・中央・右）では伸縮は適用されず、自然幅のまま並ぶ。
+  /// 両端揃え以外（左・中央・右）では伸縮は適用されず、自然幅のまま並ぶ。`kind` は両端揃えの配分の順位だけに使い、
+  /// それ以外の処理は種類を見ない。
   Glue {
     /// 自然幅
     natural: Length,
@@ -31,6 +32,8 @@ pub(crate) enum HItem {
     shrink: Length,
     /// 行分割の候補点になるか（`true` のとき行末では破棄される）
     breakable: bool,
+    /// glue を生んだ規則（両端揃えで伸縮を配る順位を決める）
+    kind: GlueKind,
   },
   /// 固定カーン（破棄されない・分割不可）
   Kern(Length),
@@ -87,6 +90,21 @@ pub(crate) enum HItem {
   ///
   /// この行が置かれるページが索引語の「出現ページ」になる。
   IndexMark(IndexTerm),
+}
+
+/// 両端揃えで伸縮を配る順位を決める glue の種類（glue を生んだ規則）
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(crate) enum GlueKind {
+  /// 欧文語間スペース
+  WordSpace,
+  /// 和欧文間アキ（四分）
+  JaLatinAki,
+  /// 和文字間の分割可能位置（幅 0・微小伸長）
+  InterCharacter,
+  /// 中点類の前後のアキ
+  MiddleDotAki,
+  /// 始め括弧前・終わり括弧後・句読点後のアキ（句点後は収縮能力 0）
+  PunctuationAki,
 }
 
 /// 行分割済みの脚注 1 個（`\footnote{...}`）
@@ -231,7 +249,7 @@ pub(crate) struct PlacedHBox {
 
 #[cfg(test)]
 mod tests {
-  use super::{HBox, HBoxContent, HItem, PlacedHBox};
+  use super::{GlueKind, HBox, HBoxContent, HItem, PlacedHBox};
   use crate::length::{Length, LengthOverflow};
 
   /// pt 値から `Length` を作る
@@ -318,6 +336,7 @@ mod tests {
       stretch: pt(2.0),
       shrink: pt(1.0),
       breakable: true,
+      kind: GlueKind::WordSpace,
     };
     assert_eq!(glue.natural_width(), pt(5.0));
     assert_eq!(HItem::Kern(pt(3.0)).natural_width(), pt(3.0));

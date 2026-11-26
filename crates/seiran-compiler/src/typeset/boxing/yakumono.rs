@@ -2,6 +2,8 @@
 //!
 //! 句点類と読点類を分け、句点後のアキは収縮能力を持たない（JLReq §3.8.3 の追込みに句点後は入らない）。
 
+use crate::typeset::boxes::GlueKind;
+
 /// 二分（1em の 1/2）
 const NIBU: f32 = 0.5;
 
@@ -41,6 +43,8 @@ pub(super) struct Aki {
   pub(super) natural_em: f32,
   /// 詰め可能量（em）。両端揃えの行で収縮に使える量で、句点後のアキは 0
   pub(super) shrink_em: f32,
+  /// アキを決めた規則（中点の規則か括弧・句読点の規則か）
+  pub(super) kind: GlueKind,
 }
 
 /// 文字を約物クラスへ分類する
@@ -88,20 +92,24 @@ pub(super) fn gap(left: YakumonoClass, right: YakumonoClass) -> Option<Aki> {
     if left == Open || matches!(right, Close | Comma | FullStop) {
       return None;
     }
-    return Some(aki(left, SHIBU));
+    return Some(aki(left, SHIBU, GlueKind::MiddleDotAki));
   }
 
   return match (left, right) {
     // 前アキ二分（何か → 始め括弧）／後アキ二分（終わり括弧・句読点 → 通常文字）
-    (Normal | Close | Comma | FullStop, Open) | (Close | Comma | FullStop, Normal) => Some(aki(left, NIBU)),
+    (Normal | Close | Comma | FullStop, Open) | (Close | Comma | FullStop, Normal) => {
+      Some(aki(left, NIBU, GlueKind::PunctuationAki))
+    },
     // それ以外（括弧内側・連続約物・通常文字どうし）はベタ
     _ => None,
   };
 }
 
-/// 左が `left` の境界の標準アキ `em` の [`Aki`] を作る（句点後を除き、約物アキは全量ベタまで詰められる）
-fn aki(left: YakumonoClass, em: f32) -> Aki {
+/// 左が `left` の境界の、規則 `kind` が決めた標準アキ `em` の [`Aki`] を作る（句点後を除き、約物アキは全量ベタまで
+/// 詰められる）
+fn aki(left: YakumonoClass, em: f32, kind: GlueKind) -> Aki {
   return Aki {
+    kind,
     natural_em: em,
     shrink_em: if left == YakumonoClass::FullStop {
       0.0
@@ -113,7 +121,7 @@ fn aki(left: YakumonoClass, em: f32) -> Aki {
 
 #[cfg(test)]
 mod tests {
-  use super::{Aki, NIBU, Normalize, SHIBU, YakumonoClass, classify, gap, normalize};
+  use super::{Aki, GlueKind, NIBU, Normalize, SHIBU, YakumonoClass, classify, gap, normalize};
 
   #[test]
   fn classify_sorts_each_class() {
@@ -138,31 +146,60 @@ mod tests {
 
   #[test]
   fn gap_protects_the_aki_after_a_full_stop() {
-    let protected = |em| {
+    let protected = |em, kind| {
       return Aki {
         natural_em: em,
         shrink_em: 0.0,
+        kind,
       };
     };
 
-    assert_eq!(gap(YakumonoClass::FullStop, YakumonoClass::Normal), Some(protected(NIBU)), "。kanji");
-    assert_eq!(gap(YakumonoClass::FullStop, YakumonoClass::Open), Some(protected(NIBU)), "。「");
-    assert_eq!(gap(YakumonoClass::FullStop, YakumonoClass::MiddleDot), Some(protected(SHIBU)), "。・");
-    assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Normal), Some(aki(NIBU)), "、kanji は詰められる");
+    assert_eq!(
+      gap(YakumonoClass::FullStop, YakumonoClass::Normal),
+      Some(protected(NIBU, GlueKind::PunctuationAki)),
+      "。kanji"
+    );
+    assert_eq!(
+      gap(YakumonoClass::FullStop, YakumonoClass::Open),
+      Some(protected(NIBU, GlueKind::PunctuationAki)),
+      "。「"
+    );
+    assert_eq!(
+      gap(YakumonoClass::FullStop, YakumonoClass::MiddleDot),
+      Some(protected(SHIBU, GlueKind::MiddleDotAki)),
+      "。・"
+    );
+    assert_eq!(
+      gap(YakumonoClass::Comma, YakumonoClass::Normal),
+      Some(aki(NIBU, GlueKind::PunctuationAki)),
+      "、kanji は詰められる"
+    );
     assert_eq!(
       gap(YakumonoClass::Close, YakumonoClass::Normal),
-      Some(aki(NIBU)),
+      Some(aki(NIBU, GlueKind::PunctuationAki)),
       "。」の後の 」kanji は終わり括弧後"
     );
   }
 
   #[test]
   fn gap_inserts_nibu_before_open_and_after_close_comma() {
-    assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::Open), Some(aki(NIBU)), "kanji「");
-    assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Open), Some(aki(NIBU)), "」「");
-    assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Open), Some(aki(NIBU)), "、「");
-    assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Normal), Some(aki(NIBU)), "」kanji");
-    assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Normal), Some(aki(NIBU)), "、kanji");
+    assert_eq!(
+      gap(YakumonoClass::Normal, YakumonoClass::Open),
+      Some(aki(NIBU, GlueKind::PunctuationAki)),
+      "kanji「"
+    );
+    assert_eq!(gap(YakumonoClass::Close, YakumonoClass::Open), Some(aki(NIBU, GlueKind::PunctuationAki)), "」「");
+    assert_eq!(gap(YakumonoClass::Comma, YakumonoClass::Open), Some(aki(NIBU, GlueKind::PunctuationAki)), "、「");
+    assert_eq!(
+      gap(YakumonoClass::Close, YakumonoClass::Normal),
+      Some(aki(NIBU, GlueKind::PunctuationAki)),
+      "」kanji"
+    );
+    assert_eq!(
+      gap(YakumonoClass::Comma, YakumonoClass::Normal),
+      Some(aki(NIBU, GlueKind::PunctuationAki)),
+      "、kanji"
+    );
   }
 
   #[test]
@@ -180,8 +217,16 @@ mod tests {
 
   #[test]
   fn gap_uses_shibu_around_middle_dot() {
-    assert_eq!(gap(YakumonoClass::Normal, YakumonoClass::MiddleDot), Some(aki(SHIBU)), "kanji・");
-    assert_eq!(gap(YakumonoClass::MiddleDot, YakumonoClass::Normal), Some(aki(SHIBU)), "・kanji");
+    assert_eq!(
+      gap(YakumonoClass::Normal, YakumonoClass::MiddleDot),
+      Some(aki(SHIBU, GlueKind::MiddleDotAki)),
+      "kanji・"
+    );
+    assert_eq!(
+      gap(YakumonoClass::MiddleDot, YakumonoClass::Normal),
+      Some(aki(SHIBU, GlueKind::MiddleDotAki)),
+      "・kanji"
+    );
     assert_eq!(gap(YakumonoClass::Open, YakumonoClass::MiddleDot), None, "「・");
     assert_eq!(gap(YakumonoClass::MiddleDot, YakumonoClass::Close), None, "・」");
   }
@@ -231,11 +276,12 @@ mod tests {
     assert_eq!(normalize(YakumonoClass::Normal), None, "通常文字は正規化しない");
   }
 
-  /// テスト用: `super::aki` 相当（標準アキ = 詰め代）
-  fn aki(em: f32) -> Aki {
+  /// テスト用: 規則 `kind` の詰められる標準アキ（標準アキ = 詰め代）
+  fn aki(em: f32, kind: GlueKind) -> Aki {
     return Aki {
       natural_em: em,
       shrink_em: em,
+      kind,
     };
   }
 }

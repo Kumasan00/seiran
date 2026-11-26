@@ -29,7 +29,8 @@ use crate::{
   typeset::{
     boxes::{HItem, Line, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
     boxing::{
-      self, Measurer, break_lines,
+      self, Measurer,
+      break_lines::{self, AdjustmentOrder},
       composed_line::{measure_items_width, unwrapped_line},
       hlist::HList,
     },
@@ -589,8 +590,13 @@ fn layout_row_cells(
       vec![line]
     } else if wraps(spanned_columns) {
       let content_width = band_width.try_sub(double_padding)?;
-      let mut lines =
-        break_lines::break_lines(&cell.items, content_width.max(Length::ZERO), text_alignment(align), Length::ZERO)?;
+      let mut lines = break_lines::break_lines(
+        &cell.items,
+        content_width.max(Length::ZERO),
+        text_alignment(align),
+        Length::ZERO,
+        AdjustmentOrder::Uniform,
+      )?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);
       let line_x = cell_x.try_add(frame.cell_padding)?;
@@ -860,7 +866,8 @@ mod tests {
     source::SourceId,
     typeset::{
       boxes::{
-        AnchorId, FootnoteBody, FootnoteId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, TableBox, TableRowFragment,
+        AnchorId, FootnoteBody, FootnoteId, GlueKind, HBox, HBoxContent, HItem, IndexTerm, LinkTarget, TableBox,
+        TableRowFragment,
       },
       lowering::TableColumn,
     },
@@ -1040,6 +1047,7 @@ mod tests {
       stretch: Length::ZERO,
       shrink: Length::ZERO,
       breakable: true,
+      kind: GlueKind::WordSpace,
     };
   }
 
@@ -1940,6 +1948,7 @@ mod tests {
         stretch: Length::ZERO,
         shrink: Length::ZERO,
         breakable: false,
+        kind: GlueKind::WordSpace,
       },
       text_free_box(4.0),
     ])]);

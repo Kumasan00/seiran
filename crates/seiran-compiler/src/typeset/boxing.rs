@@ -42,6 +42,7 @@ mod yakumono;
 
 use std::borrow::Cow;
 
+use break_lines::AdjustmentOrder;
 pub(super) use composed_line::{LineAccum, compose_left_line, inline_atom, row_width};
 use hlist::HList;
 use hyphenation::Lang;
@@ -55,7 +56,7 @@ use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
   typeset::{
-    boxes::{self, Align, Block, FootnoteBody, Galley, HBox, HBoxContent, HItem, Line, PlacedHBox},
+    boxes::{self, Align, Block, FootnoteBody, Galley, GlueKind, HBox, HBoxContent, HItem, Line, PlacedHBox},
     error::ElementOverflow,
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -322,8 +323,14 @@ impl BlockBuilder<'_> {
     } else {
       Length::ZERO
     };
-    let lines =
-      break_paragraph(&items, self.column_width, indent, right_indent, alignment, hang_room).map_err(overflow)?;
+    // 種類ごとの順位は約物アキ調整（約物・和欧文間のアキの種類分け）を前提にする
+    let order = if self.measurer.punctuation_spacing {
+      AdjustmentOrder::ByKind
+    } else {
+      AdjustmentOrder::Uniform
+    };
+    let lines = break_paragraph(&items, self.column_width, indent, right_indent, alignment, hang_room, order)
+      .map_err(overflow)?;
     return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
       lines,
@@ -334,7 +341,8 @@ impl BlockBuilder<'_> {
 
 /// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
 ///
-/// `hang_room` は両端揃えの行末の句読点を利用幅の外へぶら下げてよい幅（0 ならぶら下げない）。
+/// `hang_room` は両端揃えの行末の句読点を利用幅の外へぶら下げてよい幅（0 ならぶら下げない）。`order` は両端揃えの行の
+/// 伸縮を配る順序。
 /// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
 /// ここでは足さず着地段が決まってから足す。
 ///
@@ -348,9 +356,10 @@ fn break_paragraph(
   right_indent: Length,
   alignment: TextAlignment,
   hang_room: Length,
+  order: AdjustmentOrder,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = break_lines::break_lines(items, available, alignment, hang_room)?;
+  let mut lines = break_lines::break_lines(items, available, alignment, hang_room, order)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -491,13 +500,18 @@ impl<'a> Measurer<'a> {
             origin: Some(origin),
           };
         })?;
-        let lines = break_lines::break_lines(&items, self.footnote_width, TextAlignment::Left, Length::ZERO).map_err(
-          |LengthOverflow| {
-            return ElementOverflow {
-              origin: Some(origin),
-            };
-          },
-        )?;
+        let lines = break_lines::break_lines(
+          &items,
+          self.footnote_width,
+          TextAlignment::Left,
+          Length::ZERO,
+          AdjustmentOrder::Uniform,
+        )
+        .map_err(|LengthOverflow| {
+          return ElementOverflow {
+            origin: Some(origin),
+          };
+        })?;
         out.push_marker(HItem::Footnote(FootnoteBody {
           origin,
           number,
@@ -609,6 +623,8 @@ struct Glue {
   shrink: Length,
   /// 行分割の候補点になるか
   breakable: bool,
+  /// glue を生んだ規則
+  kind: GlueKind,
 }
 
 impl Glue {
@@ -619,6 +635,7 @@ impl Glue {
       stretch: self.stretch,
       shrink: self.shrink,
       breakable: self.breakable,
+      kind: self.kind,
     };
   }
 }
@@ -630,6 +647,7 @@ fn ja_latin_aki(font_size: Length) -> Glue {
     stretch: fraction_of(font_size, JA_LATIN_AKI_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: false,
+    kind: GlueKind::JaLatinAki,
   };
 }
 
@@ -640,6 +658,7 @@ fn cjk_stretch_glue(em: Length) -> Glue {
     stretch: fraction_of(em, CJK_STRETCH_RATIO),
     shrink: Length::ZERO,
     breakable: true,
+    kind: GlueKind::InterCharacter,
   };
 }
 
@@ -669,6 +688,7 @@ fn boundary_glue(
         stretch: Length::ZERO,
         shrink: fraction_of(em, aki.shrink_em),
         breakable,
+        kind: aki.kind,
       };
     });
   }
@@ -682,9 +702,12 @@ fn boundary_glue(
 mod boundary_glue_tests {
   use super::{
     CJK_STRETCH_RATIO, Glue, boundary_glue, cjk_stretch_glue,
-    yakumono::YakumonoClass::{Close, Comma, FullStop, Normal, Open},
+    yakumono::YakumonoClass::{Close, Comma, FullStop, MiddleDot, Normal, Open},
   };
-  use crate::{length::Length, typeset::boxes::HItem};
+  use crate::{
+    length::Length,
+    typeset::boxes::{GlueKind, HItem},
+  };
 
   const EM: Length = Length::from_sp(10 * 65536);
 
@@ -698,9 +721,21 @@ mod boundary_glue_tests {
       stretch: Length::ZERO,
       shrink: Length::pt(5.0),
       breakable: true,
+      kind: GlueKind::PunctuationAki,
     };
     assert_eq!(front, Some(nibu), "前アキ二分・詰め代二分・伸長なし");
     assert_eq!(back, Some(nibu), "後アキ二分・詰め代二分・伸長なし");
+  }
+
+  #[test]
+  fn each_glue_rule_names_its_kind() {
+    let kind = |left, right| return boundary_glue(left, right, EM, true).map(|glue| return glue.kind);
+
+    assert_eq!(kind(Normal, Open), Some(GlueKind::PunctuationAki), "kanji「");
+    assert_eq!(kind(Comma, Normal), Some(GlueKind::PunctuationAki), "、kanji");
+    assert_eq!(kind(Normal, MiddleDot), Some(GlueKind::MiddleDotAki), "kanji・");
+    assert_eq!(kind(FullStop, MiddleDot), Some(GlueKind::MiddleDotAki), "。・");
+    assert_eq!(kind(Normal, Normal), Some(GlueKind::InterCharacter), "kanji kanji");
   }
 
   #[test]
@@ -712,6 +747,7 @@ mod boundary_glue_tests {
         stretch: Length::ZERO,
         shrink: Length::ZERO,
         breakable: true,
+        kind: GlueKind::PunctuationAki,
       })
     );
   }
@@ -730,6 +766,7 @@ mod boundary_glue_tests {
         stretch: Length::ZERO,
         shrink: Length::pt(5.0),
         breakable: false,
+        kind: GlueKind::PunctuationAki,
       })
     );
   }
@@ -746,6 +783,7 @@ mod boundary_glue_tests {
         stretch: EM * CJK_STRETCH_RATIO,
         shrink: Length::ZERO,
         breakable: true,
+        kind: GlueKind::InterCharacter,
       })
     );
     assert_eq!(no_break, None);
@@ -760,11 +798,15 @@ mod boundary_glue_tests {
       stretch,
       shrink,
       breakable,
+      kind,
     } = glue.into_item()
     else {
       panic!("Glue バリアントになるはず");
     };
-    assert_eq!((natural, stretch, shrink, breakable), (glue.natural, glue.stretch, glue.shrink, glue.breakable));
+    assert_eq!(
+      (natural, stretch, shrink, breakable, kind),
+      (glue.natural, glue.stretch, glue.shrink, glue.breakable, glue.kind)
+    );
   }
 }
 
@@ -774,7 +816,7 @@ mod ja_latin_aki_tests {
     JA_LATIN_AKI_RATIO, JA_LATIN_AKI_STRETCH_RATIO, is_ja_latin_letter_boundary, ja_latin_aki,
     script::ScriptCategory::{Japanese, Latin},
   };
-  use crate::length::Length;
+  use crate::{length::Length, typeset::boxes::GlueKind};
   const EM: Length = Length::from_sp(10 * 65536);
 
   #[test]
@@ -785,6 +827,7 @@ mod ja_latin_aki_tests {
     assert_eq!(aki.stretch, EM * JA_LATIN_AKI_STRETCH_RATIO, "微小伸長");
     assert_eq!(aki.shrink, Length::ZERO, "収縮なし");
     assert!(!aki.breakable, "分割不可（境界に分割点を作らない）");
+    assert_eq!(aki.kind, GlueKind::JaLatinAki);
   }
 
   #[test]
@@ -887,7 +930,7 @@ mod max_font_size_tests {
 
 #[cfg(test)]
 mod tests {
-  use super::break_paragraph;
+  use super::{AdjustmentOrder, break_paragraph};
   use crate::{
     document::TextAlignment,
     length::{Length, LengthOverflow},
@@ -932,9 +975,16 @@ mod tests {
       items.push(test_box());
     }
 
-    let lines =
-      break_paragraph(&items, Length::pt(60.0), Length::pt(10.0), Length::pt(10.0), TextAlignment::Left, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(60.0),
+      Length::pt(10.0),
+      Length::pt(10.0),
+      TextAlignment::Left,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     assert!(lines.len() >= 2, "利用可能幅 40 で折り返すはず: {} 行", lines.len());
     for line in &lines {
@@ -959,9 +1009,16 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines =
-      break_paragraph(&items, Length::pt(100.0), Length::pt(15.0), Length::ZERO, TextAlignment::Left, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(100.0),
+      Length::pt(15.0),
+      Length::ZERO,
+      TextAlignment::Left,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     assert_eq!(lines.len(), 1);
     let links = &lines[0].links;
@@ -974,9 +1031,16 @@ mod tests {
   fn right_alignment_moves_the_line_to_the_right_edge() {
     let items = vec![test_box()];
 
-    let lines =
-      break_paragraph(&items, Length::pt(100.0), Length::ZERO, Length::ZERO, TextAlignment::Right, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(100.0),
+      Length::ZERO,
+      Length::ZERO,
+      TextAlignment::Right,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     assert!(close(lines[0].boxes[0].dx, 90.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
   }
@@ -985,9 +1049,16 @@ mod tests {
   fn justify_stretches_glue_to_the_width() {
     let items = stretchable_items();
 
-    let lines =
-      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Justify, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(27.0),
+      Length::ZERO,
+      Length::ZERO,
+      TextAlignment::Justify,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     let boxes = &lines[0].boxes;
     assert!(close(boxes[1].dx + boxes[1].hbox.width, 27.0), "{boxes:?}");
@@ -997,9 +1068,16 @@ mod tests {
   fn center_keeps_glue_natural() {
     let items = stretchable_items();
 
-    let lines =
-      break_paragraph(&items, Length::pt(27.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(27.0),
+      Length::ZERO,
+      Length::ZERO,
+      TextAlignment::Center,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     let boxes = &lines[0].boxes;
     assert!(close(boxes[0].dx, 1.0), "{boxes:?}");
@@ -1010,9 +1088,16 @@ mod tests {
   fn centered_overflowing_line_is_not_shifted_negative() {
     let items = vec![box_width(50.0)];
 
-    let lines =
-      break_paragraph(&items, Length::pt(30.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(30.0),
+      Length::ZERO,
+      Length::ZERO,
+      TextAlignment::Center,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     assert!(close(lines[0].boxes[0].dx, 0.0), "box.x={}", lines[0].boxes[0].dx.to_pt());
   }
@@ -1021,9 +1106,16 @@ mod tests {
   fn centered_wrapped_lines_are_each_independently_centered() {
     let items = rigid_items();
 
-    let lines =
-      break_paragraph(&items, Length::pt(35.0), Length::ZERO, Length::ZERO, TextAlignment::Center, Length::ZERO)
-        .expect("値域内");
+    let lines = break_paragraph(
+      &items,
+      Length::pt(35.0),
+      Length::ZERO,
+      Length::ZERO,
+      TextAlignment::Center,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    )
+    .expect("値域内");
 
     assert_eq!(lines.len(), 2, "段幅 35 で 2 行に折り返すはず: {} 行", lines.len());
     assert!(close(lines[0].boxes[0].dx, 5.0), "1 行目先頭 x={}", lines[0].boxes[0].dx.to_pt());
@@ -1036,7 +1128,15 @@ mod tests {
     // 2 個目の箱の位置（10pt）に足すと値域の上端を超える字下げ
     let indent = Length::from_sp(i64::MAX) - Length::pt(5.0);
 
-    let result = break_paragraph(&items, Length::pt(100.0), indent, Length::ZERO, TextAlignment::Left, Length::ZERO);
+    let result = break_paragraph(
+      &items,
+      Length::pt(100.0),
+      indent,
+      Length::ZERO,
+      TextAlignment::Left,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+    );
 
     assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));
   }

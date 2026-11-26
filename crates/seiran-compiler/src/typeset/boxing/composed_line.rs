@@ -196,7 +196,7 @@ mod tests {
     length::Length,
     project::FontType,
     typeset::{
-      boxes::{HBox, HBoxContent, HItem},
+      boxes::{GlueKind, HBox, HBoxContent, HItem},
       boxing::Shaper,
       font::FontSystem,
       glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
@@ -255,6 +255,7 @@ mod tests {
         stretch: Length::ZERO,
         shrink: Length::ZERO,
         breakable: true,
+        kind: GlueKind::WordSpace,
       },
       HItem::Kern(Length::pt(3.0)),
     ];
