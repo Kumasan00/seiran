@@ -304,7 +304,7 @@ impl BlockBuilder<'_> {
     if list.is_empty() {
       return Ok(None);
     }
-    let items = list.into_items();
+    let items = drop_glue_after_leading_kerns(list.into_items());
     let dominant_font_size = max_font_size_in_items(&items).unwrap_or(self.measurer.default_font_size);
     let leading =
       dominant_font_size
@@ -381,6 +381,26 @@ fn break_paragraph(
     line.shift_x(indent)?;
   }
   return Ok(lines);
+}
+
+/// 段落の先頭の固定カーン（字下げ・明示アキ）と幅 0 の運搬マーカーに続く breakable glue を除く
+///
+/// 行頭の breakable glue は行分割が落とすが、行分割は先頭のカーンの後ろを行頭と見ない。段落先頭の空白（全角空白を含む）を
+/// 字下げの有無によらず落とすため、カーンの後ろの分をここで除く。
+fn drop_glue_after_leading_kerns(mut items: Vec<HItem>) -> Vec<HItem> {
+  let mut index = 0;
+  while let Some(item) = items.get(index) {
+    match item {
+      HItem::Glue {
+        breakable: true, ..
+      } => {
+        items.remove(index);
+      },
+      HItem::Kern(_) | HItem::LinkStart(_) | HItem::LinkEnd | HItem::IndexMark(_) | HItem::Footnote(_) => index += 1,
+      _ => break,
+    }
+  }
+  return items;
 }
 
 /// 段落構築のポリシーを持つ計測器

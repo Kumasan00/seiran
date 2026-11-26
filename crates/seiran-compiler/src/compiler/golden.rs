@@ -2784,6 +2784,23 @@ fn ideographic_space_at_paragraph_and_forced_line_start_vanishes() {
 }
 
 #[test]
+fn ideographic_space_after_the_first_line_indent_vanishes() {
+  for alignment in ["justify", "left"] {
+    let project = TestProject::builder()
+      .source_text("　あいう\n")
+      .style_toml(move |table| {
+        test_support::set(table, "text", "first_line_indent", "12pt");
+        test_support::set(table, "text", "alignment", alignment);
+      })
+      .build();
+
+    let first = &line_runs(&body_lines(&project)[0])[0];
+    assert!(first.run.text.starts_with('あ'), "{alignment}: {:?}", first.run.text);
+    assert_close(first.dx, Length::pt(12.0), alignment);
+  }
+}
+
+#[test]
 fn trailing_ideographic_space_leaves_no_width() {
   assert_eq!(body_line_edges("あいう　\n")[0].1, body_line_edges("あいう\n")[0].1);
   assert_eq!(body_line_edges("あいう　\\\\えお\n")[0].1, body_line_edges("あいう\\\\えお\n")[0].1);
