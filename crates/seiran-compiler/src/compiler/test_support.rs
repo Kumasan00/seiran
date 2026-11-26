@@ -576,6 +576,14 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "page", "margin_right", "20pt");
       set(table, "quote", "indent", "12pt");
     },
+    // 行頭の始め括弧に二分を残し（段落先頭・行頭とも）、字下げ 1 字・本文幅を 12pt の仮名 9 字（108pt）にした版面
+    "open_bracket_half" => {
+      set(table, "text", "open_bracket_paragraph_start", "half");
+      set(table, "text", "open_bracket_line_start", "half");
+      set(table, "text", "first_line_indent", "12pt");
+      set(table, "page", "margin_left", "20pt");
+      set(table, "page", "margin_right", "20pt");
+    },
     // 本文幅を 105pt（12pt の仮名 8.75 字）に狭め、和文の両端揃えで行の伸縮を起こす版面。`_uniform` は約物アキ調整を切る
     "line_adjustment" | "line_adjustment_uniform" => {
       set(table, "page", "margin_left", "20pt");
@@ -613,7 +621,7 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
       set(table, "pdf", "height", "85mm");
     },
     // 左右余白 20pt と合わせて本文幅を 108pt にする用紙幅
-    "hanging_punctuation" => set(table, "pdf", "width", "148pt"),
+    "hanging_punctuation" | "open_bracket_half" => set(table, "pdf", "width", "148pt"),
     // 左右余白 20pt と合わせて本文幅を 105pt にする用紙幅
     "line_adjustment" | "line_adjustment_uniform" => set(table, "pdf", "width", "145pt"),
     // serif は先頭の STIX Two Text の後ろに sans_serif と同じ Noto Sans を足し、japanese_serif は先頭を

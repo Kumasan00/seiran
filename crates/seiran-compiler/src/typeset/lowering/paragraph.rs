@@ -46,6 +46,8 @@ pub(super) fn assemble_paragraph(
     content: result,
     spacing_after: ctx.style.text.paragraph_spacing,
     hanging_punctuation: ctx.style.text.hanging_punctuation,
+    open_bracket_paragraph_start: ctx.style.text.open_bracket_paragraph_start,
+    open_bracket_line_start: ctx.style.text.open_bracket_line_start,
   };
 }
 
@@ -78,7 +80,7 @@ mod tests {
   use crate::{
     length::Length,
     semantics::LabelId,
-    style::Style as ReadStyle,
+    style::{OpenBracketAki, Style as ReadStyle},
     typeset::{
       boxes::{AnchorId, LinkTarget},
       lowering::{
@@ -128,6 +130,18 @@ mod tests {
     };
     assert!((length.to_pt() - 15.0).abs() < f32::EPSILON);
     assert!(matches!(&paragraph_layout(&nodes[0]).content[1], InlineNode::Text(t, _) if t == "body"));
+  }
+
+  #[test]
+  fn paragraph_copies_open_bracket_keys() {
+    let mut style = ReadStyle::default();
+    style.text.open_bracket_paragraph_start = OpenBracketAki::Half;
+    style.text.open_bracket_line_start = OpenBracketAki::Half;
+
+    let nodes = lower_source(&style, "「body」\n");
+
+    assert_eq!(paragraph_layout(&nodes[0]).open_bracket_paragraph_start, OpenBracketAki::Half);
+    assert_eq!(paragraph_layout(&nodes[0]).open_bracket_line_start, OpenBracketAki::Half);
   }
 
   #[test]

@@ -6573,3 +6573,132 @@ fn line_starting_with_an_open_bracket_has_no_leading_aki() {
   assert_close(last.dx + last.width, Length::pt(105.0), "1 行目の右端");
   assert_eq!(lines[1].boxes[0].dx, Length::ZERO, "2 行目の始め括弧は行頭に接する");
 }
+
+/// 本文幅 108pt（12pt の仮名 9 字）・左右余白 20pt で、行頭の始め括弧の 2 キーを `paragraph_start` / `line_start` にした
+/// 本文 `source` の組版
+fn bracket_project(source: &str, paragraph_start: &'static str, line_start: &'static str) -> TestProjectBuilder {
+  return TestProject::builder()
+    .source_text(source)
+    .config_toml(|table| test_support::set(table, "pdf", "width", "148pt"))
+    .style_toml(move |table| {
+      test_support::set(table, "page", "margin_left", "20pt");
+      test_support::set(table, "page", "margin_right", "20pt");
+      test_support::set(table, "text", "open_bracket_paragraph_start", paragraph_start);
+      test_support::set(table, "text", "open_bracket_line_start", line_start);
+    });
+}
+
+/// 行の最初のグリフ列の水平位置（行頭の箱が字下げのカーンでもグリフで比べる）
+fn first_glyph_dx(line: &Line) -> Length { return line_runs(line)[0].dx; }
+
+#[test]
+fn open_bracket_at_line_start_is_flush_by_default() {
+  let lines = body_lines(&bracket_project("「あい」\n", "none", "none").build());
+  let wrapped = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "none", "none").build());
+
+  assert_eq!(first_glyph_dx(&lines[0]), Length::ZERO);
+  assert_eq!(first_glyph_dx(&wrapped[1]), Length::ZERO);
+}
+
+#[test]
+fn paragraph_start_half_adds_half_em_after_the_indent() {
+  for (indent, expected) in [("0pt", 6.0), ("12pt", 18.0)] {
+    let project = bracket_project("「あい」\n", "half", "none")
+      .style_toml(move |table| test_support::set(table, "text", "first_line_indent", indent))
+      .build();
+
+    assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(expected), indent);
+  }
+  let noindent = bracket_project("\\noindent「あい」\n", "half", "none")
+    .style_toml(|table| test_support::set(table, "text", "first_line_indent", "12pt"))
+    .build();
+  assert_close(first_glyph_dx(&body_lines(&noindent)[0]), Length::pt(6.0), "noindent");
+}
+
+#[test]
+fn paragraph_start_half_does_not_move_lines_that_start_with_a_letter() {
+  let project = bracket_project("あいう\n", "half", "half")
+    .style_toml(|table| test_support::set(table, "text", "first_line_indent", "12pt"))
+    .build();
+
+  assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(12.0), "通常文字の行頭は字下げだけ");
+}
+
+#[test]
+fn line_start_key_covers_wrapped_and_forced_line_starts() {
+  let wrapped = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "none", "half").build());
+  let forced = body_lines(&bracket_project("あいう\\\\「えお」\n", "none", "half").build());
+  let para_only = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "half", "none").build());
+
+  assert_close(first_glyph_dx(&wrapped[1]), Length::pt(6.0), "折返し後");
+  assert_close(first_glyph_dx(&forced[1]), Length::pt(6.0), "明示改行後");
+  assert_close(first_glyph_dx(&para_only[1]), Length::ZERO, "段落先頭のキーは折返しに効かない");
+}
+
+#[test]
+fn line_start_lead_uses_the_bracket_font_size() {
+  let project = bracket_project("「あい」\n", "half", "half")
+    .style_toml(|table| test_support::set(table, "text", "font_size", "10pt"))
+    .build();
+
+  assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(5.0), "10pt の二分");
+}
+
+#[test]
+fn justified_lines_with_a_lead_still_fill_the_width() {
+  // 1 行目は 9 字で埋まり、2 行目は前アキ 6 + 「 6 + 8 字 = 108pt で埋まる（3 行目は 8 字 + 」の最終行）
+  let lines =
+    body_lines(&bracket_project("あいうえおかきくけ「こさしすせそたちつてとなにぬねの」\n", "none", "half").build());
+
+  assert!(lines.len() >= 3, "複数行に折り返すはず");
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "2 行目の行頭の始め括弧");
+  for line in &lines[..lines.len() - 1] {
+    let last = last_run(line);
+    assert_close(last.dx + last.width, Length::pt(108.0), "選択と配置が一致して右端がそろう");
+  }
+}
+
+#[test]
+fn bracket_after_a_wrapped_ideographic_space_gets_only_the_line_start_lead() {
+  let lines = body_lines(&bracket_project("あいうえおかきくけ　「こさ」\n", "none", "half").build());
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "全角空白は消え、二分だけ残る");
+}
+
+#[test]
+fn left_aligned_wrap_applies_the_line_start_lead() {
+  let project = bracket_project("あいうえおかきくけ「こさ」\n", "none", "half")
+    .style_toml(|table| test_support::set(table, "text", "alignment", "left"))
+    .build();
+  let lines = body_lines(&project);
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "貪欲法");
+  assert!(lines.iter().all(|line| return line.width().expect("値域内") <= Length::pt(108.0)));
+}
+
+#[test]
+fn line_start_bracket_inside_a_link_keeps_the_lead_and_the_rect() {
+  let lines =
+    body_lines(&bracket_project("あいうえおかきくけ\\href{https://example.com}{「こさ」}\n", "none", "half").build());
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "リンクの中の行頭の始め括弧");
+  assert_close(lines[1].links[0].x0, Length::pt(6.0), "リンク矩形は括弧の左端から始まる");
+}
+
+#[test]
+fn heading_brackets_ignore_the_line_start_keys() {
+  let first_line = |key: &'static str| {
+    let laid_out = bracket_project("\\section{「題」}\n", key, key).build().laid_out();
+    let line = laid_out.pages[0]
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::Line { line, .. } => return Some(line.clone()),
+        _ => return None,
+      })
+      .expect("見出しの行があるはず");
+    return line_runs(&line).iter().find(|run| return run.run.text.contains('「')).map(|run| return run.dx);
+  };
+
+  assert_eq!(first_line("half"), first_line("none"));
+}

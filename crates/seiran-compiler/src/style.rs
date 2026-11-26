@@ -52,6 +52,7 @@ pub(crate) use crate::style::{
     CounterPlaceholder, CounterTemplate, NumberTemplate, NumberTitleTemplate, RefNumberTemplate, RefTemplate,
     RunningTemplate, RunningValues, TheoremHeadingValues,
   },
+  text::OpenBracketAki,
   theorem::TheoremStyle,
   title_page::TitlePageStyle,
   toc::TocStyle,
@@ -608,6 +609,27 @@ mod validate_tests {
     let errors = expect_validation_errors(parse(toml, dummy_source()));
 
     assert_eq!(paths(&errors), vec!["text.hanging_punctuation"]);
+  }
+
+  #[test]
+  fn parse_rejects_half_open_bracket_without_punctuation_spacing() {
+    let toml = "[text]\npunctuation_spacing = false\nopen_bracket_paragraph_start = \"half\"\nopen_bracket_line_start = \"half\"\n";
+
+    let errors = expect_validation_errors(parse(toml, dummy_source()));
+
+    let mut paths = paths(&errors);
+    paths.sort_unstable();
+    assert_eq!(
+      paths,
+      vec![
+        "text.open_bracket_line_start",
+        "text.open_bracket_paragraph_start"
+      ]
+    );
+    assert!(
+      errors.iter().all(|error| return error.to_string().contains("punctuation_spacing = true")),
+      "{errors:?}"
+    );
   }
 
   #[test]

@@ -8,6 +8,7 @@ use crate::{
   color::Color,
   document::{NodeId, TextAlignment, Typeface},
   length::Length,
+  style::OpenBracketAki,
   typeset::lowering::{
     LoweringContext,
     layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
@@ -43,6 +44,8 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, id: NodeId, text: &str
   return vec![LayoutNode::VBox {
     children: vec![LayoutNode::Paragraph(ParagraphLayout {
       hanging_punctuation: false,
+      open_bracket_paragraph_start: OpenBracketAki::None,
+      open_bracket_line_start: OpenBracketAki::None,
       ..paragraph::assemble_paragraph(ctx, content, true, Some(id))
     })],
     margin_bottom: Length::pt(0.0),

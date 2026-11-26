@@ -7,7 +7,7 @@
 use crate::{
   document::{CaptionPosition, HirInline, NodeId, TextAlignment},
   length::Length,
-  style::CaptionStyle,
+  style::{CaptionStyle, OpenBracketAki},
   typeset::{
     error::ElementOverflow,
     lowering::{
@@ -67,6 +67,8 @@ fn wrap_float(
         content: caption_nodes,
         spacing_after: Length::ZERO,
         hanging_punctuation: false,
+        open_bracket_paragraph_start: OpenBracketAki::None,
+        open_bracket_line_start: OpenBracketAki::None,
       }));
       children.push(LayoutNode::Vkern {
         length: margins.inner,
@@ -83,6 +85,8 @@ fn wrap_float(
         content: caption_nodes,
         spacing_after: Length::ZERO,
         hanging_punctuation: false,
+        open_bracket_paragraph_start: OpenBracketAki::None,
+        open_bracket_line_start: OpenBracketAki::None,
       }));
     },
     None => {
@@ -197,6 +201,8 @@ mod tests {
       content: vec![caption_node(MAIN_TEXT)],
       spacing_after: Length::ZERO,
       hanging_punctuation: false,
+      open_bracket_paragraph_start: OpenBracketAki::None,
+      open_bracket_line_start: OpenBracketAki::None,
     });
   }
 
@@ -228,6 +234,8 @@ mod tests {
       panic!("2 番目は VBox であるべき: {nodes:?}");
     };
     assert!(!paragraph_layout(&children[0]).hanging_punctuation, "{children:?}");
+    assert_eq!(paragraph_layout(&children[0]).open_bracket_paragraph_start, OpenBracketAki::None, "{children:?}");
+    assert_eq!(paragraph_layout(&children[0]).open_bracket_line_start, OpenBracketAki::None, "{children:?}");
   }
 
   #[test]

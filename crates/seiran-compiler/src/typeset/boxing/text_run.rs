@@ -218,7 +218,7 @@ pub(super) fn place_prose(
 ) -> Result<(), LengthOverflow> {
   for item in list.into_items() {
     match item {
-      HItem::Box(hbox) | HItem::Comma(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. } => {
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
         *dx = dx.try_add(width)?;
@@ -338,10 +338,16 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
       let hbox = punct_box(run, i, normalize, advances[i])?;
-      out.push(if matches!(eff_class(i), yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop) {
-        HItem::Comma(hbox)
-      } else {
-        HItem::Box(hbox)
+      out.push(match eff_class(i) {
+        yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop => HItem::Comma(hbox),
+        // 始め括弧は左の内蔵アキ（墨を左へ寄せた量）を切り詰めたので、行頭で戻せる前アキはその量
+        yakumono::YakumonoClass::Open => HItem::OpenBracket {
+          hbox,
+          lead: boxing::fraction_of(em, normalize.shift_em),
+        },
+        yakumono::YakumonoClass::Close | yakumono::YakumonoClass::MiddleDot | yakumono::YakumonoClass::Normal => {
+          HItem::Box(hbox)
+        },
       });
       normal_start = i + 1;
     }
@@ -770,7 +776,7 @@ mod tests {
     return items
       .iter()
       .filter_map(|item| {
-        let (HItem::Box(hbox) | HItem::Comma(hbox)) = item else {
+        let (HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. }) = item else {
           return None;
         };
         let HBoxContent::Glyphs(run) = &hbox.content else {
@@ -829,6 +835,19 @@ mod tests {
         .expect("句読点の箱があるはず");
       assert_eq!(matches!(last_box, HItem::Comma(_)), expect_comma, "{text}: {out:?}");
     }
+  }
+
+  #[test]
+  fn open_bracket_is_pushed_with_its_half_em_lead() {
+    let run = shaped_with_ranges("（あ", &[(0..3, 1000), (3..6, 1000)]);
+    let mut out = Vec::new();
+
+    split_japanese_run(&run, &mut out).expect("テストの寸法は値域内");
+
+    let HItem::OpenBracket { lead, .. } = &out[0] else {
+      panic!("先頭は始め括弧の箱のはず: {out:?}");
+    };
+    assert_eq!(*lead, Length::pt(5.0), "10pt の二分");
   }
 
   #[test]

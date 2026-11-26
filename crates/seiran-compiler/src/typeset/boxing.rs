@@ -55,6 +55,7 @@ use tracing::debug;
 use crate::{
   document::{NodeId, TextAlignment},
   length::{Length, LengthOverflow},
+  style::OpenBracketAki,
   typeset::{
     boxes::{self, Align, Block, FootnoteBody, Galley, GlueKind, HBox, HBoxContent, HItem, Line, PlacedHBox},
     error::ElementOverflow,
@@ -329,8 +330,18 @@ impl BlockBuilder<'_> {
     } else {
       AdjustmentOrder::Uniform
     };
-    let lines = break_paragraph(&items, self.column_width, indent, right_indent, alignment, hang_room, order)
-      .map_err(overflow)?;
+    let lines = break_paragraph(
+      &items,
+      self.column_width,
+      indent,
+      right_indent,
+      alignment,
+      hang_room,
+      order,
+      paragraph.open_bracket_paragraph_start,
+      paragraph.open_bracket_line_start,
+    )
+    .map_err(overflow)?;
     return Ok(Some(Block::Paragraph {
       origin: paragraph.origin,
       lines,
@@ -342,13 +353,17 @@ impl BlockBuilder<'_> {
 /// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
 ///
 /// `hang_room` は両端揃えの行末の句読点を利用幅の外へぶら下げてよい幅（0 ならぶら下げない）。`order` は両端揃えの行の
-/// 伸縮を配る順序。
+/// 伸縮を配る順序。`paragraph_start` / `line_start` は段落先頭 / それ以外の行頭の始め括弧の前アキ。
 /// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
 /// ここでは足さず着地段が決まってから足す。
 ///
 /// # Errors
 ///
 /// 利用幅・行の幅の計算が長さの値域を超えたら [`LengthOverflow`]。
+#[expect(
+  clippy::too_many_arguments,
+  reason = "段落 1 つの組み方を決める互いに独立な値で、束ねても守る不変条件が無い"
+)]
 fn break_paragraph(
   items: &[HItem],
   column_width: Length,
@@ -357,9 +372,11 @@ fn break_paragraph(
   alignment: TextAlignment,
   hang_room: Length,
   order: AdjustmentOrder,
+  paragraph_start: OpenBracketAki,
+  line_start: OpenBracketAki,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = break_lines::break_lines(items, available, alignment, hang_room, order)?;
+  let mut lines = break_lines::break_lines(items, available, alignment, hang_room, order, paragraph_start, line_start)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -506,6 +523,8 @@ impl<'a> Measurer<'a> {
           TextAlignment::Left,
           Length::ZERO,
           AdjustmentOrder::Uniform,
+          OpenBracketAki::None,
+          OpenBracketAki::None,
         )
         .map_err(|LengthOverflow| {
           return ElementOverflow {
@@ -573,7 +592,7 @@ fn max_font_size_in_items(items: &[HItem]) -> Option<Length> {
   return items
     .iter()
     .filter_map(|item| match item {
-      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::FlushRight(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. } | HItem::FlushRight(hbox) => {
         return max_font_size_in_content(&hbox.content);
       },
       // グリフを内包しないアイテムはフォントサイズを持たない。`Discretionary` のハイフン箱と
@@ -930,7 +949,7 @@ mod max_font_size_tests {
 
 #[cfg(test)]
 mod tests {
-  use super::{AdjustmentOrder, break_paragraph};
+  use super::{AdjustmentOrder, OpenBracketAki, break_paragraph};
   use crate::{
     document::TextAlignment,
     length::{Length, LengthOverflow},
@@ -983,6 +1002,8 @@ mod tests {
       TextAlignment::Left,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1017,6 +1038,8 @@ mod tests {
       TextAlignment::Left,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1039,6 +1062,8 @@ mod tests {
       TextAlignment::Right,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1057,6 +1082,8 @@ mod tests {
       TextAlignment::Justify,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1076,6 +1103,8 @@ mod tests {
       TextAlignment::Center,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1096,6 +1125,8 @@ mod tests {
       TextAlignment::Center,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1114,6 +1145,8 @@ mod tests {
       TextAlignment::Center,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     )
     .expect("値域内");
 
@@ -1136,6 +1169,8 @@ mod tests {
       TextAlignment::Left,
       Length::ZERO,
       AdjustmentOrder::Uniform,
+      OpenBracketAki::None,
+      OpenBracketAki::None,
     );
 
     assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));

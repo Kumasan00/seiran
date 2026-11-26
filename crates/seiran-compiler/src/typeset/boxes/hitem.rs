@@ -17,6 +17,15 @@ pub(crate) enum HItem {
   ///
   /// 行分割・配置・計測は [`HItem::Box`] と同じに扱い、両端揃えの段落の行分割だけが行末で必要な場合にぶら下げる。
   Comma(HBox),
+  /// 内蔵の前アキを切り詰めた始め括弧（`YakumonoClass::Open`）の箱
+  ///
+  /// 行分割・配置・計測は [`HItem::Box`] と同じに扱い、行分割だけが行頭に来たとき `lead` を足すかを決める。
+  OpenBracket {
+    /// 括弧の箱
+    hbox: HBox,
+    /// 行頭で足せる前アキ（切り詰めた前アキ。全角の始め括弧なら 1em の二分）
+    lead: Length,
+  },
   /// 伸縮スペース 兼 分割可能点
   ///
   /// Latin 単語間スペース由来（自然幅あり・伸長 / 収縮つき）のほか、和文字間の
@@ -146,7 +155,7 @@ impl HItem {
   #[must_use]
   pub(in crate::typeset) fn natural_width(&self) -> Length {
     return match self {
-      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::FlushRight(hbox) => hbox.width,
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. } | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
       HItem::MathBreak { spacing, .. } => *spacing,
