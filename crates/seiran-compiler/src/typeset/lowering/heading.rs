@@ -266,6 +266,7 @@ pub(super) fn lower_heading<E>(
     origin,
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
+    hanging_punctuation: false,
   })];
 
   let mut result = Vec::new();

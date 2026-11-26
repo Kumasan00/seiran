@@ -60,6 +60,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       origin: None,
       content: vec![inline],
       spacing_after: Length::ZERO,
+      hanging_punctuation: false,
     }));
     pending_gap = gap_after;
   }

@@ -224,6 +224,7 @@ margin_right = "85pt"          # 右余白（既定 85pt）
 font_size = "12pt"             # 本文フォントサイズ
 line_height_factor = 1.05      # 行間係数（> 0）
 # alignment = "justify"        # 段落の揃え: "justify"（既定） / "left" / "center" / "right"
+# hanging_punctuation = false  # 両端揃えの本文で、行末に収まらない和文句読点を 1 字ぶら下げる（既定 false）
 
 [heading.part]                 # 見出しレベルは part / chapter / section /
 format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 6 種

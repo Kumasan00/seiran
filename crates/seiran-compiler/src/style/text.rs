@@ -32,6 +32,10 @@ pub(crate) struct TextBlockStyle {
   pub alignment: TextAlignment,
   /// JIS X 4051 のアキ調整（和文約物アキ・和欧文間アキ。既定は有効）
   pub punctuation_spacing: bool,
+  /// 横書きの両端揃えの本文系段落で、自然幅では収まらない行末の和文句読点 1 字を利用幅の外へぶら下げるか（既定 `false`）。
+  /// `punctuation_spacing = true` のときだけ受理する
+  #[garde(custom(requires_punctuation_spacing(self.punctuation_spacing)))]
+  pub hanging_punctuation: bool,
 }
 
 impl Default for TextBlockStyle {
@@ -44,8 +48,23 @@ impl Default for TextBlockStyle {
       typeface: Typeface::Serif,
       alignment: TextAlignment::Justify,
       punctuation_spacing: true,
+      hanging_punctuation: false,
     };
   }
+}
+
+/// `punctuation_spacing` が `false` ならぶら下げを `false` に限る検証器を返す。
+///
+/// ぶら下げは約物アキ調整で詰めた句読点を前提にするので、アキ調整を切った本文では成り立たない。
+fn requires_punctuation_spacing(punctuation_spacing: bool) -> impl FnOnce(&bool, &()) -> garde::Result {
+  return move |hanging_punctuation, _ctx| {
+    if !punctuation_spacing && *hanging_punctuation {
+      return Err(garde::Error::new(
+        "hanging_punctuation = true には punctuation_spacing = true が必要です（ぶら下げは約物アキ調整で詰めた句読点を前提にするため）",
+      ));
+    }
+    return Ok(());
+  };
 }
 
 #[cfg(test)]
@@ -95,6 +114,18 @@ mod tests {
     assert_eq!(style.typeface, Typeface::Serif);
     assert_eq!(style.alignment, TextAlignment::Justify, "alignment 未指定の既定は両端揃え");
     assert!(style.punctuation_spacing, "punctuation_spacing 未指定の既定は有効");
+  }
+
+  #[test]
+  fn hanging_punctuation_defaults_to_off() {
+    assert!(!TextBlockStyle::default().hanging_punctuation);
+  }
+
+  #[test]
+  fn validate_rejects_hanging_punctuation_without_punctuation_spacing() {
+    let style: TextBlockStyle = toml::from_str("punctuation_spacing = false\nhanging_punctuation = true").unwrap();
+
+    assert!(style.validate().is_err());
   }
 
   #[test]

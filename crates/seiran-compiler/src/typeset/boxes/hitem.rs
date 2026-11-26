@@ -13,6 +13,10 @@ use crate::{
 pub(crate) enum HItem {
   /// 計測済みボックス
   Box(HBox),
+  /// 内蔵アキを切り詰めた和文句読点（`、。，．`。`YakumonoClass::Comma`）の箱
+  ///
+  /// 行分割・配置・計測は [`HItem::Box`] と同じに扱い、両端揃えの段落の行分割だけが行末で必要な場合にぶら下げる。
+  Comma(HBox),
   /// 伸縮スペース 兼 分割可能点
   ///
   /// Latin 単語間スペース由来（自然幅あり・伸長 / 収縮つき）のほか、和文字間の
@@ -124,7 +128,7 @@ impl HItem {
   #[must_use]
   pub(in crate::typeset) fn natural_width(&self) -> Length {
     return match self {
-      HItem::Box(hbox) | HItem::FlushRight(hbox) => hbox.width,
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::FlushRight(hbox) => hbox.width,
       HItem::Glue { natural, .. } => *natural,
       HItem::Kern(value) => *value,
       HItem::MathBreak { spacing, .. } => *spacing,

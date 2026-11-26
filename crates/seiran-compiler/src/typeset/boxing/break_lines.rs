@@ -10,7 +10,11 @@ use crate::{
 };
 
 /// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
-/// 両端揃えでも、実現可能な分割が無いサブ段落は貪欲法の両端揃えで組む
+/// 両端揃えでも、実現可能な分割が無いサブ段落は貪欲法の両端揃えで組む。両端揃えは行末の句読点を必要な場合だけ
+/// `hang_room` の範囲でぶら下げる
+///
+/// `hang_room` は両端揃えの行末で句読点を利用幅の外へ出してよい幅。0 ならぶら下げない。両端揃え以外と貪欲法へ
+/// 落ちたサブ段落は使わない。
 ///
 /// # Errors
 ///
@@ -19,9 +23,10 @@ pub(super) fn break_lines(
   items: &[HItem],
   text_width: Length,
   alignment: TextAlignment,
+  hang_room: Length,
 ) -> Result<Vec<Line>, LengthOverflow> {
   return if alignment == TextAlignment::Justify {
-    knuth_plass::break_lines(items, text_width)
+    knuth_plass::break_lines(items, text_width, hang_room)
   } else {
     greedy::break_lines(items, text_width, alignment, &mut Vec::new())
   };
@@ -33,6 +38,17 @@ struct OpenLink {
   target: LinkTarget,
   /// 現在の行における領域左端の行頭からの水平オフセット
   x0: Length,
+}
+
+/// 行の終わり方。語中ハイフンとぶら下げは同じ行に共存しない
+#[derive(Clone, Copy)]
+enum LineEnd<'a> {
+  /// 行内アイテムだけで終わる
+  Plain,
+  /// 語中で折り返し、行内アイテムの直後にこのハイフンの箱を置く
+  Hyphen(&'a HBox),
+  /// 行末のこの句読点の箱を利用幅の外へぶら下げる（箱は行内アイテムに含まれる）
+  Hang(&'a HBox),
 }
 
 /// 行頭の breakable glue を切り落としたスライスを返す
@@ -67,6 +83,20 @@ fn trim_trailing_glue<'a, 'b>(items: &'b [&'a HItem]) -> &'b [&'a HItem] {
     end -= 1;
   }
   return &items[..end];
+}
+
+/// 行末の句読点の箱（ぶら下げの候補）を返す
+///
+/// 行末の breakable glue を除いた列の末尾から、幅 0 の運搬マーカー（`LinkStart` / `LinkEnd` / `IndexMark` /
+/// `Footnote`）を読み飛ばした最後のアイテムが句読点（[`HItem::Comma`]）ならその箱、それ以外は `None`。
+fn trailing_comma<'a>(items: &[&'a HItem]) -> Option<&'a HBox> {
+  let last = trim_trailing_glue(items).iter().rev().copied().find(|item| {
+    return !matches!(item, HItem::LinkStart(_) | HItem::LinkEnd | HItem::IndexMark(_) | HItem::Footnote(_));
+  })?;
+  return match last {
+    HItem::Comma(hbox) => Some(hbox),
+    _ => None,
+  };
 }
 
 /// 行内アイテムの自然幅合計・伸長能力合計・収縮能力合計を求める
@@ -116,7 +146,8 @@ fn glue_adjust_ratio(items: &[&HItem], available: Length) -> Result<f64, LengthO
 ///
 /// `alignment` の水平ずらしまで済ませる。右寄せ末尾ボックス（`HItem::FlushRight`）はずらさず利用可能幅の
 /// 右端に置き、本文はその幅を除いた残りの中で寄せる。本文の幅は [`Line::width`] と同じ「箱の右端の最大」で測る
-/// （行末の Kern 等の空白は寄せる幅に含めない）。
+/// （行末の Kern 等の空白は寄せる幅に含めない）。`end` がハイフンなら行内アイテムの直後にハイフンを置き、
+/// ぶら下げなら句読点を除いた本文が利用可能幅に揃うよう伸縮して [`Line::hanging`] に句読点の幅を入れる。
 ///
 /// # Errors
 ///
@@ -127,15 +158,20 @@ fn build_line(
   available: Length,
   alignment: TextAlignment,
   open_links: &mut Vec<OpenLink>,
-  trailing_hyphen: Option<&HBox>,
+  end: LineEnd<'_>,
 ) -> Result<Line, LengthOverflow> {
   let items = trim_trailing_glue(items);
 
   // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
-  // 行末ハイフンぶんを本文幅から差し引いた余り幅で配分する（ハイフン込みで右端に揃える）
+  // 行末ハイフンぶんを差し引き、ぶら下げる句読点ぶんを足した幅に対して配分する（ハイフン込み・句読点抜きで右端に揃える）
+  let (trailing_hyphen, hanging) = match end {
+    LineEnd::Plain => (None, Length::ZERO),
+    LineEnd::Hyphen(hyphen) => (Some(hyphen), Length::ZERO),
+    LineEnd::Hang(comma) => (None, comma.width),
+  };
   let hyphen_width = trailing_hyphen.map_or(Length::ZERO, |hyphen| return hyphen.width);
   let adjust_ratio: f64 = if alignment == TextAlignment::Justify && !is_last {
-    glue_adjust_ratio(items, available.try_sub(hyphen_width)?)?
+    glue_adjust_ratio(items, available.try_sub(hyphen_width)?.try_add(hanging)?)?
   } else {
     0.0
   };
@@ -155,7 +191,7 @@ fn build_line(
   let mut depth = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) => {
         boxes.push(PlacedHBox {
           hbox: hbox.clone(),
           dx: x,
@@ -205,7 +241,7 @@ fn build_line(
       HItem::Footnote(footnote) => footnotes.push(footnote.clone()),
       // 索引マーカーは幅 0・分割不可。この行の索引語として収集する
       HItem::IndexMark(term) => index_marks.push(term.clone()),
-      // 行内の Discretionary は描画しない（折り返し位置のハイフンは trailing_hyphen で出す）
+      // 行内の Discretionary は描画しない（折り返し位置のハイフンは `LineEnd::Hyphen` で出す）
       HItem::Penalty { .. } | HItem::Discretionary { .. } | HItem::ForcedBreak => {},
     }
   }
@@ -235,9 +271,10 @@ fn build_line(
     links,
     footnotes,
     index_marks,
+    hanging,
   };
   let flush_width = flush_right.iter().map(|hbox| return hbox.width).fold(Length::ZERO, Length::max);
-  let body_width = line.width()?;
+  let body_width = line.width_without_hanging()?;
   line.shift_x(Align::from(alignment).offset(available.try_sub(flush_width)?, body_width)?)?;
   for hbox in flush_right {
     line.boxes.push(PlacedHBox {
@@ -264,7 +301,9 @@ pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflo
   let mut segment = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(_) | HItem::FlushRight(_) | HItem::Kern(_) => segment = segment.try_add(item.natural_width())?,
+      HItem::Box(_) | HItem::Comma(_) | HItem::FlushRight(_) | HItem::Kern(_) => {
+        segment = segment.try_add(item.natural_width())?;
+      },
       HItem::Glue {
         natural, breakable, ..
       } => {
@@ -377,6 +416,41 @@ pub(super) mod test_support {
     };
   }
 
+  /// テスト用の和文句読点（指定幅・高さ 8・深さ 2）
+  pub(super) fn comma(width: f32) -> HItem {
+    return HItem::Comma(HBox {
+      content: HBoxContent::Atom(Vec::new()),
+      width: pt(width),
+      height: pt(8.0),
+      depth: pt(2.0),
+    });
+  }
+
+  /// テスト用の句読点の後ろの約物アキ（幅 5・伸長なし・収縮 5・分割可）
+  pub(super) fn comma_aki() -> HItem {
+    return HItem::Glue {
+      natural: pt(5.0),
+      stretch: Length::ZERO,
+      shrink: pt(5.0),
+      breakable: true,
+    };
+  }
+
+  /// ぶら下げの基本列: 箱 10 ×3（和文字間 glue で区切る）・句読点 5・約物アキ・箱 10（自然幅 35 で句読点だけが
+  /// 幅 30 を溢れる）
+  pub(super) fn hang_items() -> Vec<HItem> {
+    return vec![
+      box_width(10.0),
+      cjk_glue(),
+      box_width(10.0),
+      cjk_glue(),
+      box_width(10.0),
+      comma(5.0),
+      comma_aki(),
+      box_width(10.0),
+    ];
+  }
+
   /// テスト用の語中ハイフネーション分割点（指定幅のハイフン箱・高さ 6・深さ 0）
   pub(super) fn discretionary(hyphen_width: f32) -> HItem {
     return HItem::Discretionary {
@@ -413,7 +487,7 @@ pub(super) mod test_support {
 mod tests {
   use super::{HItem, Length, Line, TextAlignment, break_lines, greedy, knuth_plass, min_content_width};
   use crate::typeset::boxing::break_lines::test_support::{
-    box_width, discretionary, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
+    box_width, discretionary, hang_items, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
   };
 
   /// 2 つの行列が同じ組み方か（行数・各行の box 数・各 box の `dx` が sp 丸め精度内で一致）を確かめる
@@ -442,7 +516,7 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines = break_lines(&items, Length::pt(27.0), alignment).expect("テストの寸法は値域内");
+      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO).expect("テストの寸法は値域内");
       let greedy =
         greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new()).expect("テストの寸法は値域内");
 
@@ -472,12 +546,27 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Justify).expect("テストの寸法は値域内");
-    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0)).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO).expect("テストの寸法は値域内");
+    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
 
     assert_same_lines(&lines, &optimal);
     // 貪欲法なら 3 行になる入力
     assert_eq!(lines.len(), 2, "{lines:?}");
+  }
+
+  #[test]
+  fn non_justified_alignments_never_hang() {
+    for alignment in [
+      TextAlignment::Left,
+      TextAlignment::Center,
+      TextAlignment::Right,
+    ] {
+      let lines =
+        break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0)).expect("テストの寸法は値域内");
+
+      assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{alignment:?}: {lines:?}");
+    }
   }
 
   #[test]
@@ -542,7 +631,7 @@ mod tests {
     ];
     let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = break_lines(&items, width, TextAlignment::Left).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");
   }

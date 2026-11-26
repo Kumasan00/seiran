@@ -28,6 +28,9 @@ impl Galley {
   /// 1 段の幅
   pub(in crate::typeset) fn column_width(&self) -> Length { return self.geometry.column_width; }
 
+  /// 段の右端の外で、どの段に着地しても隣の段・用紙端に届かない幅
+  pub(in crate::typeset) fn right_clearance(&self) -> Length { return self.geometry.right_clearance(); }
+
   /// ブロックがまだ 1 つも積まれていないか
   pub(in crate::typeset) fn is_empty(&self) -> bool { return self.blocks.is_empty(); }
 

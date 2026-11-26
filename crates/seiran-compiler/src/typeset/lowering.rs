@@ -232,6 +232,19 @@ pub(super) mod test_support {
     return origins;
   }
 
+  /// 段落のぶら下げ可否を文書順に集める（`VBox` の中へも降りる）
+  pub(super) fn paragraph_hanging_flags(nodes: &[LayoutNode]) -> Vec<bool> {
+    let mut flags = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Paragraph(paragraph) => flags.push(paragraph.hanging_punctuation),
+        LayoutNode::VBox { children, .. } => flags.extend(paragraph_hanging_flags(children)),
+        _ => {},
+      }
+    }
+    return flags;
+  }
+
   /// インラインの `Text` なら、その文字列とスタイルを借りる
   pub(super) fn inline_text(node: &InlineNode) -> Option<(&str, TextStyle)> {
     return match node {
@@ -408,6 +421,7 @@ pub(super) fn lower_nodes<'a>(
         origin: pending_space_origin,
         content: mem::take(&mut pending_space),
         spacing_after: Length::ZERO,
+        hanging_punctuation: false,
       }));
     }
     if !lowered.is_empty() {
@@ -420,6 +434,7 @@ pub(super) fn lower_nodes<'a>(
       origin: pending_space_origin,
       content: pending_space,
       spacing_after: Length::ZERO,
+      hanging_punctuation: false,
     }));
   }
   return Ok(result);
@@ -441,7 +456,7 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
 #[cfg(test)]
 mod tests {
   use super::{
-    test_support::{analyzed, context, inlines, paragraph_layout, paragraph_origins},
+    test_support::{analyzed, context, inlines, paragraph_hanging_flags, paragraph_layout, paragraph_origins},
     *,
   };
   use crate::{
@@ -504,6 +519,39 @@ mod tests {
       InlineNode::LineBreak => return true,
       _ => return false,
     });
+  }
+
+  /// ぶら下げを有効にした style
+  fn style_with_hanging() -> ReadStyle {
+    let mut style = ReadStyle::default();
+    style.text.hanging_punctuation = true;
+    return style;
+  }
+
+  #[test]
+  fn only_body_paragraphs_may_hang_punctuation() {
+    // 見出し → 本文 → リスト項目 → 引用 → コード
+    let source = "\\section{見出し}\n\n本文。\n\n\\begin{itemize}\n\\item{項目。}\n\\end{itemize}\n\n\\begin{quote}\n引用。\n\\end{quote}\n\n\\begin{code}\nx\n\\end{code}\n";
+
+    let flags = paragraph_hanging_flags(&lower_source(&style_with_hanging(), source));
+
+    assert_eq!(flags, vec![false, true, true, true, false]);
+  }
+
+  #[test]
+  fn theorem_body_paragraph_may_hang_punctuation() {
+    // 定理の見出し段落は false、本文段落は true
+    let flags =
+      paragraph_hanging_flags(&lower_source(&style_with_hanging(), "\\begin{theorem}\n本文。\n\\end{theorem}\n"));
+
+    assert_eq!(flags, vec![false, true]);
+  }
+
+  #[test]
+  fn no_paragraph_hangs_when_the_style_is_off() {
+    let flags = paragraph_hanging_flags(&lower_source(&ReadStyle::default(), "本文。\n"));
+
+    assert_eq!(flags, vec![false]);
   }
 
   #[test]

@@ -347,7 +347,7 @@ impl PageComposer {
     origin: Option<NodeId>,
   ) -> Result<(), LengthOverflow> {
     let column_width = self.geom.column_width;
-    return self.record_extent_overflow(line.width()?, column_width, bottom, limit, |axis, excess| {
+    return self.record_extent_overflow(line.width_without_hanging()?, column_width, bottom, limit, |axis, excess| {
       return OverflowKind::Line {
         origin,
         excerpt: observe::summarize_line(line),
@@ -368,7 +368,7 @@ impl PageComposer {
       };
     };
     for line in &head.body.lines {
-      let over = excess(line.width().map_err(at)?, self.geom.column_width).map_err(at)?;
+      let over = excess(line.width_without_hanging().map_err(at)?, self.geom.column_width).map_err(at)?;
       if let Some(excess) = over {
         self.record(OverflowKind::Line {
           origin: Some(head.body.origin),
@@ -1394,6 +1394,7 @@ mod tests {
       num_columns: 1,
       column_gap: Length::pt(0.0),
       column_width: Length::pt(100.0),
+      margin_right: Length::ZERO,
       flush_bottom: false,
       footnote_top_margin: Length::ZERO,
       footnote_rule_length: Length::ZERO,
@@ -1450,6 +1451,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
@@ -2334,6 +2336,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
@@ -3291,6 +3294,7 @@ mod tests {
         links,
         footnotes: Vec::new(),
         index_marks: Vec::new(),
+        hanging: Length::ZERO,
       },
       leading: Length::pt(12.0),
     };
@@ -3546,6 +3550,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
@@ -4278,6 +4283,64 @@ mod tests {
         OverflowAxis::Horizontal,
         30.0,
         Some(paragraph_origin())
+      )]
+    );
+  }
+
+  /// 幅 `width` の箱 1 個の行のうち、末尾の `hanging` をぶら下げた句読点とした行
+  fn hanging_line(width: f32, hanging: f32) -> Line {
+    return Line {
+      hanging: pt(hanging),
+      ..box_line(width, 8.0, 2.0)
+    };
+  }
+
+  #[test]
+  fn line_overflow_ignores_the_hanging_comma_only() {
+    let fits = Block::Paragraph {
+      origin: Some(paragraph_origin()),
+      lines: vec![hanging_line(106.0, 6.0)],
+      leading: pt(12.0),
+    };
+    let overflowing = Block::Paragraph {
+      origin: Some(paragraph_origin()),
+      lines: vec![hanging_line(108.0, 6.0)],
+      leading: pt(12.0),
+    };
+
+    let (_, fits_overflows) = break_pages_in_range(vec![fits], &test_geometry());
+    let (_, overflowing_overflows) = break_pages_in_range(vec![overflowing], &test_geometry());
+
+    assert!(fits_overflows.is_empty(), "{fits_overflows:?}");
+    assert_eq!(
+      overflowing_overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Horizontal,
+        2.0,
+        Some(paragraph_origin())
+      )]
+    );
+  }
+
+  #[test]
+  fn footnote_line_overflow_ignores_the_hanging_comma_only() {
+    let paragraph_with = |line: Line| {
+      return single_line_paragraph(vec![footnote_item(1, vec![line], pt(12.0))]);
+    };
+
+    let (_, fits_overflows) = break_pages_in_range(vec![paragraph_with(hanging_line(106.0, 6.0))], &test_geometry());
+    let (_, overflowing_overflows) =
+      break_pages_in_range(vec![paragraph_with(hanging_line(108.0, 6.0))], &test_geometry());
+
+    assert!(fits_overflows.is_empty(), "{fits_overflows:?}");
+    assert_eq!(
+      overflowing_overflows,
+      vec![line_overflow(
+        0,
+        OverflowAxis::Horizontal,
+        2.0,
+        Some(footnote_origin(1))
       )]
     );
   }

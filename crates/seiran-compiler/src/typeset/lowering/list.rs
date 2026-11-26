@@ -68,6 +68,7 @@ pub(super) fn lower_list(
             origin: Some(item.id),
             content: vec![marker],
             spacing_after: Length::ZERO,
+            hanging_punctuation: false,
           }),
         );
       }

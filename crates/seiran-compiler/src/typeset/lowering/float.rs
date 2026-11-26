@@ -66,6 +66,7 @@ fn wrap_float(
         origin: Some(origin),
         content: caption_nodes,
         spacing_after: Length::ZERO,
+        hanging_punctuation: false,
       }));
       children.push(LayoutNode::Vkern {
         length: margins.inner,
@@ -81,6 +82,7 @@ fn wrap_float(
         origin: Some(origin),
         content: caption_nodes,
         spacing_after: Length::ZERO,
+        hanging_punctuation: false,
       }));
     },
     None => {
@@ -194,6 +196,7 @@ mod tests {
       origin: None,
       content: vec![caption_node(MAIN_TEXT)],
       spacing_after: Length::ZERO,
+      hanging_punctuation: false,
     });
   }
 
@@ -209,6 +212,22 @@ mod tests {
       panic!("Vkern が期待されます: {node:?}");
     };
     assert!((length.to_pt() - expected_pt).abs() < f32::EPSILON, "Vkern={} 期待={expected_pt}", length.to_pt());
+  }
+
+  #[test]
+  fn caption_never_hangs_punctuation() {
+    let margins = FloatMargins {
+      top: Length::ZERO,
+      bottom: Length::ZERO,
+      inner: Length::ZERO,
+    };
+
+    let nodes = wrap_float(float_id(), main_node(), Some((CaptionPosition::Top, vec![caption_node("cap")])), &margins);
+
+    let LayoutNode::VBox { children, .. } = &nodes[1] else {
+      panic!("2 番目は VBox であるべき: {nodes:?}");
+    };
+    assert!(!paragraph_layout(&children[0]).hanging_punctuation, "{children:?}");
   }
 
   #[test]

@@ -10,7 +10,7 @@ use crate::{
   length::Length,
   typeset::lowering::{
     LoweringContext,
-    layout_node::{InlineNode, LayoutNode, TextStyle},
+    layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
     paragraph,
   },
 };
@@ -41,12 +41,10 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, id: NodeId, text: &str
     content.push(InlineNode::TextAtom(line.to_string(), style));
   }
   return vec![LayoutNode::VBox {
-    children: vec![LayoutNode::Paragraph(paragraph::assemble_paragraph(
-      ctx,
-      content,
-      true,
-      Some(id),
-    ))],
+    children: vec![LayoutNode::Paragraph(ParagraphLayout {
+      hanging_punctuation: false,
+      ..paragraph::assemble_paragraph(ctx, content, true, Some(id))
+    })],
     margin_bottom: Length::pt(0.0),
     indent: Length::pt(0.0),
     right_indent: Length::pt(0.0),

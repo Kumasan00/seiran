@@ -29,6 +29,10 @@
 //!   寄せ環境 3 種 [`flush_environment_matches_text_alignment_of_the_same_direction`] /
 //!   [`nested_flush_environment_uses_innermost_direction_and_reverts_after_it`] /
 //!   [`empty_flush_environment_adds_no_vertical_space`]（寄せ環境で包んだ組版と、包まない・`[text].alignment` を変えた組版）
+//! - **`Line` へ直接アサート（行末の句読点のぶら下げ）**:
+//!   [`hanging_punctuation_hangs_a_comma_that_alone_overflows`] 以下の `hanging_punctuation_*` /
+//!   `hanging_last_line_is_not_stretched` / `hanging_comma_*`（共通ヘルパ [`hanging_project`] / [`body_lines`] /
+//!   [`line_runs`] 経由。ぶら下げ量・句読点の位置・リンク矩形・文字列と cluster・警告の有無を固定する）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -214,9 +218,9 @@
 //!
 //! # カバレッジの注意
 //!
-//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組みは既定 config では
+//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げは既定 config では
 //! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns`）。これらの経路を触ったら、該当 fixture が
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
@@ -241,13 +245,13 @@ use crate::{
   color::Color,
   compiler::{
     dump,
-    test_support::{self, FIGURE_IMAGE_ASSETS, TestProject},
+    test_support::{self, FIGURE_IMAGE_ASSETS, TestProject, TestProjectBuilder},
   },
   length::Length,
   project::{FontFace, FontType},
   publication::{GlyphRun, PaintOp},
   semantics::HeadingKey,
-  typeset::{AnchorId, FootnoteId, HBoxContent, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
+  typeset::{AnchorId, FootnoteId, HBoxContent, Line, LinkTarget, Page, PlacedBlock, PlacedTableRow, dump_pages},
 };
 
 /// `tests/text/` 直下で golden と比較しない fixture。`figure` / `svg_text` は画像の実体にレイアウトが依存し、
@@ -6194,4 +6198,219 @@ fn second_column_heading_does_not_switch_the_page() {
     "節 Two は 1 ページ目の 2 段目にあるはず"
   );
   assert_eq!(header_text(&pages[0]), "|One", "段ごとに柱を切り替えない");
+}
+
+/// 本文幅 108pt（12pt の仮名 9 字）・左右余白 20pt で、`[text].hanging_punctuation` を `hanging` にした本文 `source` の組版
+fn hanging_project(source: &str, hanging: bool) -> TestProjectBuilder {
+  return TestProject::builder()
+    .source_text(source)
+    .config_toml(|table| test_support::set(table, "pdf", "width", "148pt"))
+    .style_toml(move |table| {
+      test_support::set(table, "page", "margin_left", "20pt");
+      test_support::set(table, "page", "margin_right", "20pt");
+      test_support::set(table, "text", "hanging_punctuation", hanging);
+    });
+}
+
+/// 最初のページの本文の行（`PlacedBlock::Line`）を出現順に返す
+fn body_lines(project: &TestProject) -> Vec<Line> {
+  return project
+    .laid_out()
+    .pages
+    .swap_remove(0)
+    .blocks
+    .into_iter()
+    .filter_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return Some(line),
+      _ => return None,
+    })
+    .collect();
+}
+
+/// 行のグリフ列を出現順に返す
+fn line_runs(line: &Line) -> Vec<LineRun> {
+  let mut runs = Vec::new();
+  for placed in &line.boxes {
+    collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
+  }
+  return runs;
+}
+
+/// 行の最後のグリフ列
+fn last_run(line: &Line) -> LineRun {
+  return line_runs(line).pop().expect("行にグリフ列が 1 つはあるはず");
+}
+
+/// どの行もぶら下げず、本文幅 108pt に収まっているか
+fn nothing_hangs(lines: &[Line]) -> bool {
+  return lines.iter().all(|line| {
+    return line.hanging == Length::ZERO && line.width().expect("値域内") <= Length::pt(108.0);
+  });
+}
+
+#[test]
+fn hanging_punctuation_hangs_a_comma_that_alone_overflows() {
+  for mark in ["、", "。", "，", "．"] {
+    let lines = body_lines(&hanging_project(&format!("あいうえおかきくけ{mark}こさし\n"), true).build());
+
+    assert_eq!(lines[0].hanging, Length::pt(6.0), "{mark}");
+    assert_close(last_run(&lines[0]).dx, Length::pt(108.0), mark);
+    assert_close(lines[0].width_without_hanging().expect("値域内"), Length::pt(108.0), mark);
+  }
+}
+
+#[test]
+fn hanging_punctuation_is_off_by_default() {
+  let lines = body_lines(&hanging_project("あいうえおかきくけ、こさし\n", false).build());
+
+  assert!(nothing_hangs(&lines));
+}
+
+#[test]
+fn hanging_punctuation_leaves_non_target_marks_inside() {
+  for mark in [",", ".", "」", "・", "！", "？", "。」", "、、"] {
+    let lines = body_lines(&hanging_project(&format!("あいうえおかきくけ{mark}こさし\n"), true).build());
+
+    assert!(nothing_hangs(&lines), "{mark}");
+  }
+}
+
+#[test]
+fn hanging_last_line_is_not_stretched() {
+  // 本文幅 110pt: 句読点をぶら下げて 1 行に収め、最終行なので字間を伸ばさず句読点は自然幅の位置に置く
+  let lines = body_lines(
+    &hanging_project("あいうえおかきくけ。\n", true)
+      .config_toml(|table| test_support::set(table, "pdf", "width", "150pt"))
+      .build(),
+  );
+
+  let runs = line_runs(&lines[0]);
+  let (last, body) = runs.split_last().expect("行にグリフ列があるはず");
+
+  assert_eq!(lines.len(), 1);
+  assert_eq!(lines[0].hanging, Length::pt(6.0));
+  assert_close(last.dx, body.iter().map(|run| return run.width).sum(), "句読点の位置");
+}
+
+#[test]
+fn hanging_punctuation_needs_room_outside_the_column() {
+  // (用紙幅, 右余白, 段数, 段間, ぶら下げるか)。用紙幅は左余白 20pt + 108pt × 段数 + 段間 + 右余白で、本文幅はどの組も 108pt / 段
+  for (width, margin_right, columns, gap, hangs) in [
+    ("131pt", "3pt", 1, "0pt", false),
+    ("260pt", "20pt", 2, "4pt", false),
+    ("268pt", "20pt", 2, "12pt", true),
+  ] {
+    let lines = body_lines(
+      &hanging_project("あいうえおかきくけ、こさし\n", true)
+        .config_toml(move |table| test_support::set(table, "pdf", "width", width))
+        .style_toml(move |table| {
+          test_support::set(table, "page", "margin_right", margin_right);
+          test_support::set(table, "columns", "count", columns);
+          test_support::set(table, "columns", "gap", gap);
+        })
+        .build(),
+    );
+
+    let expected = if hangs { Length::pt(6.0) } else { Length::ZERO };
+    assert_eq!(lines[0].hanging, expected, "右余白 {margin_right}・{columns} 段・段間 {gap}");
+    assert!(lines[1..].iter().all(|line| return line.hanging == Length::ZERO));
+  }
+}
+
+#[test]
+fn hanging_punctuation_uses_the_right_indent_of_a_quote() {
+  // 右余白 0pt・[quote].indent = 12pt: 本文段落はぶら下げず、引用の段落（利用幅 84pt = 7 字）は右字下げの中へぶら下げる
+  let lines = body_lines(
+    &hanging_project("あいうえおかきくけ、こさし\n\n\\begin{quote}\nあいうえおかき、くけこ\n\\end{quote}\n", true)
+      .config_toml(|table| test_support::set(table, "pdf", "width", "128pt"))
+      .style_toml(|table| {
+        test_support::set(table, "page", "margin_right", "0pt");
+        test_support::set(table, "quote", "indent", "12pt");
+      })
+      .build(),
+  );
+  let (body, quote) = lines.split_at(2);
+
+  assert!(body.iter().all(|line| return line.hanging == Length::ZERO), "本文段落はぶら下げないはず");
+  assert_eq!(quote[0].hanging, Length::pt(6.0));
+  assert_close(last_run(&quote[0]).dx, Length::pt(96.0), "引用の句読点の位置");
+}
+
+#[test]
+fn hanging_punctuation_skips_left_aligned_and_heading_lines() {
+  let left = body_lines(
+    &hanging_project("あいうえおかきくけ、こさし\n", true)
+      .style_toml(|table| test_support::set(table, "text", "alignment", "left"))
+      .build(),
+  );
+  let flushleft =
+    body_lines(&hanging_project("\\begin{flushleft}\nあいうえおかきくけ、こさし\n\\end{flushleft}\n", true).build());
+  let heading = body_lines(&hanging_project("\\section{あいうえおかきくけ、こさし}\n", true).build());
+
+  for (name, lines) in [
+    ("left", left),
+    ("flushleft", flushleft),
+    ("section", heading),
+  ] {
+    assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{name}");
+  }
+}
+
+#[test]
+fn hanging_comma_keeps_the_link_rect_on_its_glyph() {
+  let lines = body_lines(&hanging_project("\\href{https://example.com}{あいうえおかきくけ、}こさし\n", true).build());
+
+  assert_eq!(lines[0].hanging, Length::pt(6.0));
+  assert_close(lines[0].links[0].x1, Length::pt(114.0), "リンク矩形の右端");
+}
+
+#[test]
+fn hanging_comma_across_a_style_boundary_hangs_the_same() {
+  let plain = body_lines(&hanging_project("あいうえおかきくけ、こさし\n", true).build());
+  let bold = body_lines(&hanging_project("あいうえおかきく\\bold{け、}こさし\n", true).build());
+
+  assert_eq!(plain[0].hanging, Length::pt(6.0));
+  assert_eq!(bold[0].hanging, plain[0].hanging);
+  assert_close(last_run(&bold[0]).dx, last_run(&plain[0]).dx, "句読点の位置");
+}
+
+#[test]
+fn hanging_punctuation_keeps_the_text_and_its_clusters() {
+  let source = "あいうえおかきくけ\u{3099}、\u{FE00}こさし\n";
+  let texts = |lines: &[Line]| {
+    return lines.iter().flat_map(line_runs).map(|run| return run.run.text).collect::<Vec<_>>();
+  };
+
+  let hung_lines = body_lines(&hanging_project(source, true).build());
+  let hung = texts(&hung_lines);
+  let plain = texts(&body_lines(&hanging_project(source, false).build()));
+
+  assert_eq!(hung_lines[0].hanging, Length::pt(6.0), "異体字セレクタ付きの句読点もぶら下げるはず");
+  assert_eq!(hung.concat(), plain.concat());
+  for text in hung.iter().chain(&plain) {
+    assert!(!text.starts_with(['\u{3099}', '\u{FE00}']), "結合文字・異体字セレクタで始まる run: {text:?}");
+  }
+}
+
+#[test]
+fn hanging_comma_raises_no_overflow_warning() {
+  let compile = |source: &str| {
+    return hanging_project(source, true)
+      .build()
+      .compile()
+      .unwrap_or_else(|failure| panic!("compile は成功するはず: {:?}", failure.into_report()));
+  };
+
+  let hung = compile("あいうえおかきくけ、こさし\n");
+  let long_word = compile("Pneumonoultramicroscopicsilicovolcanoconiosis\n");
+
+  assert!(hung.warnings.is_empty(), "{:?}", hung.warnings);
+  let hung_lines = body_lines(&hanging_project("あいうえおかきくけ、こさし\n", true).build());
+  assert_eq!(hung_lines[0].hanging, Length::pt(6.0));
+  let overflows = long_word
+    .warnings
+    .iter()
+    .filter(|warning| return warning.code().is_some_and(|code| return code.to_string() == "typeset::overflow::line"))
+    .count();
+  assert_eq!(overflows, 1, "{:?}", long_word.warnings);
 }

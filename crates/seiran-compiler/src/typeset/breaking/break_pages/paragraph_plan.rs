@@ -205,6 +205,7 @@ mod tests {
       links: Vec::new(),
       footnotes: Vec::new(),
       index_marks: Vec::new(),
+      hanging: Length::ZERO,
     };
   }
 
