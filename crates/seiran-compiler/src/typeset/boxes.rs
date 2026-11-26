@@ -17,7 +17,7 @@ pub(super) use align::Align;
 pub(super) use block::{Block, MathRowNumber, usable_width};
 pub(super) use galley::Galley;
 pub(crate) use hitem::HBoxContent;
-pub(super) use hitem::{FootnoteBody, HBox, HItem, IndexTerm, PlacedHBox};
+pub(super) use hitem::{FootnoteBody, GlueKind, HBox, HItem, IndexTerm, PlacedHBox};
 pub(crate) use line::Line;
 pub(super) use line::LineLink;
 pub(crate) use link::{AnchorId, FootnoteId, LinkTarget};

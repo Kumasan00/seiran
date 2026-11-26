@@ -3,18 +3,23 @@
 mod greedy;
 mod knuth_plass;
 
+use std::cmp::Ordering;
+
 use crate::{
   document::TextAlignment,
   length::{Length, LengthOverflow},
-  typeset::boxes::{Align, FootnoteBody, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, PlacedHBox},
+  typeset::boxes::{Align, FootnoteBody, GlueKind, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, PlacedHBox},
 };
+
+/// 両端揃えで伸縮を配る順位の数（JLReq §3.8.3 / §3.8.4 の 3 段階）
+const ADJUSTMENT_RANKS: usize = 3;
 
 /// 水平リストを本文幅で行に分割する。両端揃えは段落全体最適（Knuth–Plass）、それ以外の揃えは貪欲法で組む。
 /// 両端揃えでも、実現可能な分割が無いサブ段落は貪欲法の両端揃えで組む。両端揃えは行末の句読点を必要な場合だけ
 /// `hang_room` の範囲でぶら下げる
 ///
 /// `hang_room` は両端揃えの行末で句読点を利用幅の外へ出してよい幅。0 ならぶら下げない。両端揃え以外と貪欲法へ
-/// 落ちたサブ段落は使わない。
+/// 落ちたサブ段落は使わない。`order` は両端揃えの行の伸縮の配分だけが使う。
 ///
 /// # Errors
 ///
@@ -24,12 +29,57 @@ pub(super) fn break_lines(
   text_width: Length,
   alignment: TextAlignment,
   hang_room: Length,
+  order: AdjustmentOrder,
 ) -> Result<Vec<Line>, LengthOverflow> {
   return if alignment == TextAlignment::Justify {
-    knuth_plass::break_lines(items, text_width, hang_room)
+    knuth_plass::break_lines(items, text_width, hang_room, order)
   } else {
-    greedy::break_lines(items, text_width, alignment, &mut Vec::new())
+    greedy::break_lines(items, text_width, alignment, &mut Vec::new(), order)
   };
+}
+
+/// 両端揃えの行で glue の伸縮を配る順序
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+pub(super) enum AdjustmentOrder {
+  /// 全 glue に 1 つの調整比を掛ける（約物アキ調整を切った文書）
+  Uniform,
+  /// 種類の順位ごとに、前の順位を使い切ってから次の順位へ配る（JLReq §3.8.3 / §3.8.4）
+  ByKind,
+}
+
+/// 両端揃えの 1 行の glue に配る調整（順位ごとの比。0 以上 1 以下）
+#[derive(Debug, Clone, Copy, PartialEq)]
+enum Adjustment {
+  /// 伸縮しない（最終行・余りなし）
+  Natural,
+  /// 伸長
+  Stretch([f64; ADJUSTMENT_RANKS]),
+  /// 収縮
+  Shrink([f64; ADJUSTMENT_RANKS]),
+}
+
+impl Adjustment {
+  /// 種類 `kind`・伸長能力 `stretch`・収縮能力 `shrink` の glue の自然幅に足す量（収縮は負）
+  ///
+  /// `Uniform` では全 glue が順位 0 の比を受けるので、伸長は `stretch × 比`・収縮は `shrink × (−比)` と、
+  /// 1 つの調整比を掛ける演算と同じ値になる。
+  ///
+  /// # Errors
+  ///
+  /// 積が長さの値域を超えたら [`LengthOverflow`]。
+  fn delta(
+    self,
+    order: AdjustmentOrder,
+    kind: GlueKind,
+    stretch: Length,
+    shrink: Length,
+  ) -> Result<Length, LengthOverflow> {
+    return match self {
+      Adjustment::Natural => Ok(Length::ZERO),
+      Adjustment::Stretch(ratios) => stretch.try_scale(ratios[stretch_rank(order, kind)]),
+      Adjustment::Shrink(ratios) => shrink.try_scale(-ratios[shrink_rank(order, kind)]),
+    };
+  }
 }
 
 /// 行分割中に開いている（`LinkStart` 済み・`LinkEnd` 未到達）リンク領域の状態
@@ -100,10 +150,22 @@ fn trailing_comma<'a>(items: &[&'a HItem]) -> Option<&'a HBox> {
 }
 
 /// 行内アイテムの自然幅合計・伸長能力合計・収縮能力合計を求める
+///
+/// 合計は順位の割り当てによらない（[`rank_metrics`] の全順位の和）ので、行の可否をこの合計で決めると、配置
+/// （[`glue_adjustment`]）が能力を順位ごとに使い切って同じ幅に揃えられる行と一致する。
 fn glue_metrics(items: &[&HItem]) -> Result<(Length, Length, Length), LengthOverflow> {
+  let (natural, stretch, shrink) = rank_metrics(items, AdjustmentOrder::Uniform)?;
+  return Ok((natural, stretch[0], shrink[0]));
+}
+
+/// 行内アイテムの自然幅合計と、`order` の順位ごとの伸長能力・収縮能力の合計を求める（`FlushRight` は数えない）
+fn rank_metrics(
+  items: &[&HItem],
+  order: AdjustmentOrder,
+) -> Result<(Length, [Length; ADJUSTMENT_RANKS], [Length; ADJUSTMENT_RANKS]), LengthOverflow> {
   let mut natural = Length::ZERO;
-  let mut stretch = Length::ZERO;
-  let mut shrink = Length::ZERO;
+  let mut stretch = [Length::ZERO; ADJUSTMENT_RANKS];
+  let mut shrink = [Length::ZERO; ADJUSTMENT_RANKS];
   for item in items {
     match item {
       HItem::FlushRight(_) => {},
@@ -111,11 +173,14 @@ fn glue_metrics(items: &[&HItem]) -> Result<(Length, Length, Length), LengthOver
         natural: n,
         stretch: s,
         shrink: sh,
+        kind,
         ..
       } => {
         natural = natural.try_add(*n)?;
-        stretch = stretch.try_add(*s)?;
-        shrink = shrink.try_add(*sh)?;
+        let stretch_at = &mut stretch[stretch_rank(order, *kind)];
+        *stretch_at = stretch_at.try_add(*s)?;
+        let shrink_at = &mut shrink[shrink_rank(order, *kind)];
+        *shrink_at = shrink_at.try_add(*sh)?;
       },
       other => natural = natural.try_add(other.natural_width())?,
     }
@@ -123,23 +188,63 @@ fn glue_metrics(items: &[&HItem]) -> Result<(Length, Length, Length), LengthOver
   return Ok((natural, stretch, shrink));
 }
 
-/// 行の余り幅から glue の伸縮係数を求める（両端揃えの配分係数）
-fn glue_adjust_ratio(items: &[&HItem], available: Length) -> Result<f64, LengthOverflow> {
-  let (natural, total_stretch, total_shrink) = glue_metrics(items)?;
+/// 種類 `kind` の glue が伸長する順位（`Uniform` は全種類 0）
+///
+/// 伸長能力を持たない種類（約物アキ）は最後の順位に置く。能力 0 なので配分は変わらない。
+fn stretch_rank(order: AdjustmentOrder, kind: GlueKind) -> usize {
+  return match order {
+    AdjustmentOrder::Uniform => 0,
+    AdjustmentOrder::ByKind => match kind {
+      GlueKind::WordSpace => 0,
+      GlueKind::JaLatinAki => 1,
+      GlueKind::InterCharacter | GlueKind::MiddleDotAki | GlueKind::PunctuationAki => 2,
+    },
+  };
+}
+
+/// 種類 `kind` の glue が収縮する順位（`Uniform` は全種類 0）
+///
+/// 収縮能力を持たない種類（和欧文間アキ・和文字間）は最後の順位に置く。能力 0 なので配分は変わらない。
+fn shrink_rank(order: AdjustmentOrder, kind: GlueKind) -> usize {
+  return match order {
+    AdjustmentOrder::Uniform => 0,
+    AdjustmentOrder::ByKind => match kind {
+      GlueKind::WordSpace => 0,
+      GlueKind::MiddleDotAki => 1,
+      GlueKind::PunctuationAki | GlueKind::JaLatinAki | GlueKind::InterCharacter => 2,
+    },
+  };
+}
+
+/// 必要量 `need` を順位 0 から順に能力 `capacities` へ割り当て、順位ごとの比（0 以上 1 以下）を返す
+///
+/// 前の順位を比 1 で使い切ってから次の順位へ進み、残りを受け切る順位は 残り ÷ 能力、その後ろは 0。能力を全部
+/// 使っても足りなければ全順位が 1 で止まる。全能力が順位 0 にあれば `need ÷ 能力` を 1 で頭打ちにした 1 つの比になる。
+fn fill_ranks(need: Length, capacities: [Length; ADJUSTMENT_RANKS]) -> [f64; ADJUSTMENT_RANKS] {
+  let mut remaining = need;
+  return capacities.map(|capacity| {
+    if !remaining.is_positive() || !capacity.is_positive() {
+      return 0.0;
+    }
+    if remaining <= capacity {
+      let ratio = remaining.ratio(capacity);
+      remaining = Length::ZERO;
+      return ratio;
+    }
+    remaining = remaining.try_sub(capacity).expect("残りは能力より大きい正の値なので、差は値域内");
+    return 1.0;
+  });
+}
+
+/// 利用幅 `available` に対する行の余り幅を、`order` の順位で glue に配る調整を求める（両端揃えの配分）
+fn glue_adjustment(items: &[&HItem], available: Length, order: AdjustmentOrder) -> Result<Adjustment, LengthOverflow> {
+  let (natural, stretch, shrink) = rank_metrics(items, order)?;
   let leftover = available.try_sub(natural)?;
-  if leftover > Length::ZERO {
-    if !total_stretch.is_positive() {
-      return Ok(0.0);
-    }
-    return Ok(leftover.ratio(total_stretch).min(1.0));
-  }
-  if leftover < Length::ZERO {
-    if !total_shrink.is_positive() {
-      return Ok(0.0);
-    }
-    return Ok(-((-leftover).ratio(total_shrink).min(1.0)));
-  }
-  return Ok(0.0);
+  return Ok(match leftover.cmp(&Length::ZERO) {
+    Ordering::Greater => Adjustment::Stretch(fill_ranks(leftover, stretch)),
+    Ordering::Less => Adjustment::Shrink(fill_ranks(-leftover, shrink)),
+    Ordering::Equal => Adjustment::Natural,
+  });
 }
 
 /// アイテム列から 1 行を組み立てる（位置確定）
@@ -148,6 +253,7 @@ fn glue_adjust_ratio(items: &[&HItem], available: Length) -> Result<f64, LengthO
 /// 右端に置き、本文はその幅を除いた残りの中で寄せる。本文の幅は [`Line::width`] と同じ「箱の右端の最大」で測る
 /// （行末の Kern 等の空白は寄せる幅に含めない）。`end` がハイフンなら行内アイテムの直後にハイフンを置き、
 /// ぶら下げなら句読点を除いた本文が利用可能幅に揃うよう伸縮して [`Line::hanging`] に句読点の幅を入れる。
+/// 両端揃えの非最終行は余り幅を `order` の順位で glue に配る。
 ///
 /// # Errors
 ///
@@ -159,10 +265,11 @@ fn build_line(
   alignment: TextAlignment,
   open_links: &mut Vec<OpenLink>,
   end: LineEnd<'_>,
+  order: AdjustmentOrder,
 ) -> Result<Line, LengthOverflow> {
   let items = trim_trailing_glue(items);
 
-  // 両端揃えの配分係数（正 = 伸長 / 負 = 収縮）。最終行は伸縮しない。
+  // 両端揃えの配分。最終行は伸縮しない。
   // 行末ハイフンぶんを差し引き、ぶら下げる句読点ぶんを足した幅に対して配分する（ハイフン込み・句読点抜きで右端に揃える）
   let (trailing_hyphen, hanging) = match end {
     LineEnd::Plain => (None, Length::ZERO),
@@ -170,10 +277,10 @@ fn build_line(
     LineEnd::Hang(comma) => (None, comma.width),
   };
   let hyphen_width = trailing_hyphen.map_or(Length::ZERO, |hyphen| return hyphen.width);
-  let adjust_ratio: f64 = if alignment == TextAlignment::Justify && !is_last {
-    glue_adjust_ratio(items, available.try_sub(hyphen_width)?.try_add(hanging)?)?
+  let adjustment = if alignment == TextAlignment::Justify && !is_last {
+    glue_adjustment(items, available.try_sub(hyphen_width)?.try_add(hanging)?, order)?
   } else {
-    0.0
+    Adjustment::Natural
   };
 
   // 前の行から継続するリンクは、この行では行頭（x0 = 0）から始まる
@@ -205,14 +312,10 @@ fn build_line(
         natural,
         stretch,
         shrink,
+        kind,
         ..
       } => {
-        let adjustment = if adjust_ratio >= 0.0 {
-          stretch.try_scale(adjust_ratio)?
-        } else {
-          shrink.try_scale(adjust_ratio)?
-        };
-        x = x.try_add(natural.try_add(adjustment)?)?;
+        x = x.try_add(natural.try_add(adjustment.delta(order, *kind, *stretch, *shrink)?)?)?;
       },
       HItem::Kern(value) => x = x.try_add(*value)?,
       // 行内に残った数式内分割点は、折り返さなかったのでアキとして幅を持つ
@@ -340,7 +443,7 @@ pub(super) mod test_support {
   use crate::{
     length::Length,
     semantics::LabelId,
-    typeset::boxes::{AnchorId, HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
+    typeset::boxes::{AnchorId, GlueKind, HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
   };
 
   /// pt 値から `Length` を作る短縮子
@@ -373,6 +476,7 @@ pub(super) mod test_support {
       stretch: Length::ZERO,
       shrink: Length::ZERO,
       breakable: true,
+      kind: GlueKind::WordSpace,
     };
   }
 
@@ -393,6 +497,7 @@ pub(super) mod test_support {
       stretch: pt(2.5),
       shrink: pt(5.0 / 3.0),
       breakable: true,
+      kind: GlueKind::WordSpace,
     };
   }
 
@@ -403,6 +508,7 @@ pub(super) mod test_support {
       stretch: pt(2.5),
       shrink: pt(5.0 / 3.0),
       breakable: false,
+      kind: GlueKind::WordSpace,
     };
   }
 
@@ -413,6 +519,18 @@ pub(super) mod test_support {
       stretch: pt(0.5),
       shrink: Length::ZERO,
       breakable: true,
+      kind: GlueKind::InterCharacter,
+    };
+  }
+
+  /// テスト用の種類 `kind`・自然幅 `natural`・伸長 `stretch`・収縮 `shrink`（pt）の breakable glue
+  pub(super) fn kind_glue(kind: GlueKind, natural: f32, stretch: f32, shrink: f32) -> HItem {
+    return HItem::Glue {
+      natural: pt(natural),
+      stretch: pt(stretch),
+      shrink: pt(shrink),
+      breakable: true,
+      kind,
     };
   }
 
@@ -433,6 +551,7 @@ pub(super) mod test_support {
       stretch: Length::ZERO,
       shrink: pt(5.0),
       breakable: true,
+      kind: GlueKind::PunctuationAki,
     };
   }
 
@@ -485,10 +604,286 @@ pub(super) mod test_support {
 
 #[cfg(test)]
 mod tests {
-  use super::{HItem, Length, Line, TextAlignment, break_lines, greedy, knuth_plass, min_content_width};
-  use crate::typeset::boxing::break_lines::test_support::{
-    box_width, discretionary, hang_items, math_break, non_breakable_stretch_glue, space_glue, stretch_glue, test_box,
+  use proptest::prelude::*;
+
+  use super::{
+    ADJUSTMENT_RANKS, AdjustmentOrder, HItem, Length, Line, LineEnd, TextAlignment, break_lines, build_line,
+    fill_ranks, greedy, knuth_plass, min_content_width,
   };
+  use crate::typeset::{
+    boxes::{GlueKind, HBox},
+    boxing::break_lines::test_support::{
+      box_width, comma, discretionary, hang_items, kind_glue, math_break, non_breakable_stretch_glue, space_glue,
+      stretch_glue, test_box,
+    },
+  };
+
+  /// 収縮の順位を見る行: 語間・括弧読点のアキ・中点のアキを箱 10pt で挟む（自然幅 52.5pt）
+  fn shrink_line() -> Vec<HItem> {
+    return vec![
+      box_width(10.0),
+      kind_glue(GlueKind::WordSpace, 5.0, 2.5, 2.0),
+      box_width(10.0),
+      kind_glue(GlueKind::PunctuationAki, 5.0, 0.0, 5.0),
+      box_width(10.0),
+      kind_glue(GlueKind::MiddleDotAki, 2.5, 0.0, 2.5),
+      box_width(10.0),
+    ];
+  }
+
+  /// 伸長の順位を見る行: 語間・和欧文間アキ・和文字間を箱 10pt で挟む（自然幅 47.5pt）
+  fn stretch_line() -> Vec<HItem> {
+    return vec![
+      box_width(10.0),
+      kind_glue(GlueKind::WordSpace, 5.0, 2.5, 2.0),
+      box_width(10.0),
+      kind_glue(GlueKind::JaLatinAki, 2.5, 0.5, 0.0),
+      box_width(10.0),
+      kind_glue(GlueKind::InterCharacter, 0.0, 0.5, 0.0),
+      box_width(10.0),
+    ];
+  }
+
+  /// `items` を利用幅 `available`（pt）の非最終行として `order` で両端揃えに組む
+  fn justify(items: &[HItem], available: f32, order: AdjustmentOrder) -> Line {
+    let refs: Vec<&HItem> = items.iter().collect();
+    return build_line(
+      &refs,
+      false,
+      Length::pt(available),
+      TextAlignment::Justify,
+      &mut Vec::new(),
+      LineEnd::Plain,
+      order,
+    )
+    .expect("テストの寸法は値域内");
+  }
+
+  /// 組んだ行の各箱の `dx`
+  fn place_sp(items: &[HItem], available: f32, order: AdjustmentOrder) -> Vec<Length> {
+    return justify(items, available, order).boxes.iter().map(|placed| return placed.dx).collect();
+  }
+
+  /// 組んだ行の各箱の `dx`（pt）
+  fn place(items: &[HItem], available: f32, order: AdjustmentOrder) -> Vec<f32> {
+    return place_sp(items, available, order).iter().map(|dx| return dx.to_pt()).collect();
+  }
+
+  /// `actual` の各値が `expected` と差 1e-3 pt 未満で一致するか
+  fn assert_dx(actual: &[f32], expected: &[f32]) {
+    assert_eq!(actual.len(), expected.len(), "actual: {actual:?}, expected: {expected:?}");
+    for (a, e) in actual.iter().zip(expected) {
+      assert!((a - e).abs() < 1e-3, "actual: {actual:?}, expected: {expected:?}");
+    }
+  }
+
+  #[test]
+  fn shrink_uses_word_spaces_before_punctuation_aki() {
+    assert_dx(&place(&shrink_line(), 51.0, AdjustmentOrder::ByKind), &[0.0, 13.5, 28.5, 41.0]);
+  }
+
+  #[test]
+  fn shrink_moves_to_middle_dot_aki_after_word_spaces() {
+    assert_dx(&place(&shrink_line(), 49.5, AdjustmentOrder::ByKind), &[0.0, 13.0, 28.0, 39.5]);
+  }
+
+  #[test]
+  fn shrink_reaches_punctuation_aki_last() {
+    assert_dx(&place(&shrink_line(), 46.0, AdjustmentOrder::ByKind), &[0.0, 13.0, 26.0, 36.0]);
+  }
+
+  #[test]
+  fn shrink_stops_at_the_limit() {
+    // 必要量 12.5pt に対し能力は 9.5pt: 限界で止まり右端 43pt のまま溢れる
+    assert_dx(&place(&shrink_line(), 40.0, AdjustmentOrder::ByKind), &[0.0, 13.0, 23.0, 33.0]);
+  }
+
+  #[test]
+  fn stretch_uses_word_spaces_first() {
+    assert_dx(&place(&stretch_line(), 49.5, AdjustmentOrder::ByKind), &[0.0, 17.0, 29.5, 39.5]);
+  }
+
+  #[test]
+  fn stretch_moves_to_ja_latin_then_inter_character() {
+    assert_dx(&place(&stretch_line(), 50.6, AdjustmentOrder::ByKind), &[0.0, 17.5, 30.5, 40.6]);
+  }
+
+  #[test]
+  fn stretch_never_exceeds_the_capacity() {
+    assert_dx(&place(&stretch_line(), 60.0, AdjustmentOrder::ByKind), &[0.0, 17.5, 30.5, 41.0]);
+  }
+
+  #[test]
+  fn uniform_order_scales_every_glue_by_one_ratio() {
+    // 必要量 6.5pt を能力 9.5pt の比（約 0.684）で全 glue に配る
+    assert_dx(&place(&shrink_line(), 46.0, AdjustmentOrder::Uniform), &[0.0, 13.6316, 25.2105, 36.0]);
+  }
+
+  #[test]
+  fn same_rank_glue_shares_shrink_in_proportion_to_capacity() {
+    let items = vec![
+      box_width(10.0),
+      kind_glue(GlueKind::PunctuationAki, 5.0, 0.0, 5.0),
+      box_width(10.0),
+      kind_glue(GlueKind::PunctuationAki, 2.5, 0.0, 2.5),
+      box_width(10.0),
+    ];
+
+    assert_dx(&place(&items, 34.5, AdjustmentOrder::ByKind), &[0.0, 13.0, 24.5]);
+  }
+
+  #[test]
+  fn single_rank_order_matches_uniform_exactly() {
+    // 語間だけの行: ByKind と Uniform の dx が sp 単位で一致する（欧文だけの段落の出力不変）
+    let items = vec![
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+      stretch_glue(),
+      box_width(10.0),
+    ];
+
+    for available in [30.0, 31.0, 36.0, 40.0] {
+      assert_eq!(
+        place_sp(&items, available, AdjustmentOrder::ByKind),
+        place_sp(&items, available, AdjustmentOrder::Uniform),
+        "{available}"
+      );
+    }
+  }
+
+  #[test]
+  fn hanging_comma_is_not_absorbed_by_prioritized_shrink() {
+    let hung = comma(5.0);
+    let HItem::Comma(comma_box) = &hung else {
+      panic!("句読点の箱を期待");
+    };
+    let comma_box: &HBox = comma_box;
+    let items = [
+      box_width(10.0),
+      kind_glue(GlueKind::WordSpace, 5.0, 2.5, 2.0),
+      box_width(10.0),
+      hung.clone(),
+    ];
+    let refs: Vec<&HItem> = items.iter().collect();
+
+    let line = build_line(
+      &refs,
+      false,
+      Length::pt(25.0),
+      TextAlignment::Justify,
+      &mut Vec::new(),
+      LineEnd::Hang(comma_box),
+      AdjustmentOrder::ByKind,
+    )
+    .expect("テストの寸法は値域内");
+
+    let dx: Vec<f32> = line.boxes.iter().map(|placed| return placed.dx.to_pt()).collect();
+    assert_dx(&dx, &[0.0, 15.0, 25.0]);
+    assert_eq!(line.hanging, Length::pt(5.0));
+  }
+
+  #[test]
+  fn last_line_is_not_adjusted_in_either_order() {
+    for order in [AdjustmentOrder::Uniform, AdjustmentOrder::ByKind] {
+      for (items, available) in [(shrink_line(), 46.0), (stretch_line(), 60.0)] {
+        let refs: Vec<&HItem> = items.iter().collect();
+
+        let line = build_line(
+          &refs,
+          true,
+          Length::pt(available),
+          TextAlignment::Justify,
+          &mut Vec::new(),
+          LineEnd::Plain,
+          order,
+        )
+        .expect("テストの寸法は値域内");
+
+        // 期待値は自然幅で左から並べた箱の位置
+        let mut x = 0.0f32;
+        let mut expected = Vec::new();
+        for item in &items {
+          if matches!(item, HItem::Box(_)) {
+            expected.push(x);
+          }
+          x += item.natural_width().to_pt();
+        }
+        let dx: Vec<f32> = line.boxes.iter().map(|placed| return placed.dx.to_pt()).collect();
+        assert_dx(&dx, &expected);
+      }
+    }
+  }
+
+  /// glue の種類（proptest の添字から引く）
+  const KINDS: [GlueKind; 5] = [
+    GlueKind::WordSpace,
+    GlueKind::JaLatinAki,
+    GlueKind::InterCharacter,
+    GlueKind::MiddleDotAki,
+    GlueKind::PunctuationAki,
+  ];
+
+  proptest! {
+    #[test]
+    fn fill_ranks_saturates_earlier_ranks_first(
+      need_sp in 0i64..2_000_000,
+      caps_sp in prop::array::uniform3(0i64..1_000_000),
+    ) {
+      let caps = caps_sp.map(Length::from_sp);
+
+      let ratios = fill_ranks(Length::from_sp(need_sp), caps);
+
+      for ratio in ratios {
+        prop_assert!((0.0..=1.0).contains(&ratio), "{ratios:?}");
+      }
+      for later in 1..ADJUSTMENT_RANKS {
+        if ratios[later] > 0.0 {
+          for earlier in 0..later {
+            if caps[earlier].is_positive() {
+              prop_assert!((ratios[earlier] - 1.0).abs() < f64::EPSILON, "{ratios:?}");
+            }
+          }
+        }
+      }
+      #[expect(clippy::cast_precision_loss, reason = "テストの能力は 2^53 sp 未満で f64 に正確に載る")]
+      let used: f64 = ratios.iter().zip(caps_sp).map(|(ratio, cap)| return ratio * cap as f64).sum();
+      let total: i64 = caps_sp.iter().sum();
+      #[expect(clippy::cast_precision_loss, reason = "テストの必要量は 2^53 sp 未満で f64 に正確に載る")]
+      let expected = need_sp.min(total) as f64;
+      prop_assert!((used - expected).abs() <= 3.0, "used {used}, expected {expected}");
+    }
+
+    #[test]
+    fn placed_line_fills_the_width_within_capacity(
+      glues in prop::collection::vec((1.0f32..20.0, 0usize..5, 0.0f32..6.0, 0.0f32..3.0, 0.0f32..=1.0), 1..12),
+      t in -1.0f64..=1.0,
+    ) {
+      let mut items = Vec::new();
+      for &(box_w, kind, natural, stretch, shrink_frac) in &glues {
+        items.push(box_width(box_w));
+        items.push(kind_glue(KINDS[kind], natural, stretch, natural * shrink_frac));
+      }
+      items.push(box_width(10.0));
+      let sum = |part: fn(&HItem) -> Length| return Length::try_sum(items.iter().map(part)).expect("値域内");
+      let natural = sum(HItem::natural_width);
+      let stretch = sum(|item| return if let HItem::Glue { stretch, .. } = item { *stretch } else { Length::ZERO });
+      let shrink = sum(|item| return if let HItem::Glue { shrink, .. } = item { *shrink } else { Length::ZERO });
+      let room = if t >= 0.0 { stretch } else { shrink };
+      let available = natural + room.try_scale(t).expect("値域内");
+      let refs: Vec<&HItem> = items.iter().collect();
+
+      for order in [AdjustmentOrder::Uniform, AdjustmentOrder::ByKind] {
+        let line = build_line(&refs, false, available, TextAlignment::Justify, &mut Vec::new(), LineEnd::Plain, order)
+          .expect("値域内");
+
+        let error = (line.width().expect("値域内") - available).abs();
+        #[expect(clippy::cast_possible_wrap, reason = "glue は 12 個未満")]
+        let tolerance = Length::from_sp(glues.len() as i64 + 1);
+        prop_assert!(error <= tolerance, "{order:?}: error {error:?}");
+      }
+    }
+  }
 
   /// 2 つの行列が同じ組み方か（行数・各行の box 数・各 box の `dx` が sp 丸め精度内で一致）を確かめる
   fn assert_same_lines(actual: &[Line], expected: &[Line]) {
@@ -516,9 +911,10 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO).expect("テストの寸法は値域内");
-      let greedy =
-        greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new()).expect("テストの寸法は値域内");
+      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO, AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
+      let greedy = greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new(), AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
 
       assert_same_lines(&lines, &greedy);
     }
@@ -532,6 +928,7 @@ mod tests {
         stretch: Length::pt(1.0),
         shrink: Length::pt(2.0),
         breakable: true,
+        kind: GlueKind::WordSpace,
       };
     };
     let items = vec![
@@ -546,9 +943,10 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines =
-      break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO).expect("テストの寸法は値域内");
-    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO, AdjustmentOrder::Uniform)
+      .expect("テストの寸法は値域内");
+    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform)
+      .expect("テストの寸法は値域内");
 
     assert_same_lines(&lines, &optimal);
     // 貪欲法なら 3 行になる入力
@@ -562,8 +960,8 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines =
-        break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0)).expect("テストの寸法は値域内");
+      let lines = break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0), AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
 
       assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{alignment:?}: {lines:?}");
     }
@@ -631,7 +1029,8 @@ mod tests {
     ];
     let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO, AdjustmentOrder::Uniform)
+      .expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");
   }

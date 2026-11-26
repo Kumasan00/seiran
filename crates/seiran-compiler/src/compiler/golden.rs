@@ -33,6 +33,12 @@
 //!   [`hanging_punctuation_hangs_a_comma_that_alone_overflows`] 以下の `hanging_punctuation_*` /
 //!   `hanging_last_line_is_not_stretched` / `hanging_comma_*`（共通ヘルパ [`hanging_project`] / [`body_lines`] /
 //!   [`line_runs`] 経由。ぶら下げ量・句読点の位置・リンク矩形・文字列と cluster・警告の有無を固定する）
+//! - **`Line` へ直接アサート（和文の行調整の順位）**:
+//!   [`full_stop_aki_survives_while_comma_aki_absorbs_the_overflow`] /
+//!   [`adjustment_is_the_same_across_bold_color_and_link_boundaries`] /
+//!   [`link_rect_follows_the_prioritized_adjustment`] / [`line_starting_with_an_open_bracket_has_no_leading_aki`]
+//!   （共通ヘルパ [`narrow_project`] / [`body_lines`] / [`line_runs`] 経由。句点後と読点後のアキ・境界をまたぐ座標・リンク矩形・
+//!   行頭括弧を固定する）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -6413,4 +6419,77 @@ fn hanging_comma_raises_no_overflow_warning() {
     .filter(|warning| return warning.code().is_some_and(|code| return code.to_string() == "typeset::overflow::line"))
     .count();
   assert_eq!(overflows, 1, "{:?}", long_word.warnings);
+}
+
+/// 本文幅 105pt（12pt の仮名 8.75 字）の両端揃えの版面（左右余白 20pt・用紙幅 145pt）
+fn narrow_project(source: &str) -> TestProjectBuilder {
+  return TestProject::builder()
+    .source_text(source)
+    .config_toml(|table| test_support::set(table, "pdf", "width", "145pt"))
+    .style_toml(|table| {
+      test_support::set(table, "page", "margin_left", "20pt");
+      test_support::set(table, "page", "margin_right", "20pt");
+    });
+}
+
+/// 行のグリフ列の（左端, 送り幅）を出現順に返す
+fn run_spans(line: &Line) -> Vec<(Length, Length)> {
+  return line_runs(line).iter().map(|run| return (run.dx, run.width)).collect();
+}
+
+#[test]
+fn full_stop_aki_survives_while_comma_aki_absorbs_the_overflow() {
+  // 1 行目「あいう。えお、かき」は自然幅 108pt で 3pt 溢れ、読点後のアキだけが 6pt → 3pt に縮む（句点後は 6pt のまま）
+  let lines = body_lines(&narrow_project("あいう。えお、かきくけこさしすせそ\n").build());
+  let starts: Vec<Length> = line_runs(&lines[0]).iter().map(|run| return run.dx).collect();
+
+  // え・、・か の左端
+  for expected in [48.0, 72.0, 81.0] {
+    assert!(
+      starts.iter().any(|dx| return (*dx - Length::pt(expected)).to_pt().abs() < 0.01),
+      "{expected}: {starts:?}"
+    );
+  }
+  let last = last_run(&lines[0]);
+  assert_close(last.dx + last.width, Length::pt(105.0), "1 行目の右端");
+}
+
+#[test]
+fn adjustment_is_the_same_across_bold_color_and_link_boundaries() {
+  let plain = body_lines(&narrow_project("あいう。えお、かきくけこさしすせそ\n").build());
+
+  for source in [
+    "あいう。えお\\bold{、か}きくけこさしすせそ\n",
+    "あいう。\\color[color=#cc0000]{えお、か}きくけこさしすせそ\n",
+    "あいう。\\href{https://example.com}{えお、}かきくけこさしすせそ\n",
+  ] {
+    let lines = body_lines(&narrow_project(source).build());
+
+    assert_eq!(lines.len(), plain.len(), "{source}");
+    let (actual, expected) = (run_spans(&lines[0]), run_spans(&plain[0]));
+    assert_eq!(actual.len(), expected.len(), "{source}");
+    for ((dx, width), (plain_dx, plain_width)) in actual.into_iter().zip(expected) {
+      assert_close(dx, plain_dx, source);
+      assert_close(width, plain_width, source);
+    }
+  }
+}
+
+#[test]
+fn link_rect_follows_the_prioritized_adjustment() {
+  let lines = body_lines(&narrow_project("あいう。\\href{https://example.com}{えお、}かきくけこさしすせそ\n").build());
+
+  assert_close(lines[0].links[0].x0, Length::pt(48.0), "リンク矩形の左端（句点後のアキの後ろ）");
+  assert_close(lines[0].links[0].x1, Length::pt(78.0), "リンク矩形の右端（読点の右端）");
+}
+
+#[test]
+fn line_starting_with_an_open_bracket_has_no_leading_aki() {
+  // 1 行目「あいう、えおかきく」は自然幅 108pt を読点後のアキで 3pt 詰めて右端 105pt。「 の前のアキは分割点として
+  // 行から除かれ、1 行目の末尾にも 2 行目の先頭にも残らない
+  let lines = body_lines(&narrow_project("あいう、えおかきく「けこ」\n").build());
+
+  let last = last_run(&lines[0]);
+  assert_close(last.dx + last.width, Length::pt(105.0), "1 行目の右端");
+  assert_eq!(lines[1].boxes[0].dx, Length::ZERO, "2 行目の始め括弧は行頭に接する");
 }

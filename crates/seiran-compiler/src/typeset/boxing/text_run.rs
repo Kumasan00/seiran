@@ -13,7 +13,7 @@ use crate::{
   length::{Length, LengthOverflow},
   publication::Glyph,
   typeset::{
-    boxes::{HBox, HItem, PlacedHBox},
+    boxes::{GlueKind, HBox, HItem, PlacedHBox},
     boxing::{
       self, Glue, Measurer,
       break_opportunities::{self, BreakKind, BreakOpportunity},
@@ -39,6 +39,7 @@ fn space_glue(natural: Length) -> Glue {
     stretch: boxing::fraction_of(natural, SPACE_STRETCH_RATIO),
     shrink: boxing::fraction_of(natural, SPACE_SHRINK_RATIO),
     breakable: true,
+    kind: GlueKind::WordSpace,
   };
 }
 
@@ -304,7 +305,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
       let hbox = punct_box(run, i, normalize, advances[i])?;
-      out.push(if eff_class(i) == yakumono::YakumonoClass::Comma {
+      out.push(if matches!(eff_class(i), yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop) {
         HItem::Comma(hbox)
       } else {
         HItem::Box(hbox)
@@ -466,14 +467,14 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 mod tests {
   use std::ops::Range;
 
-  use super::{Cut, ShapedRun, plan_cut, split_japanese_run};
+  use super::{Cut, ShapedRun, plan_cut, space_glue, split_japanese_run};
   use crate::{
     document::Typeface,
     length::Length,
     project::{FontFace, FontType},
     publication::{FontMetrics, Glyph, GlyphRun},
     typeset::{
-      boxes::{HBox, HBoxContent, HItem},
+      boxes::{GlueKind, HBox, HBoxContent, HItem},
       boxing::{
         Measurer, Shaper,
         break_opportunities::{BreakKind, BreakOpportunity},
@@ -540,6 +541,11 @@ mod tests {
     hyphen: Option<&HBox>,
   ) -> Option<Cut> {
     return plan_cut(run, point, glyph_start, is_japanese, hyphen).expect("テストの寸法は値域内");
+  }
+
+  #[test]
+  fn space_glue_is_a_word_space() {
+    assert_eq!(space_glue(Length::pt(4.0)).kind, GlueKind::WordSpace);
   }
 
   #[test]

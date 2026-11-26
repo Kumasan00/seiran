@@ -8,7 +8,8 @@ use crate::{
   typeset::{
     boxes::{HItem, Line},
     boxing::break_lines::{
-      LineEnd, OpenLink, build_line, glue_metrics, greedy, strip_leading_glue, trailing_comma, trim_trailing_glue,
+      AdjustmentOrder, LineEnd, OpenLink, build_line, glue_metrics, greedy, strip_leading_glue, trailing_comma,
+      trim_trailing_glue,
     },
     observe,
   },
@@ -28,12 +29,17 @@ const INFINITE_BADNESS: f64 = 10_000.0;
 /// Knuth–Plass 方式（段落全体最適）で水平リストを本文幅の両端揃えの行に分割する
 ///
 /// 行末の句読点（[`HItem::Comma`]）は、その幅が `hang_room` 以下で、ぶら下げると行が実現可能になるか
-/// より安くなるときだけ利用幅の外へぶら下げる。
+/// より安くなるときだけ利用幅の外へぶら下げる。確定した行の伸縮は `order` の順位で配る。
 ///
 /// # Errors
 ///
 /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
-pub(super) fn break_lines(items: &[HItem], text_width: Length, hang_room: Length) -> Result<Vec<Line>, LengthOverflow> {
+pub(super) fn break_lines(
+  items: &[HItem],
+  text_width: Length,
+  hang_room: Length,
+  order: AdjustmentOrder,
+) -> Result<Vec<Line>, LengthOverflow> {
   // 強制改行（ForcedBreak）で区切ったサブ段落ごとに最適化する。各サブ段落の最終行は伸縮しない
   let segments = split_on_forced_break(items);
   let segment_count = segments.len();
@@ -48,7 +54,7 @@ pub(super) fn break_lines(items: &[HItem], text_width: Length, hang_room: Length
     if !has_following_break && !is_sole_segment && segment.is_empty() {
       continue;
     }
-    let segment_lines = break_subparagraph(segment, text_width, hang_room, &mut open_links)?;
+    let segment_lines = break_subparagraph(segment, text_width, hang_room, &mut open_links, order)?;
     lines.extend(segment_lines);
   }
   return Ok(lines);
@@ -144,6 +150,7 @@ fn break_subparagraph(
   text_width: Length,
   hang_room: Length,
   open_links: &mut Vec<OpenLink>,
+  order: AdjustmentOrder,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let mut breaks: Vec<Breakpoint> = Vec::new();
   for (i, item) in items.iter().enumerate() {
@@ -256,7 +263,7 @@ fn break_subparagraph(
 
   // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
   if best[node_count - 1].is_none() {
-    return greedy::break_lines(items, text_width, TextAlignment::Justify, open_links);
+    return greedy::break_lines(items, text_width, TextAlignment::Justify, open_links, order);
   }
 
   let mut chain: Vec<usize> = Vec::new();
@@ -284,7 +291,7 @@ fn break_subparagraph(
         _ => LineEnd::Plain,
       }
     };
-    let line = build_line(refs, brk.is_end, text_width, TextAlignment::Justify, open_links, end)?;
+    let line = build_line(refs, brk.is_end, text_width, TextAlignment::Justify, open_links, end, order)?;
     let width = line.width()?;
     // `line_index` はサブ段落内の連番（強制改行ごとに 0 へ戻る）。段落通し番号ではない
     trace!(
@@ -403,6 +410,9 @@ fn evaluate_edge(
 }
 
 /// 利用幅に対する余り幅 `leftover`（負なら溢れ）と行の伸縮能力から、候補行の収まりと demerits を求める
+///
+/// 能力は行全体の合計で見る。配置（`build_line`）は同じ合計を順位ごとに使い切るだけなので、ここで実現可能とした行は
+/// 配置でも利用幅に揃う。
 fn fit_edge(
   leftover: Length,
   stretch: Length,
@@ -482,12 +492,12 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<
 
 #[cfg(test)]
 mod tests {
-  use super::{Breakpoint, Edge, PathCost, break_lines, break_subparagraph, demerits, evaluate_edge};
+  use super::{AdjustmentOrder, Breakpoint, Edge, PathCost, break_lines, break_subparagraph, demerits, evaluate_edge};
   use crate::{
     document::TextAlignment,
     length::Length,
     typeset::{
-      boxes::{HItem, Line},
+      boxes::{GlueKind, HItem, Line},
       boxing::break_lines::{
         greedy,
         test_support::{
@@ -526,7 +536,8 @@ mod tests {
 
   #[test]
   fn empty_items_yield_single_empty_line() {
-    let lines = break_lines(&[], Length::pt(100.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&[], Length::pt(100.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1);
     assert!(lines[0].boxes.is_empty());
@@ -540,6 +551,7 @@ mod tests {
         stretch: pt(1.0),
         shrink: pt(2.0),
         breakable: true,
+        kind: GlueKind::WordSpace,
       };
     };
     let items = vec![
@@ -554,9 +566,11 @@ mod tests {
       box_width(8.0),
     ];
 
-    let greedy = greedy::break_lines(&items, Length::pt(25.0), TextAlignment::Justify, &mut Vec::new())
-      .expect("テストの寸法は値域内");
-    let kp = break_lines(&items, Length::pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let greedy =
+      greedy::break_lines(&items, Length::pt(25.0), TextAlignment::Justify, &mut Vec::new(), AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
+    let kp =
+      break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 3, "greedy: {greedy:?}");
     assert!(right_edge(&greedy[0]) < pt(24.0), "greedy の非最終行は疎（右端 < 25）: {greedy:?}");
@@ -575,7 +589,8 @@ mod tests {
       test_box(),
     ];
 
-    let lines = break_lines(&items, Length::pt(27.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(27.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     // glue は自然幅 5 のまま
     assert_eq!(lines.len(), 2, "{lines:?}");
@@ -586,7 +601,8 @@ mod tests {
   fn empty_segment_before_forced_break_yields_empty_line() {
     let items = vec![HItem::ForcedBreak, test_box()];
 
-    let lines = break_lines(&items, Length::pt(100.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(100.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(lines[0].boxes.is_empty(), "1 行目は空: {lines:?}");
@@ -597,7 +613,8 @@ mod tests {
   fn trailing_forced_break_does_not_add_empty_line() {
     let items = vec![test_box(), HItem::ForcedBreak];
 
-    let lines = break_lines(&items, Length::pt(100.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(100.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1);
@@ -611,7 +628,8 @@ mod tests {
       flush_right_box(8.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(14.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(14.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "1 行目は本文 box のみ: {lines:?}");
@@ -623,7 +641,8 @@ mod tests {
   fn flush_right_box_sits_on_last_line_when_it_fits() {
     let items = vec![test_box(), stretch_glue(), flush_right_box(8.0)];
 
-    let lines = break_lines(&items, Length::pt(50.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(50.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "本文 box と QED: {lines:?}");
@@ -643,7 +662,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = break_lines(&items, pt(30.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_link_spans(&lines, &[&[(0.0, 10.0)], &[(0.0, 40.0)], &[(0.0, 10.0)]]);
   }
@@ -661,7 +680,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = break_lines(&items, pt(30.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_link_spans(&lines, &[&[], &[(0.0, 10.0)], &[(0.0, 10.0)]]);
   }
@@ -677,7 +696,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = break_lines(&items, pt(30.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_link_spans(&lines, &[&[(0.0, 40.0)], &[(0.0, 40.0)]]);
   }
@@ -692,7 +711,7 @@ mod tests {
       HItem::LinkEnd,
     ];
 
-    let lines = break_lines(&items, pt(30.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_link_spans(&lines, &[&[(0.0, 10.0)], &[(0.0, 10.0)]]);
   }
@@ -709,7 +728,8 @@ mod tests {
       test_box(),
     ];
 
-    let lines = break_lines(&items, Length::pt(27.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(27.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].links.len(), 1, "{:?}", lines[0].links);
@@ -732,7 +752,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "行末にハイフンが付く: {lines:?}");
@@ -759,7 +780,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(40.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(40.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -792,7 +814,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 3, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(7.0), pt(3.0)], "{lines:?}");
@@ -818,7 +841,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(34.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(34.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -837,9 +861,11 @@ mod tests {
       box_width(40.0),
     ];
 
-    let kp = break_lines(&items, Length::pt(30.0), Length::ZERO).expect("テストの寸法は値域内");
-    let greedy = greedy::break_lines(&items, Length::pt(30.0), TextAlignment::Justify, &mut Vec::new())
-      .expect("テストの寸法は値域内");
+    let kp =
+      break_lines(&items, Length::pt(30.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
+    let greedy =
+      greedy::break_lines(&items, Length::pt(30.0), TextAlignment::Justify, &mut Vec::new(), AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
 
     assert_eq!(kp.len(), greedy.len(), "kp: {kp:?}, greedy: {greedy:?}");
     for (kp_line, greedy_line) in kp.iter().zip(&greedy) {
@@ -862,8 +888,8 @@ mod tests {
     ];
 
     let mut open_links = Vec::new();
-    let lines =
-      break_subparagraph(&items, Length::pt(27.0), Length::ZERO, &mut open_links).expect("テストの寸法は値域内");
+    let lines = break_subparagraph(&items, Length::pt(27.0), Length::ZERO, &mut open_links, AdjustmentOrder::Uniform)
+      .expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert!(close(right_edge(&lines[0]), 27.0), "非最終行は右端に揃う: {lines:?}");
@@ -913,6 +939,7 @@ mod tests {
         stretch: pt(1.0),
         shrink: pt(2.0),
         breakable: true,
+        kind: GlueKind::WordSpace,
       };
     };
     let items = vec![
@@ -929,9 +956,10 @@ mod tests {
       box_width(8.0),
     ];
 
-    let kp = break_lines(&items, pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let kp = break_lines(&items, pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
     let greedy =
-      greedy::break_lines(&items, pt(25.0), TextAlignment::Justify, &mut Vec::new()).expect("テストの寸法は値域内");
+      greedy::break_lines(&items, pt(25.0), TextAlignment::Justify, &mut Vec::new(), AdjustmentOrder::Uniform)
+        .expect("テストの寸法は値域内");
 
     assert_eq!(greedy.len(), 4, "greedy: {greedy:?}");
     assert_eq!(kp.len(), 3, "kp: {kp:?}");
@@ -954,6 +982,7 @@ mod tests {
         stretch: pt(1.0),
         shrink: pt(2.0),
         breakable: true,
+        kind: GlueKind::WordSpace,
       };
     };
     let items = vec![
@@ -974,7 +1003,7 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines = break_lines(&items, pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 4, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(10.0), pt(12.0)], "{lines:?}");
@@ -992,7 +1021,7 @@ mod tests {
     // 幅 25。語 b18|b18 は 1 行に収まらず、語中で割った 1 行目 b18 + ハイフン 3 は伸縮点が無い
     let items = vec![box_width(18.0), discretionary(3.0), box_width(18.0)];
 
-    let lines = break_lines(&items, pt(25.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(25.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(box_widths(&lines[0]), vec![pt(18.0), pt(3.0)], "{lines:?}");
@@ -1056,7 +1085,8 @@ mod tests {
       box_width(20.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(36.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(36.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "{lines:?}");
@@ -1078,7 +1108,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(40.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(40.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 2, "2 つ目の空白で折る: {lines:?}");
@@ -1101,7 +1132,8 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(32.0), Length::ZERO).expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(32.0), Length::ZERO, AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 3, "本文 box 3 つ（MB はボックスを生成しない）: {lines:?}");
@@ -1124,7 +1156,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(30.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(
@@ -1138,7 +1170,7 @@ mod tests {
 
   #[test]
   fn does_not_hang_when_the_room_is_narrower_than_the_comma() {
-    let lines = break_lines(&hang_items(), pt(30.0), pt(4.99)).expect("テストの寸法は値域内");
+    let lines = break_lines(&hang_items(), pt(30.0), pt(4.99), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
     assert!(lines[0].width().expect("値域内") <= pt(30.0), "{lines:?}");
@@ -1146,7 +1178,7 @@ mod tests {
 
   #[test]
   fn does_not_hang_a_comma_that_fits_at_natural_width() {
-    let lines = break_lines(&hang_items(), pt(35.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&hang_items(), pt(35.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
   }
@@ -1154,7 +1186,7 @@ mod tests {
   #[test]
   fn hanging_line_stretches_its_body_to_the_full_width() {
     // 句読点を除いた本文 30 を幅 30.5 へ伸ばす（和文字間 glue 2 本の伸長 1 のうち 0.5 を使う）
-    let lines = break_lines(&hang_items(), pt(30.5), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&hang_items(), pt(30.5), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines[0].boxes.last().expect("1 行目は箱を持つ").dx, pt(30.5), "{lines:?}");
     assert_eq!(lines[0].hanging, pt(5.0), "{lines:?}");
@@ -1169,6 +1201,7 @@ mod tests {
         stretch: pt(1.0),
         shrink: pt(3.0),
         breakable: true,
+        kind: GlueKind::WordSpace,
       };
     };
     let items = vec![
@@ -1182,7 +1215,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(38.5), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(38.5), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines[0].boxes.len(), 4, "1 行目は句読点までの 4 箱: {lines:?}");
     assert_eq!(lines[0].hanging, Length::ZERO, "{lines:?}");
@@ -1200,7 +1233,7 @@ mod tests {
       comma(5.0),
     ];
 
-    let lines = break_lines(&items, pt(32.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(32.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 1, "{lines:?}");
     assert_eq!(lines[0].boxes.last().expect("行は箱を持つ").dx, pt(30.0), "伸長しない: {lines:?}");
@@ -1220,7 +1253,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(32.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(32.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines.len(), 2, "{lines:?}");
     assert_eq!(lines[0].boxes.last().expect("1 行目は箱を持つ").dx, pt(30.0), "{lines:?}");
@@ -1239,7 +1272,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(31.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(31.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
   }
@@ -1256,7 +1289,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(25.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(25.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     let dxs: Vec<Length> = lines[0].boxes.iter().map(|placed| return placed.dx).collect();
     assert_eq!(dxs, vec![pt(0.0), pt(10.0), pt(20.0), pt(25.0)], "{lines:?}");
@@ -1276,7 +1309,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(24.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(24.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
     assert_eq!(lines[0].boxes.len(), 1, "{lines:?}");
@@ -1295,7 +1328,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(30.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert!(
       lines
@@ -1320,7 +1353,7 @@ mod tests {
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(30.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(30.0), pt(5.0), AdjustmentOrder::Uniform).expect("テストの寸法は値域内");
 
     assert_eq!(lines[0].hanging, pt(5.0), "{lines:?}");
     assert_eq!((lines[0].links[0].x0, lines[0].links[0].x1), (pt(0.0), pt(35.0)), "{lines:?}");

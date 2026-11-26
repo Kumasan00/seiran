@@ -278,7 +278,7 @@ mod tests {
   use crate::{
     length::Length,
     typeset::{
-      boxes::{HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
+      boxes::{GlueKind, HBox, HBoxContent, HItem, IndexTerm, LinkTarget},
       boxing::{script::ScriptCategory, yakumono},
     },
   };
@@ -415,6 +415,7 @@ mod tests {
       stretch: Length::ZERO,
       shrink: Length::ZERO,
       breakable: true,
+      kind: GlueKind::WordSpace,
     });
     let mut edges = HList::default();
 
