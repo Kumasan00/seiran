@@ -2718,6 +2718,86 @@ fn space_after_punctuation_absorbs_the_aki() {
 }
 
 #[test]
+fn ideographic_space_after_a_question_mark_is_one_em() {
+  assert_eq!(gap_before("本当？　次\n", "次"), Length::pt(12.0));
+  assert_eq!(gap_before("本当？！　次\n", "次"), Length::pt(12.0));
+}
+
+#[test]
+fn question_mark_inside_a_sentence_gets_no_aki() {
+  assert_eq!(gap_before("本当？と聞く\n", "と"), Length::ZERO);
+}
+
+#[test]
+fn ideographic_space_absorbs_neighbouring_punctuation_aki() {
+  assert_eq!(gap_before("「本当？」　次\n", "次"), Length::pt(12.0), "」の後アキと重ねない");
+  assert_eq!(gap_before("本当？　「次」\n", "「"), Length::pt(12.0), "「の前アキと重ねない");
+  assert_eq!(gap_before("あ、　い\n", "い"), Length::pt(12.0), "読点の後アキと重ねない");
+}
+
+#[test]
+fn ideographic_space_across_decoration_boundaries_keeps_one_em() {
+  assert_eq!(gap_before("\\bold{本当？}　次\n", "次"), Length::pt(12.0));
+  assert_eq!(gap_before("本当？\\bold{　次}\n", "次"), Length::pt(12.0));
+}
+
+#[test]
+fn ideographic_space_vanishes_at_line_edges() {
+  let lines = body_lines(&TestProject::builder().source_text(&format!("{}\n", "あいう？　".repeat(120))).build());
+  let full = body_line_edges(&format!("{}\n", "値".repeat(400)))[0].1;
+
+  assert!(lines.len() >= 3, "複数行に折り返すはず");
+  for line in &lines[1..] {
+    let first = &line_runs(line)[0];
+    assert!(!first.run.text.starts_with('　'), "行頭に全角空白を持ち越さない: {:?}", first.run.text);
+    assert_eq!(first.dx, Length::ZERO);
+  }
+  for line in &lines[..lines.len() - 1] {
+    let last = last_run(line);
+    assert!(!last.run.text.ends_with('　'), "行末に全角空白の字を残さない: {:?}", last.run.text);
+    assert!(
+      (last.dx + last.width - full).abs() < Length::pt(0.01),
+      "行末の字の右端が版面にそろう: {} vs {full}",
+      last.dx + last.width
+    );
+  }
+}
+
+#[test]
+fn ideographic_space_at_paragraph_and_forced_line_start_vanishes() {
+  let paragraph = body_lines(&TestProject::builder().source_text("　あいう\n").build());
+  let forced = body_lines(&TestProject::builder().source_text("あいう\\\\　えお\n").build());
+
+  let first = &line_runs(&paragraph[0])[0];
+  assert!(first.run.text.starts_with('あ'), "{:?}", first.run.text);
+  assert_eq!(first.dx, Length::ZERO);
+  let first = &line_runs(&forced[1])[0];
+  assert!(first.run.text.starts_with('え'), "{:?}", first.run.text);
+  assert_eq!(first.dx, Length::ZERO);
+}
+
+#[test]
+fn trailing_ideographic_space_leaves_no_width() {
+  assert_eq!(body_line_edges("あいう　\n")[0].1, body_line_edges("あいう\n")[0].1);
+  assert_eq!(body_line_edges("あいう　\\\\えお\n")[0].1, body_line_edges("あいう\\\\えお\n")[0].1);
+}
+
+#[test]
+fn ideographic_space_stays_a_glyph_without_punctuation_spacing() {
+  let gaps = line_gaps("本当？　次\n", false);
+
+  assert!(gaps.contains('　'), "{gaps}");
+  assert!(all_gaps_zero(&gaps), "{gaps}");
+}
+
+#[test]
+fn ideographic_space_with_a_combining_mark_stays_a_glyph() {
+  let gaps = line_gaps("本当？　\u{3099}次\n", true);
+
+  assert!(gaps.contains("　\u{3099}"), "{gaps}");
+}
+
+#[test]
 fn index_mark_between_punctuation_and_math_keeps_the_aki() {
   assert_eq!(line_gaps("$x$、\\index{k}$y$\n", true), line_gaps("$x$、$y$\n", true));
 }

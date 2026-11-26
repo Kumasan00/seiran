@@ -103,7 +103,7 @@ pub(crate) enum GlueKind {
   InterCharacter,
   /// 中点類の前後のアキ
   MiddleDotAki,
-  /// 始め括弧前・終わり括弧後・句読点後のアキ（句点後は収縮能力 0）
+  /// 始め括弧前・終わり括弧後・句読点後のアキ（句点後は収縮能力 0）と全角空白（伸縮能力 0）
   PunctuationAki,
 }
 

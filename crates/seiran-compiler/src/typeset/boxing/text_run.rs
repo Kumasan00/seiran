@@ -43,6 +43,20 @@ fn space_glue(natural: Length) -> Glue {
   };
 }
 
+/// 全角空白（U+3000）の glue を作る（自然幅はその run の 1em。伸縮せず、行頭・行末では落ちる）
+///
+/// 文末の全角アキ（JLReq §3.1.6）は著者が書く全角空白で表すので、区切り約物の後ろに自動のアキは足さない。
+/// 追込み・追出しの対象ではない（JLReq §3.8.3 / §3.8.4）ので伸縮能力は 0。
+fn ideographic_space_glue(em: Length) -> Glue {
+  return Glue {
+    natural: em,
+    stretch: Length::ZERO,
+    shrink: Length::ZERO,
+    breakable: true,
+    kind: GlueKind::PunctuationAki,
+  };
+}
+
 impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   ///
@@ -270,6 +284,10 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     let range = &glyphs[g].range;
     return is_lone(g) && range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
   };
+  // グリフ g が単独の全角空白か（結合文字・異体字セレクタの付いたものは字のまま）
+  let is_ideographic_space = |g: usize| -> bool { return is_lone(g) && &text[glyphs[g].range.clone()] == "\u{3000}" };
+  // グリフ g が空白（ASCII スペース・全角空白）か。空白は glue になり、隣の約物アキを打ち消す
+  let is_blank = |g: usize| -> bool { return is_space(g) || is_ideographic_space(g) };
   let byte_at = |g: usize| -> usize { return glyphs.get(g).map_or(text.len(), |glyph| return glyph.range.start) };
 
   let mut normal_start = 0usize;
@@ -280,9 +298,24 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
       normal_start = i + 1;
       continue;
     }
+    if is_ideographic_space(i) {
+      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
+      // 次の字の前で分割できないとき（全角空白の直後の終わり括弧・句読点など）は分割点にしない。run の末尾は ASCII
+      // スペースと同じく分割できる
+      let breakable = i + 1 == glyphs.len() || break_bytes.contains(&byte_at(i + 1));
+      out.push(
+        Glue {
+          breakable,
+          ..ideographic_space_glue(em)
+        }
+        .into_item(),
+      );
+      normal_start = i + 1;
+      continue;
+    }
 
     // クラスタの途中（直前のグリフと同じクラスタ）には境界を置かない
-    if i > 0 && !is_space(i - 1) && glyphs[i - 1].range != glyphs[i].range {
+    if i > 0 && !is_blank(i - 1) && glyphs[i - 1].range != glyphs[i].range {
       let breakable = break_bytes.contains(&byte_at(i));
       if let Some(glue) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
         push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
@@ -315,7 +348,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
   }
   push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out)?;
   let edge_at = |g: usize| -> Edge {
-    if is_space(g) {
+    if is_blank(g) {
       return Edge::Absorb;
     }
     return Edge::glyph(char_of(g), eff_class(g), em);
@@ -467,7 +500,7 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 mod tests {
   use std::ops::Range;
 
-  use super::{Cut, ShapedRun, plan_cut, space_glue, split_japanese_run};
+  use super::{Cut, ShapedRun, ideographic_space_glue, plan_cut, space_glue, split_japanese_run};
   use crate::{
     document::Typeface,
     length::Length,
@@ -476,7 +509,7 @@ mod tests {
     typeset::{
       boxes::{GlueKind, HBox, HBoxContent, HItem},
       boxing::{
-        Measurer, Shaper,
+        Glue, Measurer, Shaper,
         break_opportunities::{BreakKind, BreakOpportunity},
         hlist::{Edge, HList},
         script::ScriptCategory,
@@ -546,6 +579,22 @@ mod tests {
   #[test]
   fn space_glue_is_a_word_space() {
     assert_eq!(space_glue(Length::pt(4.0)).kind, GlueKind::WordSpace);
+  }
+
+  #[test]
+  fn ideographic_space_glue_is_a_fixed_full_width_break() {
+    let glue = ideographic_space_glue(Length::pt(12.0));
+
+    assert_eq!(
+      glue,
+      Glue {
+        natural: Length::pt(12.0),
+        stretch: Length::ZERO,
+        shrink: Length::ZERO,
+        breakable: true,
+        kind: GlueKind::PunctuationAki,
+      }
+    );
   }
 
   #[test]
