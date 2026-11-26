@@ -1229,18 +1229,17 @@ mod tests {
 
   #[test]
   fn does_not_hang_a_comma_before_a_hyphenation_point() {
+    // 分割点は語中点だけ。句読点を除けば本文 30 がハイフンぶん狭めた幅 30 にちょうど収まるので、ぶら下げを許せば実現可能になる
     let items = vec![
       box_width(10.0),
-      cjk_glue(),
       box_width(10.0),
-      cjk_glue(),
       box_width(10.0),
       comma(5.0),
       discretionary(1.0),
       box_width(10.0),
     ];
 
-    let lines = break_lines(&items, pt(30.0), pt(5.0)).expect("テストの寸法は値域内");
+    let lines = break_lines(&items, pt(31.0), pt(5.0)).expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{lines:?}");
   }

@@ -96,8 +96,9 @@ pub(super) fn measure_items_width(items: &[HItem]) -> Result<Length, LengthOverf
 /// アイテム列を、x = 0 から自然幅で並べた 1 行にする
 ///
 /// 呼び出し側は幅を [`measure_items_width`]（全アイテムの自然幅の和）から決めるので、行頭・行末の glue も
-/// 落とさず `Kern` / `Glue` / `MathBreak` の自然幅ぶん進める。高さ・深さは描く箱（`HItem::Box` と和文句読点の `HItem::Comma`）の最大で、
-/// `FlushRight` は描かない。対応の無い `LinkEnd` は読み飛ばし、閉じない `LinkStart` は矩形を作らない。
+/// 落とさず `Kern` / `Glue` / `MathBreak` の自然幅ぶん進める。高さ・深さは描く箱（`HItem::Box` と和文句読点の
+/// `HItem::Comma`）の最大で、`FlushRight` は描かない。対応の無い `LinkEnd` は読み飛ばし、閉じない `LinkStart` は
+/// 矩形を作らない。
 ///
 /// # Errors
 ///
