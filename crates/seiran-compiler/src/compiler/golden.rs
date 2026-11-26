@@ -39,6 +39,13 @@
 //!   [`link_rect_follows_the_prioritized_adjustment`] / [`line_starting_with_an_open_bracket_has_no_leading_aki`]
 //!   （共通ヘルパ [`narrow_project`] / [`body_lines`] / [`line_runs`] 経由。句点後と読点後のアキ・境界をまたぐ座標・リンク矩形・
 //!   行頭括弧を固定する）
+//! - **`Line` へ直接アサート（全角空白のアキ）**: `ideographic_space_*` /
+//!   [`question_mark_inside_a_sentence_gets_no_aki`]（`gap_before` / `line_gaps` / [`body_lines`] 経由。区切り約物の後ろの
+//!   1em・隣の約物アキの吸収・装飾境界・行端と段落端で消えること・アキ調整を切った文書と結合文字付きでは字のままを固定する）
+//! - **`Line` へ直接アサート（行頭の始め括弧の前アキ）**: [`open_bracket_at_line_start_is_flush_by_default`] /
+//!   [`paragraph_start_half_adds_half_em_after_the_indent`] / [`line_start_key_covers_wrapped_and_forced_line_starts`] ほか
+//!   （共通ヘルパ [`bracket_project`] / [`first_glyph_dx`] 経由。段落先頭・折返し後・明示改行後の前アキ・字下げとの合成・
+//!   文字サイズ・両端揃えと左揃え・リンク矩形・見出しへ効かないことを固定する）
 //! - **`Page` / `PlacedBlock` へ直接アサート**（ダンプ関数は通らない）:
 //!   [`keep_with_next_prevents_heading_orphan_end_to_end`]・
 //!   [`index_group_heading_never_ends_a_column`]・
@@ -224,9 +231,9 @@
 //!
 //! # カバレッジの注意
 //!
-//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げは既定 config では
-//! 無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
-//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation`）。これらの経路を触ったら、該当 fixture が
+//! 前付け（タイトルページ / 目次）・running content（ヘッダ / フッタ）・段組み・句読点のぶら下げ・行頭の始め括弧の二分は
+//! 既定 config では無効で、fixture 名ごとの差分（`test_support` の `golden_fixture`）が有効化する
+//! （例: `toc` / `title_page` / `running_heads` / `footnote_columns` / `hanging_punctuation` / `open_bracket_half`）。これらの経路を触ったら、該当 fixture が
 //! その機能を実際に通していることを確認する。
 //!
 //! # 新機能に golden テストを足す
@@ -2715,6 +2722,131 @@ fn consecutive_punctuation_across_runs_collapses_like_inside_a_run() {
 #[test]
 fn space_after_punctuation_absorbs_the_aki() {
   assert_eq!(gap_before("値、 abc\n", "abc"), gap_before("値 abc\n", "abc"), "空白の幅だけで二分アキを足さない");
+}
+
+#[test]
+fn ideographic_space_after_a_question_mark_is_one_em() {
+  assert_eq!(gap_before("本当？　次\n", "次"), Length::pt(12.0));
+  assert_eq!(gap_before("本当？！　次\n", "次"), Length::pt(12.0));
+}
+
+#[test]
+fn question_mark_inside_a_sentence_gets_no_aki() {
+  assert_eq!(gap_before("本当？と聞く\n", "と"), Length::ZERO);
+}
+
+#[test]
+fn ideographic_space_absorbs_neighbouring_punctuation_aki() {
+  assert_eq!(gap_before("「本当？」　次\n", "次"), Length::pt(12.0), "」の後アキと重ねない");
+  assert_eq!(gap_before("本当？　「次」\n", "「"), Length::pt(12.0), "「の前アキと重ねない");
+  assert_eq!(gap_before("あ、　い\n", "い"), Length::pt(12.0), "読点の後アキと重ねない");
+}
+
+#[test]
+fn ideographic_space_across_decoration_boundaries_keeps_one_em() {
+  assert_eq!(gap_before("\\bold{本当？}　次\n", "次"), Length::pt(12.0));
+  assert_eq!(gap_before("本当？\\bold{　次}\n", "次"), Length::pt(12.0));
+}
+
+#[test]
+fn ideographic_space_vanishes_at_line_edges() {
+  let lines = body_lines(&TestProject::builder().source_text(&format!("{}\n", "あいう？　".repeat(120))).build());
+  let full = body_line_edges(&format!("{}\n", "値".repeat(400)))[0].1;
+
+  assert!(lines.len() >= 3, "複数行に折り返すはず");
+  for line in &lines[1..] {
+    let first = &line_runs(line)[0];
+    assert!(!first.run.text.starts_with('　'), "行頭に全角空白を持ち越さない: {:?}", first.run.text);
+    assert_eq!(first.dx, Length::ZERO);
+  }
+  for line in &lines[..lines.len() - 1] {
+    let last = last_run(line);
+    assert!(!last.run.text.ends_with('　'), "行末に全角空白の字を残さない: {:?}", last.run.text);
+    assert!(
+      (last.dx + last.width - full).abs() < Length::pt(0.01),
+      "行末の字の右端が版面にそろう: {} vs {full}",
+      last.dx + last.width
+    );
+  }
+}
+
+#[test]
+fn ideographic_space_at_paragraph_and_forced_line_start_vanishes() {
+  let paragraph = body_lines(&TestProject::builder().source_text("　あいう\n").build());
+  let forced = body_lines(&TestProject::builder().source_text("あいう\\\\　えお\n").build());
+
+  let first = &line_runs(&paragraph[0])[0];
+  assert!(first.run.text.starts_with('あ'), "{:?}", first.run.text);
+  assert_eq!(first.dx, Length::ZERO);
+  let first = &line_runs(&forced[1])[0];
+  assert!(first.run.text.starts_with('え'), "{:?}", first.run.text);
+  assert_eq!(first.dx, Length::ZERO);
+}
+
+#[test]
+fn ideographic_space_after_the_first_line_indent_vanishes() {
+  for alignment in ["justify", "left"] {
+    let project = TestProject::builder()
+      .source_text("　あいう\n")
+      .style_toml(move |table| {
+        test_support::set(table, "text", "first_line_indent", "12pt");
+        test_support::set(table, "text", "alignment", alignment);
+      })
+      .build();
+
+    let first = &line_runs(&body_lines(&project)[0])[0];
+    assert!(first.run.text.starts_with('あ'), "{alignment}: {:?}", first.run.text);
+    assert_close(first.dx, Length::pt(12.0), alignment);
+  }
+}
+
+#[test]
+fn trailing_ideographic_space_leaves_no_width() {
+  assert_eq!(body_line_edges("あいう　\n")[0].1, body_line_edges("あいう\n")[0].1);
+  assert_eq!(body_line_edges("あいう　\\\\えお\n")[0].1, body_line_edges("あいう\\\\えお\n")[0].1);
+}
+
+/// 本文幅 108pt の版面で `source` を組んだ各行のグリフ列の文字列
+fn wrapped_line_texts(source: &str) -> Vec<String> {
+  return body_lines(&bracket_project(source, "none", "none").build())
+    .iter()
+    .map(|line| return line_runs(line).iter().map(|line_run| return line_run.run.text.as_str()).collect())
+    .collect();
+}
+
+#[test]
+fn space_before_a_styled_comma_does_not_send_the_comma_to_the_line_start() {
+  for space in [" ", "　"] {
+    let across = wrapped_line_texts(&format!("あいうえおかきくけ{space}\\bold{{、}}こ\n"));
+    let inside = wrapped_line_texts(&format!("あいうえおかきくけ{space}、こ\n"));
+
+    assert!(across.iter().all(|text| return !text.starts_with('、')), "{space:?}: {across:?}");
+    assert_eq!(across, inside, "{space:?}: run の中と同じ分け方");
+  }
+}
+
+#[test]
+fn space_before_a_styled_letter_still_breaks() {
+  for space in [" ", "　"] {
+    let lines = wrapped_line_texts(&format!("あいうえおかきくけ{space}\\bold{{こ}}さ\n"));
+
+    assert_eq!(lines[1], "こさ", "{space:?}: {lines:?}");
+  }
+}
+
+#[test]
+fn ideographic_space_stays_a_glyph_without_punctuation_spacing() {
+  let gaps = line_gaps("本当？　次\n", false);
+
+  assert!(gaps.contains('　'), "{gaps}");
+  assert!(all_gaps_zero(&gaps), "{gaps}");
+}
+
+#[test]
+fn ideographic_space_with_a_combining_mark_stays_a_glyph() {
+  let gaps = line_gaps("本当？　\u{3099}次\n", true);
+
+  assert!(gaps.contains("　\u{3099}"), "{gaps}");
 }
 
 #[test]
@@ -6492,4 +6624,133 @@ fn line_starting_with_an_open_bracket_has_no_leading_aki() {
   let last = last_run(&lines[0]);
   assert_close(last.dx + last.width, Length::pt(105.0), "1 行目の右端");
   assert_eq!(lines[1].boxes[0].dx, Length::ZERO, "2 行目の始め括弧は行頭に接する");
+}
+
+/// 本文幅 108pt（12pt の仮名 9 字）・左右余白 20pt で、行頭の始め括弧の 2 キーを `paragraph_start` / `line_start` にした
+/// 本文 `source` の組版
+fn bracket_project(source: &str, paragraph_start: &'static str, line_start: &'static str) -> TestProjectBuilder {
+  return TestProject::builder()
+    .source_text(source)
+    .config_toml(|table| test_support::set(table, "pdf", "width", "148pt"))
+    .style_toml(move |table| {
+      test_support::set(table, "page", "margin_left", "20pt");
+      test_support::set(table, "page", "margin_right", "20pt");
+      test_support::set(table, "text", "open_bracket_paragraph_start", paragraph_start);
+      test_support::set(table, "text", "open_bracket_line_start", line_start);
+    });
+}
+
+/// 行の最初のグリフ列の水平位置（行頭の箱が字下げのカーンでもグリフで比べる）
+fn first_glyph_dx(line: &Line) -> Length { return line_runs(line)[0].dx; }
+
+#[test]
+fn open_bracket_at_line_start_is_flush_by_default() {
+  let lines = body_lines(&bracket_project("「あい」\n", "none", "none").build());
+  let wrapped = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "none", "none").build());
+
+  assert_eq!(first_glyph_dx(&lines[0]), Length::ZERO);
+  assert_eq!(first_glyph_dx(&wrapped[1]), Length::ZERO);
+}
+
+#[test]
+fn paragraph_start_half_adds_half_em_after_the_indent() {
+  for (indent, expected) in [("0pt", 6.0), ("12pt", 18.0)] {
+    let project = bracket_project("「あい」\n", "half", "none")
+      .style_toml(move |table| test_support::set(table, "text", "first_line_indent", indent))
+      .build();
+
+    assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(expected), indent);
+  }
+  let noindent = bracket_project("\\noindent「あい」\n", "half", "none")
+    .style_toml(|table| test_support::set(table, "text", "first_line_indent", "12pt"))
+    .build();
+  assert_close(first_glyph_dx(&body_lines(&noindent)[0]), Length::pt(6.0), "noindent");
+}
+
+#[test]
+fn paragraph_start_half_does_not_move_lines_that_start_with_a_letter() {
+  let project = bracket_project("あいう\n", "half", "half")
+    .style_toml(|table| test_support::set(table, "text", "first_line_indent", "12pt"))
+    .build();
+
+  assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(12.0), "通常文字の行頭は字下げだけ");
+}
+
+#[test]
+fn line_start_key_covers_wrapped_and_forced_line_starts() {
+  let wrapped = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "none", "half").build());
+  let forced = body_lines(&bracket_project("あいう\\\\「えお」\n", "none", "half").build());
+  let para_only = body_lines(&bracket_project("あいうえおかきくけ「こさ」\n", "half", "none").build());
+
+  assert_close(first_glyph_dx(&wrapped[1]), Length::pt(6.0), "折返し後");
+  assert_close(first_glyph_dx(&forced[1]), Length::pt(6.0), "明示改行後");
+  assert_close(first_glyph_dx(&para_only[1]), Length::ZERO, "段落先頭のキーは折返しに効かない");
+}
+
+#[test]
+fn line_start_lead_uses_the_bracket_font_size() {
+  let project = bracket_project("「あい」\n", "half", "half")
+    .style_toml(|table| test_support::set(table, "text", "font_size", "10pt"))
+    .build();
+
+  assert_close(first_glyph_dx(&body_lines(&project)[0]), Length::pt(5.0), "10pt の二分");
+}
+
+#[test]
+fn justified_lines_with_a_lead_still_fill_the_width() {
+  // 1 行目は 9 字で埋まり、2 行目は前アキ 6 + 「 6 + 8 字 = 108pt で埋まる（3 行目は 8 字 + 」の最終行）
+  let lines =
+    body_lines(&bracket_project("あいうえおかきくけ「こさしすせそたちつてとなにぬねの」\n", "none", "half").build());
+
+  assert!(lines.len() >= 3, "複数行に折り返すはず");
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "2 行目の行頭の始め括弧");
+  for line in &lines[..lines.len() - 1] {
+    let last = last_run(line);
+    assert_close(last.dx + last.width, Length::pt(108.0), "選択と配置が一致して右端がそろう");
+  }
+}
+
+#[test]
+fn bracket_after_a_wrapped_ideographic_space_gets_only_the_line_start_lead() {
+  let lines = body_lines(&bracket_project("あいうえおかきくけ　「こさ」\n", "none", "half").build());
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "全角空白は消え、二分だけ残る");
+}
+
+#[test]
+fn left_aligned_wrap_applies_the_line_start_lead() {
+  let project = bracket_project("あいうえおかきくけ「こさ」\n", "none", "half")
+    .style_toml(|table| test_support::set(table, "text", "alignment", "left"))
+    .build();
+  let lines = body_lines(&project);
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "貪欲法");
+  assert!(lines.iter().all(|line| return line.width().expect("値域内") <= Length::pt(108.0)));
+}
+
+#[test]
+fn line_start_bracket_inside_a_link_keeps_the_lead_and_the_rect() {
+  let lines =
+    body_lines(&bracket_project("あいうえおかきくけ\\href{https://example.com}{「こさ」}\n", "none", "half").build());
+
+  assert_close(first_glyph_dx(&lines[1]), Length::pt(6.0), "リンクの中の行頭の始め括弧");
+  assert_close(lines[1].links[0].x0, Length::pt(6.0), "リンク矩形は括弧の左端から始まる");
+}
+
+#[test]
+fn heading_brackets_ignore_the_line_start_keys() {
+  let first_line = |key: &'static str| {
+    let laid_out = bracket_project("\\section{「題」}\n", key, key).build().laid_out();
+    let line = laid_out.pages[0]
+      .blocks
+      .iter()
+      .find_map(|block| match block {
+        PlacedBlock::Line { line, .. } => return Some(line.clone()),
+        _ => return None,
+      })
+      .expect("見出しの行があるはず");
+    return line_runs(&line).iter().find(|run| return run.run.text.contains('「')).map(|run| return run.dx);
+  };
+
+  assert_eq!(first_line("half"), first_line("none"));
 }

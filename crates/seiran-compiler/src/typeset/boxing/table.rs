@@ -26,6 +26,7 @@ use std::ops::Range;
 use crate::{
   document::{ColumnAlign, ColumnWidth, NodeId, RowSeparator, TextAlignment},
   length::{Length, LengthOverflow},
+  style::OpenBracketAki,
   typeset::{
     boxes::{HItem, Line, PlacedHBox, PlacedLink, PlacedTableRow, TableBoundary, TableBox, TableRowFragment},
     boxing::{
@@ -596,6 +597,8 @@ fn layout_row_cells(
         text_alignment(align),
         Length::ZERO,
         AdjustmentOrder::Uniform,
+        OpenBracketAki::None,
+        OpenBracketAki::None,
       )?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);

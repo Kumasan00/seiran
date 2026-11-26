@@ -43,6 +43,20 @@ fn space_glue(natural: Length) -> Glue {
   };
 }
 
+/// 全角空白（U+3000）の glue を作る（自然幅はその run の 1em。伸縮せず、行頭・行末では落ちる）
+///
+/// 文末の全角アキ（JLReq §3.1.6）は著者が書く全角空白で表すので、区切り約物の後ろに自動のアキは足さない。
+/// 追込み・追出しの対象ではない（JLReq §3.8.3 / §3.8.4）ので伸縮能力は 0。
+fn ideographic_space_glue(em: Length) -> Glue {
+  return Glue {
+    natural: em,
+    stretch: Length::ZERO,
+    shrink: Length::ZERO,
+    breakable: true,
+    kind: GlueKind::PunctuationAki,
+  };
+}
+
 impl Measurer<'_> {
   /// テキストをシェーピングし、break 注入済みの水平リストへ変換して `out` に追加する
   ///
@@ -176,10 +190,10 @@ impl Measurer<'_> {
       seg_byte_start = cut.resume_byte;
     }
     push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items)?;
-    // この経路は約物の箱を詰めないので、端は字か、空白の glue ならアキを打ち消す側
+    // この経路は約物の箱を詰めないので、端は字か、空白（この経路の glue は ASCII スペースだけ）
     let edge_of = |item: Option<&HItem>, ch: char| -> Edge {
       if matches!(item, Some(HItem::Glue { .. })) {
-        return Edge::Absorb;
+        return Edge::Space { ch: ' ' };
       }
       return letter(ch);
     };
@@ -204,7 +218,7 @@ pub(super) fn place_prose(
 ) -> Result<(), LengthOverflow> {
   for item in list.into_items() {
     match item {
-      HItem::Box(hbox) | HItem::Comma(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. } => {
         let width = hbox.width;
         out.push(PlacedHBox { hbox, dx: *dx, dy });
         *dx = dx.try_add(width)?;
@@ -270,6 +284,10 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     let range = &glyphs[g].range;
     return is_lone(g) && range.end - range.start == 1 && text.as_bytes()[range.start] == b' ';
   };
+  // グリフ g が単独の全角空白か（結合文字・異体字セレクタの付いたものは字のまま）
+  let is_ideographic_space = |g: usize| -> bool { return is_lone(g) && &text[glyphs[g].range.clone()] == "\u{3000}" };
+  // グリフ g が空白（ASCII スペース・全角空白）か。空白は glue になり、隣の約物アキを打ち消す
+  let is_blank = |g: usize| -> bool { return is_space(g) || is_ideographic_space(g) };
   let byte_at = |g: usize| -> usize { return glyphs.get(g).map_or(text.len(), |glyph| return glyph.range.start) };
 
   let mut normal_start = 0usize;
@@ -280,9 +298,24 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
       normal_start = i + 1;
       continue;
     }
+    if is_ideographic_space(i) {
+      push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
+      // 次の字の前で分割できないとき（全角空白の直後の終わり括弧・句読点など）は分割点にしない。run の末尾は ASCII
+      // スペースと同じく分割できる
+      let breakable = i + 1 == glyphs.len() || break_bytes.contains(&byte_at(i + 1));
+      out.push(
+        Glue {
+          breakable,
+          ..ideographic_space_glue(em)
+        }
+        .into_item(),
+      );
+      normal_start = i + 1;
+      continue;
+    }
 
     // クラスタの途中（直前のグリフと同じクラスタ）には境界を置かない
-    if i > 0 && !is_space(i - 1) && glyphs[i - 1].range != glyphs[i].range {
+    if i > 0 && !is_blank(i - 1) && glyphs[i - 1].range != glyphs[i].range {
       let breakable = break_bytes.contains(&byte_at(i));
       if let Some(glue) = boxing::boundary_glue(eff_class(i - 1), eff_class(i), em, breakable) {
         push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
@@ -305,18 +338,24 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
       let hbox = punct_box(run, i, normalize, advances[i])?;
-      out.push(if matches!(eff_class(i), yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop) {
-        HItem::Comma(hbox)
-      } else {
-        HItem::Box(hbox)
+      out.push(match eff_class(i) {
+        yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop => HItem::Comma(hbox),
+        // 始め括弧は左の内蔵アキ（墨を左へ寄せた量）を切り詰めたので、行頭で戻せる前アキはその量
+        yakumono::YakumonoClass::Open => HItem::OpenBracket {
+          hbox,
+          lead: boxing::fraction_of(em, normalize.shift_em),
+        },
+        yakumono::YakumonoClass::Close | yakumono::YakumonoClass::MiddleDot | yakumono::YakumonoClass::Normal => {
+          HItem::Box(hbox)
+        },
       });
       normal_start = i + 1;
     }
   }
   push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out)?;
   let edge_at = |g: usize| -> Edge {
-    if is_space(g) {
-      return Edge::Absorb;
+    if is_blank(g) {
+      return Edge::Space { ch: char_of(g) };
     }
     return Edge::glyph(char_of(g), eff_class(g), em);
   };
@@ -467,7 +506,7 @@ fn find_glyph_starting_at(glyphs: &[Glyph], byte: usize) -> Option<usize> {
 mod tests {
   use std::ops::Range;
 
-  use super::{Cut, ShapedRun, plan_cut, space_glue, split_japanese_run};
+  use super::{Cut, ShapedRun, ideographic_space_glue, plan_cut, space_glue, split_japanese_run};
   use crate::{
     document::Typeface,
     length::Length,
@@ -476,7 +515,7 @@ mod tests {
     typeset::{
       boxes::{GlueKind, HBox, HBoxContent, HItem},
       boxing::{
-        Measurer, Shaper,
+        Glue, Measurer, Shaper,
         break_opportunities::{BreakKind, BreakOpportunity},
         hlist::{Edge, HList},
         script::ScriptCategory,
@@ -546,6 +585,22 @@ mod tests {
   #[test]
   fn space_glue_is_a_word_space() {
     assert_eq!(space_glue(Length::pt(4.0)).kind, GlueKind::WordSpace);
+  }
+
+  #[test]
+  fn ideographic_space_glue_is_a_fixed_full_width_break() {
+    let glue = ideographic_space_glue(Length::pt(12.0));
+
+    assert_eq!(
+      glue,
+      Glue {
+        natural: Length::pt(12.0),
+        stretch: Length::ZERO,
+        shrink: Length::ZERO,
+        breakable: true,
+        kind: GlueKind::PunctuationAki,
+      }
+    );
   }
 
   #[test]
@@ -721,7 +776,7 @@ mod tests {
     return items
       .iter()
       .filter_map(|item| {
-        let (HItem::Box(hbox) | HItem::Comma(hbox)) = item else {
+        let (HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. }) = item else {
           return None;
         };
         let HBoxContent::Glyphs(run) = &hbox.content else {
@@ -780,6 +835,19 @@ mod tests {
         .expect("句読点の箱があるはず");
       assert_eq!(matches!(last_box, HItem::Comma(_)), expect_comma, "{text}: {out:?}");
     }
+  }
+
+  #[test]
+  fn open_bracket_is_pushed_with_its_half_em_lead() {
+    let run = shaped_with_ranges("（あ", &[(0..3, 1000), (3..6, 1000)]);
+    let mut out = Vec::new();
+
+    split_japanese_run(&run, &mut out).expect("テストの寸法は値域内");
+
+    let HItem::OpenBracket { lead, .. } = &out[0] else {
+      panic!("先頭は始め括弧の箱のはず: {out:?}");
+    };
+    assert_eq!(*lead, Length::pt(5.0), "10pt の二分");
   }
 
   #[test]

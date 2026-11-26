@@ -5,6 +5,7 @@ use crate::{
   document::{ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, RowSeparator, TextAlignment, Typeface},
   length::Length,
   project::ProjectPath,
+  style::OpenBracketAki,
   typeset::{
     boxes::{Align, AnchorId, IndexTerm, LinkTarget},
     font::ScriptLevel,
@@ -74,6 +75,10 @@ pub(in crate::typeset) struct ParagraphLayout {
   pub spacing_after: Length,
   /// 行末の和文句読点をぶら下げてよい本文系の段落か。揃えは見ない（両端揃えかどうかは継いだ揃えを知る boxing が判定する）
   pub hanging_punctuation: bool,
+  /// 段落先頭の始め括弧の前アキ。本文系の段落だけが style の値を持ち、ほかは前アキなし
+  pub open_bracket_paragraph_start: OpenBracketAki,
+  /// 行頭（折返し後・明示改行後）の始め括弧の前アキ。本文系の段落だけが style の値を持ち、ほかは前アキなし
+  pub open_bracket_line_start: OpenBracketAki,
 }
 
 /// 段落の水平リスト（`crate::typeset::boxes::HItem` 列）へ入れられるノード

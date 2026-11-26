@@ -6,7 +6,7 @@ use crate::{
   document::{HirNodeKind, HirTheorem, NodeId, Typeface},
   length::Length,
   semantics::LabelId,
-  style::{TheoremHeadingValues, TheoremStyle},
+  style::{OpenBracketAki, TheoremHeadingValues, TheoremStyle},
   typeset::{
     error::ElementOverflow,
     lowering::{
@@ -62,6 +62,8 @@ pub(super) fn lower_theorem(
         content: vec![qed_node],
         spacing_after: Length::ZERO,
         hanging_punctuation: false,
+        open_bracket_paragraph_start: OpenBracketAki::None,
+        open_bracket_line_start: OpenBracketAki::None,
       }));
     }
   }
@@ -120,6 +122,8 @@ fn build_heading(
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
     hanging_punctuation: false,
+    open_bracket_paragraph_start: OpenBracketAki::None,
+    open_bracket_line_start: OpenBracketAki::None,
   })];
 
   return LayoutNode::VBox {

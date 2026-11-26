@@ -36,6 +36,24 @@ pub(crate) struct TextBlockStyle {
   /// `punctuation_spacing = true` のときだけ受理する
   #[garde(custom(requires_punctuation_spacing(self.punctuation_spacing)))]
   pub hanging_punctuation: bool,
+  /// 本文系段落の段落先頭の始め括弧の前アキ（既定 `none`）。`half` は `punctuation_spacing = true` のときだけ受理する
+  #[garde(custom(open_bracket_requires_punctuation_spacing(self.punctuation_spacing)))]
+  pub open_bracket_paragraph_start: OpenBracketAki,
+  /// 本文系段落の行頭（折返し後・明示改行後）の始め括弧の前アキ（既定 `none`）。`half` は `punctuation_spacing = true`
+  /// のときだけ受理する
+  #[garde(custom(open_bracket_requires_punctuation_spacing(self.punctuation_spacing)))]
+  pub open_bracket_line_start: OpenBracketAki,
+}
+
+/// 行頭に来た始め括弧の前アキ（JLReq §3.1.5）
+#[derive(Debug, Clone, Copy, PartialEq, Eq, Default, Deserialize)]
+#[serde(rename_all = "snake_case")]
+pub(crate) enum OpenBracketAki {
+  /// 前アキなし（天付き）
+  #[default]
+  None,
+  /// 括弧の 1em の二分を残す
+  Half,
 }
 
 impl Default for TextBlockStyle {
@@ -49,6 +67,8 @@ impl Default for TextBlockStyle {
       alignment: TextAlignment::Justify,
       punctuation_spacing: true,
       hanging_punctuation: false,
+      open_bracket_paragraph_start: OpenBracketAki::None,
+      open_bracket_line_start: OpenBracketAki::None,
     };
   }
 }
@@ -67,11 +87,27 @@ fn requires_punctuation_spacing(punctuation_spacing: bool) -> impl FnOnce(&bool,
   };
 }
 
+/// `punctuation_spacing` が `false` なら行頭括弧の前アキを `none` に限る検証器を返す。
+///
+/// 二分を残す組み方は約物アキ調整で前アキを除いた始め括弧を前提にするので、アキ調整を切った本文では成り立たない。
+fn open_bracket_requires_punctuation_spacing(
+  punctuation_spacing: bool,
+) -> impl FnOnce(&OpenBracketAki, &()) -> garde::Result {
+  return move |aki, _ctx| {
+    if !punctuation_spacing && *aki == OpenBracketAki::Half {
+      return Err(garde::Error::new(
+        "\"half\" には punctuation_spacing = true が必要です（行頭の二分は約物アキ調整で前アキを除いた始め括弧を前提にするため）",
+      ));
+    }
+    return Ok(());
+  };
+}
+
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
-  use super::TextBlockStyle;
+  use super::{OpenBracketAki, TextBlockStyle};
   use crate::{
     document::{TextAlignment, Typeface},
     length::Length,
@@ -119,6 +155,36 @@ mod tests {
   #[test]
   fn hanging_punctuation_defaults_to_off() {
     assert!(!TextBlockStyle::default().hanging_punctuation);
+  }
+
+  #[test]
+  fn open_bracket_keys_default_to_none() {
+    let style = TextBlockStyle::default();
+
+    assert_eq!(style.open_bracket_paragraph_start, OpenBracketAki::None);
+    assert_eq!(style.open_bracket_line_start, OpenBracketAki::None);
+  }
+
+  #[test]
+  fn open_bracket_keys_read_none_and_half() {
+    let style: TextBlockStyle =
+      toml::from_str("open_bracket_paragraph_start = \"half\"\nopen_bracket_line_start = \"none\"").unwrap();
+
+    assert_eq!(style.open_bracket_paragraph_start, OpenBracketAki::Half);
+    assert_eq!(style.open_bracket_line_start, OpenBracketAki::None);
+  }
+
+  #[test]
+  fn open_bracket_rejects_an_unknown_value() {
+    assert!(toml::from_str::<TextBlockStyle>("open_bracket_line_start = \"quarter\"").is_err());
+  }
+
+  #[test]
+  fn validate_accepts_none_open_bracket_without_punctuation_spacing() {
+    let style: TextBlockStyle =
+      toml::from_str("punctuation_spacing = false\nopen_bracket_line_start = \"none\"").unwrap();
+
+    assert!(style.validate().is_ok());
   }
 
   #[test]

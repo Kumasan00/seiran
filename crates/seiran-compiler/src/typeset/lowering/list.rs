@@ -3,6 +3,7 @@
 use crate::{
   document::HirList,
   length::Length,
+  style::OpenBracketAki,
   typeset::{
     error::ElementOverflow,
     lowering::{
@@ -69,6 +70,8 @@ pub(super) fn lower_list(
             content: vec![marker],
             spacing_after: Length::ZERO,
             hanging_punctuation: false,
+            open_bracket_paragraph_start: OpenBracketAki::None,
+            open_bracket_line_start: OpenBracketAki::None,
           }),
         );
       }

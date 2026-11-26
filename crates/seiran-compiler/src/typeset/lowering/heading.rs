@@ -4,7 +4,7 @@ use crate::{
   document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId, Typeface},
   length::Length,
   semantics::{GeneratedInline, HeadingKey, LabelId, generated_inlines_to_plain_text},
-  style::{RunningContentStyle, Style as ReadStyle},
+  style::{OpenBracketAki, RunningContentStyle, Style as ReadStyle},
   typeset::{
     boxes::AnchorId,
     error::ElementOverflow,
@@ -267,6 +267,8 @@ pub(super) fn lower_heading<E>(
     content: merge_adjacent_text(children),
     spacing_after: Length::ZERO,
     hanging_punctuation: false,
+    open_bracket_paragraph_start: OpenBracketAki::None,
+    open_bracket_line_start: OpenBracketAki::None,
   })];
 
   let mut result = Vec::new();

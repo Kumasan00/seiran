@@ -3,7 +3,8 @@
 //! 約物の内蔵アキは、run の内側なら `text_run` が隣接グリフ対ごとに戻す。この module は、アイテム列の端どうし
 //! （和文 run の端の約物と、数式・欧文・別スタイルのテキスト・コード・別の和文 run との間）を同じ
 //! `boundary_glue` の規則で解決する。アキで分割できるかは run の内側と同じく、境界の 2 字を UAX #14 で読んで決める
-//! （欧文の閉じ約物の前・開き約物の後ろ・中点の前では分割しない）。幅 0 の運搬マーカーと脚注マーカーの箱は透明で、
+//! （欧文の閉じ約物の前・開き約物の後ろ・中点の前では分割しない）。run の末尾の空白の glue も、次の列の先頭の字の前で
+//! 分割できなければ分割点から外す（`Edge::Space`）。幅 0 の運搬マーカーと脚注マーカーの箱は透明で、
 //! 左の字に付いたまま残る。境界のアキは右のアイテムの直前（後ろに続く透明マーカーに閉じていないリンクの `LinkStart` があればその前）に挟むので、アキの分割点で
 //! マーカーが左の字から離れず、リンク領域はアキを含まない。両側が数式の中の境界（数式の字・アトムと数式内の文章の端の
 //! 約物の間）は、数式の中の他のアキと同じく分割せず伸縮もしない固定の `Kern` にする — インライン数式の分割点は演算子の
@@ -35,9 +36,17 @@ pub(super) const BOX_EDGE_CHAR: char = 'x';
 /// アイテム列の端が約物アキに対して持つ性質
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Default)]
 pub(super) enum Edge {
-  /// 空白・明示アキ・分割制御・強制改行・リストの端 — 隣の約物のアキを打ち消す
+  /// 明示アキ・分割制御・強制改行・リストの端 — 隣の約物のアキを打ち消す
   #[default]
   Absorb,
+  /// 分割可能な空白（ASCII スペース・全角空白）の glue — 隣の約物のアキを打ち消す
+  ///
+  /// 列の右端にあるとき、最後の不透明アイテムはこの空白の glue。次の列の先頭の字の前で分割できなければ（終わり括弧類・
+  /// 句読点など。UAX #14）、glue を分割点から外す — run の中で同じ並びを分割しないのと同じ結果にする。
+  Space {
+    /// 空白の字
+    ch: char,
+  },
   /// 約物アキを受ける字（和文の通常字・欧文・数式の字やアトム・コード）
   Letter {
     /// 端の字（文字を持たない箱は [`BOX_EDGE_CHAR`]）
@@ -96,11 +105,12 @@ impl Edge {
     };
   }
 
-  /// 数式の中の端にする（`Absorb` はそのまま。数式の中の字は和欧文間アキを受けない）
+  /// 数式の中の端にする（`Absorb` はそのまま。空白は閉じた箱の中にあって外の分割点ではないので `Absorb`。数式の中の字は
+  /// 和欧文間アキを受けない）
   #[must_use]
   pub(super) fn in_math(self) -> Edge {
     return match self {
-      Edge::Absorb => Edge::Absorb,
+      Edge::Absorb | Edge::Space { .. } => Edge::Absorb,
       Edge::Letter { ch, .. } => Edge::Letter {
         ch,
         math: true,
@@ -167,8 +177,19 @@ impl HList {
   #[must_use]
   pub(super) fn into_items(self) -> Vec<HItem> { return self.items; }
 
-  /// 最後の不透明アイテムの右端と `right` の境界に約物アキを挟む
+  /// 最後の不透明アイテムの右端と `right` の境界に約物アキを挟む（右端が空白なら、その分割可否を `right` の字で決め直す）
   fn resolve(&mut self, right: Edge) {
+    if let Edge::Space { ch } = self.trailing
+      && let Some((right_ch, ..)) = edge_parts(right)
+      && !breaks_between(ch, right_ch)
+    {
+      let Some(HItem::Glue { breakable, .. }) =
+        self.opaque_end.checked_sub(1).and_then(|last| return self.items.get_mut(last))
+      else {
+        unreachable!("右端が Edge::Space の列は、最後の不透明アイテムが空白の glue（text_run が端の性質と同時に積む）");
+      };
+      *breakable = false;
+    }
     let Some(aki) = aki_between(self.trailing, right) else {
       return;
     };
@@ -222,10 +243,7 @@ pub(super) fn aki_between(left: Edge, right: Edge) -> Option<HItem> {
     }
     return class;
   };
-  let pair = format!("{left_ch}{right_ch}");
-  let breakable = break_opportunities::break_opportunities(&pair, None)
-    .iter()
-    .any(|point| return point.byte == left_ch.len_utf8());
+  let breakable = breaks_between(left_ch, right_ch);
   let glue: Glue = boxing::boundary_glue(class_of(left_ch, left_em), class_of(right_ch, right_em), em, breakable)?;
   return if left_math && right_math {
     Some(HItem::Kern(glue.natural))
@@ -263,10 +281,18 @@ fn ja_latin_between(
   return Some(glue.into_item());
 }
 
-/// 端の（字, 数式の中か, 約物ならその 1em）（`Absorb` は `None`）
+/// 字 `left` と `right` の間に UAX #14 の分割機会があるか
+fn breaks_between(left: char, right: char) -> bool {
+  let pair = format!("{left}{right}");
+  return break_opportunities::break_opportunities(&pair, None)
+    .iter()
+    .any(|point| return point.byte == left.len_utf8());
+}
+
+/// 端の（字, 数式の中か, 約物ならその 1em）（`Absorb` と空白は `None`）
 fn edge_parts(edge: Edge) -> Option<(char, bool, Option<Length>)> {
   return match edge {
-    Edge::Absorb => None,
+    Edge::Absorb | Edge::Space { .. } => None,
     Edge::Letter { ch, math, .. } => Some((ch, math, None)),
     Edge::Punct { ch, em, math } => Some((ch, math, Some(em))),
   };
@@ -312,7 +338,7 @@ mod tests {
     return items
       .iter()
       .map(|item| match item {
-        HItem::Box(_) | HItem::Comma(_) => return "box".to_string(),
+        HItem::Box(_) | HItem::Comma(_) | HItem::OpenBracket { .. } => return "box".to_string(),
         HItem::Glue {
           natural, breakable, ..
         } => return format!("glue {natural}{}", if *breakable { "" } else { " nobreak" }),
@@ -404,6 +430,44 @@ mod tests {
     push_glyph(&mut list, glyph('（'));
 
     assert_eq!(shape(&list.into_items()), ["box", "box", "glue 5pt", "box"]);
+  }
+
+  /// 字 1 つの後ろに分割可能な空白 `space` の glue（幅 3pt）が続く列
+  fn letter_then_space(space: char) -> (Vec<HItem>, Edge) {
+    let glue = HItem::Glue {
+      natural: Length::pt(3.0),
+      stretch: Length::ZERO,
+      shrink: Length::ZERO,
+      breakable: true,
+      kind: GlueKind::WordSpace,
+    };
+    return (vec![HItem::Box(letter()), glue], Edge::Space { ch: space });
+  }
+
+  #[test]
+  fn trailing_space_stops_being_a_break_before_a_mark_that_cannot_start_a_line() {
+    for space in [' ', '\u{3000}'] {
+      let mut list = HList::default();
+      let (items, trailing) = letter_then_space(space);
+      list.push(ja('あ'), items, trailing);
+
+      push_glyph(&mut list, glyph('、'));
+
+      assert_eq!(shape(&list.into_items()), ["box", "glue 3pt nobreak", "box"], "{space:?}");
+    }
+  }
+
+  #[test]
+  fn trailing_space_stays_a_break_before_a_letter() {
+    for space in [' ', '\u{3000}'] {
+      let mut list = HList::default();
+      let (items, trailing) = letter_then_space(space);
+      list.push(ja('あ'), items, trailing);
+
+      push_glyph(&mut list, ja('い'));
+
+      assert_eq!(shape(&list.into_items()), ["box", "glue 3pt", "box"], "{space:?}");
+    }
   }
 
   #[test]

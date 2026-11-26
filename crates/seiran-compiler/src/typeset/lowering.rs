@@ -47,7 +47,7 @@ use crate::{
   length::Length,
   project::config::ImageConfig,
   semantics::{BibliographyEntry, CounterValue, GeneratedInline, HeadingKey, LabelId, SemanticDocument},
-  style::Style as ReadStyle,
+  style::{OpenBracketAki, Style as ReadStyle},
   typeset::{boxes::AnchorId, error::ElementOverflow},
 };
 
@@ -422,6 +422,8 @@ pub(super) fn lower_nodes<'a>(
         content: mem::take(&mut pending_space),
         spacing_after: Length::ZERO,
         hanging_punctuation: false,
+        open_bracket_paragraph_start: OpenBracketAki::None,
+        open_bracket_line_start: OpenBracketAki::None,
       }));
     }
     if !lowered.is_empty() {
@@ -435,6 +437,8 @@ pub(super) fn lower_nodes<'a>(
       content: pending_space,
       spacing_after: Length::ZERO,
       hanging_punctuation: false,
+      open_bracket_paragraph_start: OpenBracketAki::None,
+      open_bracket_line_start: OpenBracketAki::None,
     }));
   }
   return Ok(result);
@@ -464,6 +468,7 @@ mod tests {
     frontend::test_support::parse_for_test,
     semantics::{SemanticDocument, SemanticPolicy, analyze_for_test, test_support::sample_references},
     source::SourceId,
+    style::OpenBracketAki,
     typeset::boxes::{AnchorId, LinkTarget},
   };
 
@@ -536,6 +541,46 @@ mod tests {
     let flags = paragraph_hanging_flags(&lower_source(&style_with_hanging(), source));
 
     assert_eq!(flags, vec![false, true, true, true, false]);
+  }
+
+  /// 段落の行頭括弧の 2 値（段落先頭, 行頭）を文書順に集める（`VBox` の中へも降りる）
+  fn paragraph_open_bracket_keys(nodes: &[LayoutNode]) -> Vec<(OpenBracketAki, OpenBracketAki)> {
+    let mut keys = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Paragraph(paragraph) => {
+          keys.push((paragraph.open_bracket_paragraph_start, paragraph.open_bracket_line_start));
+        },
+        LayoutNode::VBox { children, .. } => keys.extend(paragraph_open_bracket_keys(children)),
+        _ => {},
+      }
+    }
+    return keys;
+  }
+
+  #[test]
+  fn open_bracket_keys_reach_the_same_paragraphs_as_hanging_punctuation() {
+    let mut style = style_with_hanging();
+    style.text.open_bracket_paragraph_start = OpenBracketAki::Half;
+    style.text.open_bracket_line_start = OpenBracketAki::Half;
+    // 見出し → 本文 → リスト項目 → 引用 → コード → 定理（見出し段落と本文段落）
+    let source = "\\section{見出し}\n\n本文。\n\n\\begin{itemize}\n\\item{項目。}\n\\end{itemize}\n\n\\begin{quote}\n引用。\n\\end{quote}\n\n\\begin{code}\nx\n\\end{code}\n\n\\begin{theorem}\n定理。\n\\end{theorem}\n";
+
+    let nodes = lower_source(&style, source);
+
+    let expected: Vec<(OpenBracketAki, OpenBracketAki)> = paragraph_hanging_flags(&nodes)
+      .into_iter()
+      .map(|body| {
+        return if body {
+          (OpenBracketAki::Half, OpenBracketAki::Half)
+        } else {
+          (OpenBracketAki::None, OpenBracketAki::None)
+        };
+      })
+      .collect();
+    assert_eq!(paragraph_open_bracket_keys(&nodes), expected);
+    assert!(expected.contains(&(OpenBracketAki::None, OpenBracketAki::None)), "{expected:?}");
+    assert!(expected.contains(&(OpenBracketAki::Half, OpenBracketAki::Half)), "{expected:?}");
   }
 
   #[test]

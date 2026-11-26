@@ -244,6 +244,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   前提にするので、`punctuation_spacing = false` との併用を garde のフィールド検証で拒否する。適用範囲（本文系の段落 × 両端揃え）は
   style の値ではなく、lowering が段落ごとに決める可否（`ParagraphLayout::hanging_punctuation`。本文・リスト項目・引用・定理の本体・
   文献リストの段落だけ真）と、boxing が見る段落の実効の揃え（両端揃えだけ。寄せ環境の中も実効の揃えで決まる）の積で決まる
+- **行頭の始め括弧**: `[text].open_bracket_paragraph_start` / `open_bracket_line_start` の `half` は約物アキ調整で前アキを除いた
+  始め括弧を前提にするので、`punctuation_spacing = false` との併用を garde のフィールド検証で拒否する。適用範囲は句読点の
+  ぶら下げと同じ本文系の段落（lowering が `ParagraphLayout` へ style の値を写す段落）で、揃えは問わない
 - **目次・索引の揃え**: `[toc].alignment`（エントリ行）・`[index].alignment`（エントリ行と区分見出し）・`[index].title_alignment` は
   `[math.block].alignment` と共有する 3 値 `BlockAlignment`（両端揃えは型に無い）。目次の題目行は `[toc]` にキーを持たず、
   解決済みの `[heading.section].alignment`（未指定なら `[text].alignment`）に従う。`[toc].alignment` の `left` 以外と
@@ -713,6 +716,16 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   （単段は右余白、複数段は段間と右余白の小さい方）で、段落の可否が偽か揃えが両端揃えでなければ 0。行は着地段が決まる前に
   確定するので、どの段に着地しても隣の段・用紙端へ届かない保守値をとる。脚注本体と表のセルは 0。ぶら下げを認めても
   Knuth–Plass で実現可能な分割が無く貪欲法へ落ちたサブ段落はぶら下げない。ぶら下げた行は箱の幅を `Line::hanging` に持つ
+- **行頭の始め括弧の前アキ**: 約物アキ調整で前アキを除いた始め括弧の箱は `HItem::OpenBracket` で積み、除いた前アキ（全角なら
+  二分）を `lead` に持つ。行分割（`break_lines`）だけが各行の行頭でこれを読み、段落の最初の行は `open_bracket_paragraph_start`、
+  ほかの行（折返し後・強制改行後・貪欲法へ落ちたサブ段落の 2 行目以降）は `open_bracket_line_start` に従う。行頭の breakable
+  glue・固定カーン（字下げ・明示アキ）・幅 0 の運搬マーカーを読み飛ばした最初のアイテムが始め括弧で値が `half` なら、Knuth–Plass
+  の可否と配置・貪欲法の収まり判定のどれも利用幅から `lead` を引いて組み、行全体を `lead` だけ右へずらす（選択と配置で同じ値）。
+  2 値は `ParagraphLayout` が運び、本文系の段落だけが style の値を持つ。脚注本体と表のセルは前アキなし
+- **全角空白**: 約物アキ調整のある文書の和文 run では、単独クラスタの U+3000 を幅 1em・伸縮なしの分割可能な glue にする
+  （`text_run`）。端は ASCII 空白と同じく `Edge::Space` で隣の約物アキを打ち消し、行頭・行末では breakable glue として落ちる。
+  run の末尾の空白は、次の run の先頭の字の前で分割できなければ（終わり括弧類・句読点など。UAX #14）`hlist` が分割点から
+  外すので、装飾の境界をまたいでも run の中と同じく行頭禁則を守る
 - **両端揃えの伸縮の順位**: `HItem::Glue::kind`（`GlueKind`）は glue を生んだ規則 — `text_run` の欧文語間、`yakumono::gap` の
   約物アキ（中点の規則か括弧・句読点の規則か）、和欧文間アキ、和文字間 — が付け、`break_lines` だけが順位へ読み替える。ほかの
   段は種類を見ない。行の選択（Knuth–Plass の可否・badness）は行全体の伸縮能力の合計で決め、配置（`build_line`）は余り幅を

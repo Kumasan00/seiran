@@ -8,6 +8,7 @@ use std::cmp::Ordering;
 use crate::{
   document::TextAlignment,
   length::{Length, LengthOverflow},
+  style::OpenBracketAki,
   typeset::boxes::{Align, FootnoteBody, GlueKind, HBox, HItem, IndexTerm, Line, LineLink, LinkTarget, PlacedHBox},
 };
 
@@ -19,7 +20,8 @@ const ADJUSTMENT_RANKS: usize = 3;
 /// `hang_room` の範囲でぶら下げる
 ///
 /// `hang_room` は両端揃えの行末で句読点を利用幅の外へ出してよい幅。0 ならぶら下げない。両端揃え以外と貪欲法へ
-/// 落ちたサブ段落は使わない。`order` は両端揃えの行の伸縮の配分だけが使う。
+/// 落ちたサブ段落は使わない。`order` は両端揃えの行の伸縮の配分だけが使う。行頭の始め括弧の前アキは、段落の最初の
+/// 行が `paragraph_start`、それ以外の行（折返し後・強制改行後）が `line_start` に従う（[`open_bracket_lead`]）。
 ///
 /// # Errors
 ///
@@ -30,11 +32,35 @@ pub(super) fn break_lines(
   alignment: TextAlignment,
   hang_room: Length,
   order: AdjustmentOrder,
+  paragraph_start: OpenBracketAki,
+  line_start: OpenBracketAki,
 ) -> Result<Vec<Line>, LengthOverflow> {
   return if alignment == TextAlignment::Justify {
-    knuth_plass::break_lines(items, text_width, hang_room, order)
+    knuth_plass::break_lines(items, text_width, hang_room, order, paragraph_start, line_start)
   } else {
-    greedy::break_lines(items, text_width, alignment, &mut Vec::new(), order)
+    greedy::break_lines(items, text_width, alignment, &mut Vec::new(), order, paragraph_start, line_start)
+  };
+}
+
+/// 行頭の始め括弧に足す前アキを返す
+///
+/// `items` は行頭の breakable glue を除いた行（の先頭から順に）。固定カーン（字下げ・明示アキ）と幅 0 の運搬マーカー（`LinkStart` /
+/// `LinkEnd` / `IndexMark` / `Footnote`）を読み飛ばした最初のアイテムが始め括弧（[`HItem::OpenBracket`]）で、`aki` が
+/// `Half` ならその括弧の前アキ、それ以外は 0。行はこの幅を利用幅から引いて組み、行全体をこの幅だけ右へずらす。行の
+/// 選択（Knuth–Plass の可否）と配置が同じ値を使うので、選んだ行は配置でも利用幅に収まる。
+fn open_bracket_lead<'a>(items: impl IntoIterator<Item = &'a HItem>, aki: OpenBracketAki) -> Length {
+  if aki == OpenBracketAki::None {
+    return Length::ZERO;
+  }
+  let first = items.into_iter().find(|item| {
+    return !matches!(
+      item,
+      HItem::Kern(_) | HItem::LinkStart(_) | HItem::LinkEnd | HItem::IndexMark(_) | HItem::Footnote(_)
+    );
+  });
+  return match first {
+    Some(HItem::OpenBracket { lead, .. }) => *lead,
+    _ => Length::ZERO,
   };
 }
 
@@ -298,7 +324,7 @@ fn build_line(
   let mut depth = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(hbox) | HItem::Comma(hbox) => {
+      HItem::Box(hbox) | HItem::Comma(hbox) | HItem::OpenBracket { hbox, .. } => {
         boxes.push(PlacedHBox {
           hbox: hbox.clone(),
           dx: x,
@@ -404,7 +430,7 @@ pub(super) fn min_content_width(items: &[HItem]) -> Result<Length, LengthOverflo
   let mut segment = Length::ZERO;
   for item in items {
     match item {
-      HItem::Box(_) | HItem::Comma(_) | HItem::FlushRight(_) | HItem::Kern(_) => {
+      HItem::Box(_) | HItem::Comma(_) | HItem::OpenBracket { .. } | HItem::FlushRight(_) | HItem::Kern(_) => {
         segment = segment.try_add(item.natural_width())?;
       },
       HItem::Glue {
@@ -544,6 +570,19 @@ pub(super) mod test_support {
     });
   }
 
+  /// テスト用の始め括弧（幅 `width`・行頭で足せる前アキ `lead`・高さ 8・深さ 2）
+  pub(super) fn open_bracket(width: f32, lead: f32) -> HItem {
+    return HItem::OpenBracket {
+      hbox: HBox {
+        content: HBoxContent::Atom(Vec::new()),
+        width: pt(width),
+        height: pt(8.0),
+        depth: pt(2.0),
+      },
+      lead: pt(lead),
+    };
+  }
+
   /// テスト用の句読点の後ろの約物アキ（幅 5・伸長なし・収縮 5・分割可）
   pub(super) fn comma_aki() -> HItem {
     return HItem::Glue {
@@ -608,15 +647,74 @@ mod tests {
 
   use super::{
     ADJUSTMENT_RANKS, AdjustmentOrder, HItem, Length, Line, LineEnd, TextAlignment, break_lines, build_line,
-    fill_ranks, greedy, knuth_plass, min_content_width,
+    fill_ranks, greedy, knuth_plass, min_content_width, open_bracket_lead,
   };
-  use crate::typeset::{
-    boxes::{GlueKind, HBox},
-    boxing::break_lines::test_support::{
-      box_width, comma, discretionary, hang_items, kind_glue, math_break, non_breakable_stretch_glue, space_glue,
-      stretch_glue, test_box,
+  use crate::{
+    style::OpenBracketAki,
+    typeset::{
+      boxes::{GlueKind, HBox},
+      boxing::break_lines::test_support::{
+        box_width, comma, comma_aki, discretionary, hang_items, kind_glue, math_break, non_breakable_stretch_glue,
+        open_bracket, space_glue, stretch_glue, test_box,
+      },
     },
   };
+
+  /// 行頭の始め括弧の前アキなし
+  const NONE: OpenBracketAki = OpenBracketAki::None;
+
+  #[test]
+  fn open_bracket_lead_skips_kerns_and_markers() {
+    let kern = HItem::Kern(Length::pt(12.0));
+    let open = open_bracket(6.0, 6.0);
+    let letter = box_width(12.0);
+
+    assert_eq!(open_bracket_lead([&kern, &HItem::LinkEnd, &open], OpenBracketAki::Half), Length::pt(6.0));
+    assert_eq!(open_bracket_lead([&kern, &open], OpenBracketAki::None), Length::ZERO);
+    assert_eq!(open_bracket_lead([&letter, &open], OpenBracketAki::Half), Length::ZERO);
+  }
+
+  /// 行ごとの先頭の箱の位置
+  fn first_box_dx(lines: &[Line]) -> Vec<Length> { return lines.iter().map(|line| return line.boxes[0].dx).collect(); }
+
+  #[test]
+  fn line_start_lead_follows_the_key_of_each_line_start() {
+    // 1 行目は段落先頭（自然幅 25 で、前アキ 5 を足すと幅 30 にちょうど収まる）、2 行目は折返し後、3 行目は明示改行後
+    let items = vec![
+      open_bracket(5.0, 5.0),
+      box_width(10.0),
+      non_breakable_stretch_glue(),
+      box_width(5.0),
+      comma_aki(),
+      open_bracket(5.0, 5.0),
+      box_width(10.0),
+      HItem::ForcedBreak,
+      open_bracket(5.0, 5.0),
+      box_width(10.0),
+    ];
+    let half = OpenBracketAki::Half;
+    let none = OpenBracketAki::None;
+
+    for alignment in [TextAlignment::Justify, TextAlignment::Left] {
+      let run = |paragraph_start, line_start| {
+        let lines = break_lines(
+          &items,
+          Length::pt(30.0),
+          alignment,
+          Length::ZERO,
+          AdjustmentOrder::ByKind,
+          paragraph_start,
+          line_start,
+        )
+        .expect("値域内");
+        return first_box_dx(&lines);
+      };
+
+      assert_eq!(run(none, none), vec![Length::ZERO; 3], "{alignment:?}");
+      assert_eq!(run(half, none), vec![Length::pt(5.0), Length::ZERO, Length::ZERO], "{alignment:?}");
+      assert_eq!(run(none, half), vec![Length::ZERO, Length::pt(5.0), Length::pt(5.0)], "{alignment:?}");
+    }
+  }
 
   /// 収縮の順位を見る行: 語間・括弧読点のアキ・中点のアキを箱 10pt で挟む（自然幅 52.5pt）
   fn shrink_line() -> Vec<HItem> {
@@ -911,10 +1009,11 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO, AdjustmentOrder::Uniform)
+      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
         .expect("テストの寸法は値域内");
-      let greedy = greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new(), AdjustmentOrder::Uniform)
-        .expect("テストの寸法は値域内");
+      let greedy =
+        greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new(), AdjustmentOrder::Uniform, NONE, NONE)
+          .expect("テストの寸法は値域内");
 
       assert_same_lines(&lines, &greedy);
     }
@@ -943,10 +1042,12 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines = break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO, AdjustmentOrder::Uniform)
-      .expect("テストの寸法は値域内");
-    let optimal = knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform)
-      .expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
+        .expect("テストの寸法は値域内");
+    let optimal =
+      knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
+        .expect("テストの寸法は値域内");
 
     assert_same_lines(&lines, &optimal);
     // 貪欲法なら 3 行になる入力
@@ -960,8 +1061,9 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines = break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0), AdjustmentOrder::Uniform)
-        .expect("テストの寸法は値域内");
+      let lines =
+        break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0), AdjustmentOrder::Uniform, NONE, NONE)
+          .expect("テストの寸法は値域内");
 
       assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{alignment:?}: {lines:?}");
     }
@@ -1029,7 +1131,7 @@ mod tests {
     ];
     let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO, AdjustmentOrder::Uniform)
+    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
       .expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");

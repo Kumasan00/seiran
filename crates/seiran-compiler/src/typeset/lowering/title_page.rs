@@ -3,7 +3,7 @@
 use crate::{
   document::{TextAlignment, Typeface},
   length::Length,
-  style::TitlePageStyle,
+  style::{OpenBracketAki, TitlePageStyle},
   typeset::lowering::layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
 };
 
@@ -61,6 +61,8 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       content: vec![inline],
       spacing_after: Length::ZERO,
       hanging_punctuation: false,
+      open_bracket_paragraph_start: OpenBracketAki::None,
+      open_bracket_line_start: OpenBracketAki::None,
     }));
     pending_gap = gap_after;
   }
