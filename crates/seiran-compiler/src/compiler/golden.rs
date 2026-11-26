@@ -2806,6 +2806,34 @@ fn trailing_ideographic_space_leaves_no_width() {
   assert_eq!(body_line_edges("あいう　\\\\えお\n")[0].1, body_line_edges("あいう\\\\えお\n")[0].1);
 }
 
+/// 本文幅 108pt の版面で `source` を組んだ各行のグリフ列の文字列
+fn wrapped_line_texts(source: &str) -> Vec<String> {
+  return body_lines(&bracket_project(source, "none", "none").build())
+    .iter()
+    .map(|line| return line_runs(line).iter().map(|line_run| return line_run.run.text.as_str()).collect())
+    .collect();
+}
+
+#[test]
+fn space_before_a_styled_comma_does_not_send_the_comma_to_the_line_start() {
+  for space in [" ", "　"] {
+    let across = wrapped_line_texts(&format!("あいうえおかきくけ{space}\\bold{{、}}こ\n"));
+    let inside = wrapped_line_texts(&format!("あいうえおかきくけ{space}、こ\n"));
+
+    assert!(across.iter().all(|text| return !text.starts_with('、')), "{space:?}: {across:?}");
+    assert_eq!(across, inside, "{space:?}: run の中と同じ分け方");
+  }
+}
+
+#[test]
+fn space_before_a_styled_letter_still_breaks() {
+  for space in [" ", "　"] {
+    let lines = wrapped_line_texts(&format!("あいうえおかきくけ{space}\\bold{{こ}}さ\n"));
+
+    assert_eq!(lines[1], "こさ", "{space:?}: {lines:?}");
+  }
+}
+
 #[test]
 fn ideographic_space_stays_a_glyph_without_punctuation_spacing() {
   let gaps = line_gaps("本当？　次\n", false);

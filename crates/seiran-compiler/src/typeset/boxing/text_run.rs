@@ -190,10 +190,10 @@ impl Measurer<'_> {
       seg_byte_start = cut.resume_byte;
     }
     push_sub_run(&run, seg_glyph_start..run.glyphs().len(), seg_byte_start..run.text().len(), &mut items)?;
-    // この経路は約物の箱を詰めないので、端は字か、空白の glue ならアキを打ち消す側
+    // この経路は約物の箱を詰めないので、端は字か、空白（この経路の glue は ASCII スペースだけ）
     let edge_of = |item: Option<&HItem>, ch: char| -> Edge {
       if matches!(item, Some(HItem::Glue { .. })) {
-        return Edge::Absorb;
+        return Edge::Space { ch: ' ' };
       }
       return letter(ch);
     };
@@ -355,7 +355,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
   push_sub_run(run, normal_start..glyphs.len(), byte_at(normal_start)..text.len(), out)?;
   let edge_at = |g: usize| -> Edge {
     if is_blank(g) {
-      return Edge::Absorb;
+      return Edge::Space { ch: char_of(g) };
     }
     return Edge::glyph(char_of(g), eff_class(g), em);
   };
