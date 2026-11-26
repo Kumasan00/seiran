@@ -13,7 +13,7 @@ use crate::{
 pub(crate) enum HItem {
   /// 計測済みボックス
   Box(HBox),
-  /// 内蔵アキを切り詰めた和文句読点（`、。，．`。`YakumonoClass::Comma`）の箱
+  /// 内蔵アキを切り詰めた和文句読点（`、。，．`。`YakumonoClass::Comma` / `FullStop`）の箱
   ///
   /// 行分割・配置・計測は [`HItem::Box`] と同じに扱い、両端揃えの段落の行分割だけが行末で必要な場合にぶら下げる。
   Comma(HBox),

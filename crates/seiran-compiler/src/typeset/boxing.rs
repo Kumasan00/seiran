@@ -682,7 +682,7 @@ fn boundary_glue(
 mod boundary_glue_tests {
   use super::{
     CJK_STRETCH_RATIO, Glue, boundary_glue, cjk_stretch_glue,
-    yakumono::YakumonoClass::{Close, Comma, Normal, Open},
+    yakumono::YakumonoClass::{Close, Comma, FullStop, Normal, Open},
   };
   use crate::{length::Length, typeset::boxes::HItem};
 
@@ -701,6 +701,19 @@ mod boundary_glue_tests {
     };
     assert_eq!(front, Some(nibu), "前アキ二分・詰め代二分・伸長なし");
     assert_eq!(back, Some(nibu), "後アキ二分・詰め代二分・伸長なし");
+  }
+
+  #[test]
+  fn full_stop_boundary_keeps_its_aki_unshrinkable() {
+    assert_eq!(
+      boundary_glue(FullStop, Normal, EM, true),
+      Some(Glue {
+        natural: Length::pt(5.0),
+        stretch: Length::ZERO,
+        shrink: Length::ZERO,
+        breakable: true,
+      })
+    );
   }
 
   #[test]

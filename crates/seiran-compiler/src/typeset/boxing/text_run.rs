@@ -304,7 +304,7 @@ fn split_japanese_run(run: &ShapedRun, out: &mut Vec<HItem>) -> Result<(Edge, Ed
     if let Some(normalize) = yakumono::normalize(eff_class(i)) {
       push_sub_run(run, normal_start..i, byte_at(normal_start)..byte_at(i), out)?;
       let hbox = punct_box(run, i, normalize, advances[i])?;
-      out.push(if eff_class(i) == yakumono::YakumonoClass::Comma {
+      out.push(if matches!(eff_class(i), yakumono::YakumonoClass::Comma | yakumono::YakumonoClass::FullStop) {
         HItem::Comma(hbox)
       } else {
         HItem::Box(hbox)
