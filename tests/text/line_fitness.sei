@@ -1,19 +1,13 @@
 \section{隣接行の疎密}
 
-// 本文幅 160pt の版面。両端揃えの段落で、隣り合う非最終行の疎密の区分（調整比 r の 4 区分）が 2 段以上離れる並びを
-// 避ける。各段落は、隣接行の疎密を見ない分割では区分が跳ぶ並びになる文面にしてある。
+// 本文幅 260pt の版面。両端揃えの段落で、配置後の字間・語間が詰まった行（調整比 r < −0.5）と広がった行（r > 0.5）が
+// 上下に並ぶ分割を避ける。各段落は、隣接行の疎密を見ない分割ではその並びになる文面にしてある。
 
-// 欧文: 語間だけで伸縮する行
-The quick brown fox jumps over the lazy dog while the typesetter compares every legal way of breaking the paragraph into lines and picks the one with the lowest total cost.
+// 欧文: 語間を詰めた行と広げた行が並ぶ分割を避ける（文面は語の長さの組合せのための無意味な語列）
+Figure demerits justified of possible chooses justified section uneven chapter processor processor paragraph compares hyphenation chooses a although whenever hyphenation line notice hyphenation algorithm every penalties glue fonts although line notice spacing terms algorithm because although texture glue.
 
-// 欧文: 長めの段落
-Justified text spreads the leftover width of each line over its word spaces, so a line that is set tight right above a line that is set loose looks uneven even when each line on its own is acceptable.
-
-// 和文: 読点・句点の後ろのアキを詰める行と、字間を広げる行
-句読点が多い文では、読点や句点の後ろのアキを詰めて行に収めることがある。そのため、詰めた行と、字間を広げた行が、上下に並ぶと、行ごとの疎密の差が目に付く。
-
-// 和文: 括弧が続く行
-「括弧」や（丸括弧）が続く文、たとえば「これは」「あれは」と言った。（外側（内側））の順に並ぶ文でも、行の疎密が揃うように分割位置を選びたい。
+// 和文: 約物のアキを詰めた行の上に字間を広げた行が来る分割を避ける
+和文の両端揃えの組版確認用フィクスチャ。和文には単語間スペースがないため、字間の分割可能位置に置いた幅ゼロの伸縮点へ行の余り幅を微量配分し、非最終行の右端を版面右端にそろえる。行頭・行末の禁則処理の挙動は従来のままで、分割位置そのものは増えない。
 
 // 和欧混植: 欧文の語間・和欧文間アキ・和文字間が混ざる行
-和欧混植の段落では、Knuth と Plass の line breaking algorithm を使い、欧文の word space と和文の字間で余り幅を配る。そのため Latin text の量によって行の疎密が変わる。
+和欧混在の段落では、Latin の単語間スペースの伸縮が主で、和文の字間は補助である。たとえば typesetting や line breaking のような欧文語句が和文に挟まれていても、不自然な字間の膨張が起きないことを確認する。また well-known のようなハイフンを含む欧文語はハイフン直後が分割可能位置になるが、そこは伸縮点にならず語中が開くことはない。

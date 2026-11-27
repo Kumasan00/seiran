@@ -592,7 +592,7 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
         set(table, "text", "punctuation_spacing", false);
       }
     },
-    // 本文幅を 160pt に狭め、両端揃えの段落で隣接行の疎密差が出る版面
+    // 本文幅を 260pt に狭め、両端揃えの段落で隣接行の疎密差が出る版面
     "line_fitness" => {
       set(table, "page", "margin_left", "20pt");
       set(table, "page", "margin_right", "20pt");
@@ -629,8 +629,8 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
     "hanging_punctuation" | "open_bracket_half" => set(table, "pdf", "width", "148pt"),
     // 左右余白 20pt と合わせて本文幅を 105pt にする用紙幅
     "line_adjustment" | "line_adjustment_uniform" => set(table, "pdf", "width", "145pt"),
-    // 左右余白 20pt と合わせて本文幅を 160pt にする用紙幅
-    "line_fitness" => set(table, "pdf", "width", "200pt"),
+    // 左右余白 20pt と合わせて本文幅を 260pt にする用紙幅
+    "line_fitness" => set(table, "pdf", "width", "300pt"),
     // serif は先頭の STIX Two Text の後ろに sans_serif と同じ Noto Sans を足し、japanese_serif は先頭を
     // japanese_monospace と同じ Source Han Code JP にして既存の Noto Serif JP を 2 つ目へ回す（先頭のままでは代替が起きない）
     "font_fallback" => {
