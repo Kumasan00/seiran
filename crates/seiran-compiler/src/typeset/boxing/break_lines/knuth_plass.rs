@@ -1,4 +1,12 @@
 //! Knuth–Plass 方式の段落全体最適な行分割
+//!
+//! 経路のコストは行ごとの demerits（badness・ハイフン・数式内分割点）に、隣接する非最終行の疎密の差の罰点を足した和。
+//! 疎密は配置後の字間・語間で測り（調整比 r の 3 区分 [`Fitness`]）、密な行と疎な行が上下に並ぶ組に
+//! [`ADJACENT_FITNESS_DEMERIT`] を足す。伸長能力を超えて余る行は配置で伸長限界（r = 1）に止まるので疎な行と同じに扱い、
+//! 右端の不足は badness の上限が受け持つ。伸縮点が無いのに余る行は字間を持たず、段落末・強制改行直前の行は自然幅で組むので、
+//! どちらも区分を持たず隣と比べない（強制改行で区切ったサブ段落は独立に最適化するので、強制改行もまたがない）。
+//! 罰点は区分だけで決まるので、DP の状態は「破断点 × 末尾の行の区分」で足りる。ぶら下げる案とぶら下げない案は行単体の
+//! コストで選び、隣接行の区分を見ない。
 
 use tracing::trace;
 
@@ -26,6 +34,12 @@ const HYPHEN_DEMERIT: f64 = HYPHEN_PENALTY * HYPHEN_PENALTY;
 const DOUBLE_HYPHEN_DEMERIT: f64 = 10_000.0;
 /// badness の上限。極端に疎な行（伸長比が大きい行）はこの値で頭打ちにする
 const INFINITE_BADNESS: f64 = 10_000.0;
+/// 隣接する 2 本の非最終行が疎な行と密な行の組のときに足す demerits（TeX の `\adjdemerits` 相当）
+///
+/// 語中ハイフン 1 つ（[`HYPHEN_DEMERIT`]）より重く、連続ハイフン（[`DOUBLE_HYPHEN_DEMERIT`]）と同じ重さ。区分の跳びより
+/// ハイフンを選び、跳びを避けるためだけに連続ハイフンは作らない。badness では 1 行を b ≈ 90（r ≈ 0.97）まで粗くする
+/// 差に当たる。
+const ADJACENT_FITNESS_DEMERIT: f64 = 10_000.0;
 
 /// Knuth–Plass 方式（段落全体最適）で水平リストを本文幅の両端揃えの行に分割する
 ///
@@ -110,7 +124,7 @@ struct PathCost {
   rigid_lines: u32,
   /// 経路上の数式内分割の回数
   math_breaks: u32,
-  /// 経路上の demerits の総和
+  /// 経路上の demerits の総和（隣接行の疎密の差の罰点を含む）
   demerits: f64,
 }
 
@@ -148,22 +162,20 @@ enum Edge {
     rigid: bool,
     /// 行末の句読点をぶら下げて組む案か
     hanging: bool,
-    /// 疎密の区分。最終行（段落末・強制改行直前）は隣と比べないので `None`
+    /// 疎密の区分。隣と比べない行（最終行・伸縮点の無い行）は `None`
     fitness: Option<Fitness>,
   },
   /// ぶら下げる案を含めて収縮能力を超えて溢れる（実現不能）。行頭を前へずらすと更に長くなるため早期打ち切りに使う
   Overflow,
 }
 
-/// 非最終行の疎密の区分（宣言順に疎 → 密）
+/// 伸縮点を持つ非最終行の、配置後の疎密の区分（宣言順に疎 → 密）
 ///
 /// 尺度は badness と同じ調整比 r。各 glue の伸縮能力は自分の文字サイズの em で決まるので、r は文字サイズにも
 /// 和欧の比率にもよらない。
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 enum Fitness {
-  /// r > 1（伸長能力を使い切っても利用幅に届かない）か、伸縮点が無いのに余る行。どちらも右端が揃わない
-  VeryLoose,
-  /// 0.5 < r ≤ 1
+  /// r > 0.5。r > 1 の行も配置では伸長限界（r = 1）で止まるのでここに入る
   Loose,
   /// −0.5 ≤ r ≤ 0.5
   Decent,
@@ -174,9 +186,7 @@ enum Fitness {
 impl Fitness {
   /// 伸縮点を持つ非最終行の調整比 `ratio` から区分を決める
   fn of_ratio(ratio: f64) -> Self {
-    return if ratio > 1.0 {
-      Fitness::VeryLoose
-    } else if ratio > 0.5 {
+    return if ratio > 0.5 {
       Fitness::Loose
     } else if ratio >= -0.5 {
       Fitness::Decent
@@ -186,14 +196,32 @@ impl Fitness {
   }
 }
 
+/// 上下に隣接する行の区分 `above` / `below` の組に課す追加 demerits
+///
+/// 疎な行と密な行（`Loose` と `Tight`。向きは問わない）の組なら [`ADJACENT_FITNESS_DEMERIT`]、それ以外は 0。どちらかが
+/// `None`（最終行・伸縮点の無い行・段落頭の前）なら比べない。
+fn adjacent_demerits(above: Option<Fitness>, below: Option<Fitness>) -> f64 {
+  return match (above, below) {
+    (Some(Fitness::Loose), Some(Fitness::Tight)) | (Some(Fitness::Tight), Some(Fitness::Loose)) => {
+      ADJACENT_FITNESS_DEMERIT
+    },
+    (
+      Some(Fitness::Loose | Fitness::Decent | Fitness::Tight),
+      Some(Fitness::Loose | Fitness::Decent | Fitness::Tight),
+    )
+    | (None, _)
+    | (_, None) => 0.0,
+  };
+}
+
 /// DP の 1 状態へ到達する最良経路と、その末尾の行
 #[derive(Debug, Clone, Copy)]
 struct Reach {
   /// 経路全体のコスト
   cost: PathCost,
-  /// 末尾の行の直前の破断点の添字。`None` で行頭（item 0）から始まる
-  from: Option<usize>,
-  /// 末尾の行の疎密の区分（最終行は `None`）
+  /// 末尾の行の直前の状態（破断点の添字とその行の区分）。`None` で行頭（item 0）から始まる
+  from: Option<(usize, Option<Fitness>)>,
+  /// 末尾の行の疎密の区分（隣と比べない行は `None`）
   fitness: Option<Fitness>,
   /// 末尾の行単体の badness（TRACE 観測用。DP の選択には使わない）
   badness: f64,
@@ -337,9 +365,10 @@ fn choose_path(
   first_line: OpenBracketAki,
   line_start: OpenBracketAki,
 ) -> Result<Option<Vec<(usize, Reach)>>, LengthOverflow> {
-  // best[j] = 破断点 breaks[j] で行を終える最良の到達（到達不能なら None）
+  // best[j][state_slot(f)] = 破断点 breaks[j] で区分 f の行を終える最良の到達（到達不能なら None）。隣接行の罰点は
+  // 区分だけで決まるので、区分ごとに最良を 1 つ残せば段落全体の最良を取りこぼさない
   let node_count = breaks.len();
-  let mut best: Vec<Option<Reach>> = vec![None; node_count];
+  let mut best: Vec<[Option<Reach>; STATE_SLOTS]> = vec![[None; STATE_SLOTS]; node_count];
 
   for j in 0..node_count {
     // 行頭候補を近い側（短い行）から見て、溢れたら以降（より長い行）は不要なので打ち切る
@@ -359,12 +388,13 @@ fn choose_path(
           fitness,
           ..
         } => {
-          if let Some(from) = best[i] {
+          let predecessors = best[i];
+          for from in predecessors.iter().flatten() {
             relax(
-              &mut best[j],
+              &mut best[j][state_slot(fitness)],
               Reach {
-                cost: from.cost.then(&breaks[j], demerits, rigid),
-                from: Some(i),
+                cost: from.cost.then(&breaks[j], demerits + adjacent_demerits(from.fitness, fitness), rigid),
+                from: Some((i, from.fitness)),
                 fitness,
                 badness,
                 hanging,
@@ -386,7 +416,7 @@ fn choose_path(
       } = edge_cost(items, 0, &breaks[j], false, text_width, hang_room, first_line)?
     {
       relax(
-        &mut best[j],
+        &mut best[j][state_slot(fitness)],
         Reach {
           cost: PathCost::START.then(&breaks[j], demerits, rigid),
           from: None,
@@ -398,21 +428,35 @@ fn choose_path(
     }
   }
 
-  let Some(mut reach) = best[node_count - 1] else {
+  // 末尾の仮想破断点で終わる行は最終行なので、区分なしの状態に入る
+  let Some(mut reach) = best[node_count - 1][state_slot(None)] else {
     return Ok(None);
   };
   let mut chain: Vec<(usize, Reach)> = Vec::new();
   let mut node = node_count - 1;
   loop {
     chain.push((node, reach));
-    let Some(from) = reach.from else {
+    let Some((from, fitness)) = reach.from else {
       break;
     };
     node = from;
-    reach = best[from].expect("採用した到達の直前の破断点は到達済み");
+    reach = best[from][state_slot(fitness)].expect("採用した到達の直前の状態は到達済み");
   }
   chain.reverse();
   return Ok(Some(chain));
+}
+
+/// DP の状態（行の区分。`None` は隣と比べない行）の数
+const STATE_SLOTS: usize = 4;
+
+/// 行の区分 `fitness` の DP 状態の添字
+fn state_slot(fitness: Option<Fitness>) -> usize {
+  return match fitness {
+    None => 0,
+    Some(Fitness::Loose) => 1,
+    Some(Fitness::Decent) => 2,
+    Some(Fitness::Tight) => 3,
+  };
 }
 
 /// `slot` の到達より `candidate` のコストが小さければ置き換える（同値は先に入った方を残す）
@@ -576,7 +620,7 @@ fn fit_edge(
           ratio: 0.0,
           rigid: true,
           hanging,
-          fitness: Some(Fitness::VeryLoose),
+          fitness: None,
         };
       }
       leftover.ratio(stretch)
@@ -620,8 +664,8 @@ mod tests {
   use proptest::prelude::*;
 
   use super::{
-    AdjustmentOrder, Breakpoint, Edge, Fitness, PathCost, break_lines, break_subparagraph, breakpoints, choose_path,
-    demerits, evaluate_edge,
+    ADJACENT_FITNESS_DEMERIT, AdjustmentOrder, Breakpoint, Edge, Fitness, PathCost, adjacent_demerits, break_lines,
+    break_subparagraph, breakpoints, choose_path, demerits, evaluate_edge,
   };
   use crate::{
     document::TextAlignment,
@@ -632,8 +676,8 @@ mod tests {
       boxing::break_lines::{
         greedy,
         test_support::{
-          box_width, cjk_glue, comma, comma_aki, discretionary, flush_right_box, hang_items, link_target, math_break,
-          stretch_glue, test_box,
+          box_width, cjk_glue, comma, comma_aki, discretionary, flush_right_box, hang_items, index_mark, link_target,
+          math_break, stretch_glue, test_box,
         },
       },
     },
@@ -1543,11 +1587,13 @@ mod tests {
     assert_eq!(Fitness::of_ratio(0.5), Fitness::Decent);
     assert_eq!(Fitness::of_ratio(0.51), Fitness::Loose);
     assert_eq!(Fitness::of_ratio(1.0), Fitness::Loose);
-    assert_eq!(Fitness::of_ratio(1.01), Fitness::VeryLoose);
+    // 伸長能力を超える行は配置で伸長限界（r = 1）に止まるので、字間は r = 1 の行と同じ
+    assert_eq!(Fitness::of_ratio(1.01), Fitness::Loose);
+    assert_eq!(Fitness::of_ratio(3.0), Fitness::Loose);
   }
 
   #[test]
-  fn rigid_and_last_lines_are_not_decent() {
+  fn rigid_and_last_lines_are_not_compared() {
     let items = [box_width(10.0)];
     let brk = |is_end| {
       return Breakpoint {
@@ -1566,11 +1612,11 @@ mod tests {
         rigid,
         Edge::Feasible {
           rigid: true,
-          fitness: Some(Fitness::VeryLoose),
+          fitness: None,
           ..
         }
       ),
-      "伸縮点の無い余る行は最も疎"
+      "伸縮点の無い余る行は字間を持たないので比べない"
     );
     assert!(matches!(last, Edge::Feasible { fitness: None, .. }), "最終行は区分なし");
   }
@@ -1591,6 +1637,7 @@ mod tests {
       let mut cost = PathCost::START;
       let mut start = 0usize;
       let mut prev_hyphen = false;
+      let mut prev_fitness: Option<Fitness> = None;
       let mut feasible = true;
       for brk in chosen {
         match evaluate_edge(items, start, brk, prev_hyphen, text_width, hang_room, NONE).expect("値域内") {
@@ -1599,8 +1646,14 @@ mod tests {
             break;
           },
           Edge::Feasible {
-            demerits, rigid, ..
-          } => cost = cost.then(brk, demerits, rigid),
+            demerits,
+            rigid,
+            fitness,
+            ..
+          } => {
+            cost = cost.then(brk, demerits + adjacent_demerits(prev_fitness, fitness), rigid);
+            prev_fitness = fitness;
+          },
         }
         start = brk.at + 1;
         prev_hyphen = brk.hyphen;
@@ -1649,6 +1702,9 @@ mod tests {
   }
 
   proptest! {
+    // 罰点が効くのは 3 行以上の段落だけで、小さい乱択入力では稀なので、既定（256）より多く回す
+    #![proptest_config(ProptestConfig::with_cases(4096))]
+
     #[test]
     fn chosen_path_matches_brute_force_minimum(
       items in small_paragraph(),
@@ -1662,5 +1718,215 @@ mod tests {
 
       prop_assert_eq!(chosen.map(|path| return path.last().expect("到達した経路は 1 行以上").1.cost), brute);
     }
+  }
+
+  /// 箱（pt 幅）を単語間スペース相当の glue で区切った欧文の段落
+  fn latin(widths: &[f32]) -> Vec<HItem> {
+    let mut items = Vec::new();
+    for (index, width) in widths.iter().enumerate() {
+      if index > 0 {
+        items.push(stretch_glue());
+      }
+      items.push(box_width(*width));
+    }
+    return items;
+  }
+
+  /// 和文の段落。`o` = 字（幅 10）、`,` = 句読点（幅 5、後ろに約物アキ）、`|` = 次の字間を分割不可にする印
+  fn cjk(pattern: &str) -> Vec<HItem> {
+    let mut items = Vec::new();
+    // 直前の箱が句読点か（最初の箱の前は None）
+    let mut after_comma: Option<bool> = None;
+    let mut no_break = false;
+    for mark in pattern.chars() {
+      if mark == '|' {
+        no_break = true;
+        continue;
+      }
+      match after_comma {
+        Some(true) => items.push(comma_aki()),
+        Some(false) if no_break => items.push(HItem::Glue {
+          natural: Length::ZERO,
+          stretch: pt(0.5),
+          shrink: Length::ZERO,
+          breakable: false,
+          kind: GlueKind::InterCharacter,
+        }),
+        Some(false) => items.push(cjk_glue()),
+        None => {},
+      }
+      let is_comma = mark == ',';
+      items.push(if is_comma {
+        comma(5.0)
+      } else {
+        box_width(10.0)
+      });
+      after_comma = Some(is_comma);
+      no_break = false;
+    }
+    return items;
+  }
+
+  /// 和欧混植の段落。`None` = 字（幅 10）、`Some(w)` = 欧文語（幅 w）。字–字は和文字間、語–語は単語間スペース、
+  /// 字–語は分割不可の和欧文間アキ（自然幅 2.5・伸長 0.5）で区切る
+  fn mixed(tokens: &[Option<f32>]) -> Vec<HItem> {
+    let mut items = Vec::new();
+    for (index, token) in tokens.iter().enumerate() {
+      if index > 0 {
+        items.push(match (tokens[index - 1], token) {
+          (None, None) => cjk_glue(),
+          (Some(_), Some(_)) => stretch_glue(),
+          _ => HItem::Glue {
+            natural: pt(2.5),
+            stretch: pt(0.5),
+            shrink: Length::ZERO,
+            breakable: false,
+            kind: GlueKind::JaLatinAki,
+          },
+        });
+      }
+      items.push(box_width(token.unwrap_or(10.0)));
+    }
+    return items;
+  }
+
+  /// 語（音節の箱の pt 幅の列）を単語間スペースで、語の中の音節を幅 3 のハイフンの語中分割点で区切った段落
+  fn hyphenated(words: &[&[f32]]) -> Vec<HItem> {
+    let mut items = Vec::new();
+    for (index, syllables) in words.iter().enumerate() {
+      if index > 0 {
+        items.push(stretch_glue());
+      }
+      for (position, width) in syllables.iter().enumerate() {
+        if position > 0 {
+          items.push(discretionary(3.0));
+        }
+        items.push(box_width(*width));
+      }
+    }
+    return items;
+  }
+
+  /// 各行の箱の数
+  fn box_counts(lines: &[Line]) -> Vec<usize> { return lines.iter().map(|line| return line.boxes.len()).collect(); }
+
+  /// 隣接する 2 行の区分の組に罰点が付くか（f64 の等値比較を避ける）
+  fn penalized(above: Option<Fitness>, below: Option<Fitness>) -> bool { return adjacent_demerits(above, below) > 0.0; }
+
+  /// 欧文の代表例（幅 70）。罰点なしなら [3][5][1] 語（r = 0.8 → −0.6）
+  const LATIN_WIDTHS: [f32; 9] = [9.0, 24.0, 23.0, 9.0, 13.0, 12.0, 16.0, 4.0, 5.0];
+
+  #[test]
+  fn latin_avoids_a_loose_line_followed_by_a_tight_line() {
+    let items = latin(&LATIN_WIDTHS);
+
+    let lines = break_lines(&items, pt(70.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    assert_eq!(box_counts(&lines), [3, 4, 2], "{lines:?}");
+  }
+
+  #[test]
+  fn japanese_avoids_a_loose_line_followed_by_a_tight_line() {
+    let items = cjk(",oo|ooooooooooo,o|oo|o|oo,oooooo,,ooooo|o");
+
+    let lines = break_lines(&items, pt(150.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    // 罰点なしなら [15][16][5]（r ≈ 0.769 → −0.667）
+    assert_eq!(box_counts(&lines), [15, 15, 6], "{lines:?}");
+  }
+
+  #[test]
+  fn mixed_script_avoids_a_tight_line_after_a_loose_line() {
+    const J: Option<f32> = None;
+    let items = mixed(&[
+      J,
+      J,
+      Some(28.0),
+      Some(12.0),
+      Some(28.0),
+      Some(16.0),
+      J,
+      J,
+      Some(16.0),
+      J,
+      Some(12.0),
+      Some(12.0),
+      Some(16.0),
+      Some(12.0),
+      J,
+      J,
+      J,
+      J,
+      Some(24.0),
+      J,
+    ]);
+
+    let lines = break_lines(&items, pt(140.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    // 罰点なしなら [7][10][3]（r ≈ 0.667 → −0.6）
+    assert_eq!(box_counts(&lines), [7, 9, 4], "{lines:?}");
+  }
+
+  #[test]
+  fn prefers_one_hyphen_over_a_fitness_jump() {
+    let items = hyphenated(&[
+      &[7.0],
+      &[11.0],
+      &[9.0, 10.0],
+      &[4.0],
+      &[11.0, 11.0],
+      &[13.0],
+      &[8.0, 9.0],
+      &[8.0, 9.0],
+    ]);
+
+    let lines = break_lines(&items, pt(60.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    // 罰点なしなら 2 行目は 11 11 13 8 9（r = −0.6）でハイフンなし
+    assert_eq!(box_widths(&lines[1]), [pt(11.0), pt(11.0), pt(13.0), pt(8.0), pt(3.0)], "{lines:?}");
+    assert_eq!(box_widths(&lines[2]), [pt(9.0), pt(8.0), pt(9.0)], "{lines:?}");
+  }
+
+  #[test]
+  fn adjacent_demerits_penalize_only_two_or_more_classes_apart() {
+    assert!(
+      (adjacent_demerits(Some(Fitness::Loose), Some(Fitness::Tight)) - ADJACENT_FITNESS_DEMERIT).abs() < f64::EPSILON
+    );
+    assert!(penalized(Some(Fitness::Tight), Some(Fitness::Loose)), "向きによらない");
+    assert!(!penalized(Some(Fitness::Decent), Some(Fitness::Tight)));
+    assert!(!penalized(Some(Fitness::Loose), Some(Fitness::Decent)));
+    assert!(!penalized(Some(Fitness::Loose), Some(Fitness::Loose)));
+  }
+
+  #[test]
+  fn adjacent_demerits_skips_unjudged_lines() {
+    assert!(!penalized(Some(Fitness::Loose), None), "最終行・伸縮点の無い行は比べない");
+    assert!(!penalized(None, Some(Fitness::Tight)), "段落頭は比べない");
+  }
+
+  #[test]
+  fn forced_break_separates_fitness_comparison() {
+    let single = latin(&LATIN_WIDTHS);
+    let mut items = single.clone();
+    items.push(HItem::ForcedBreak);
+    items.extend(single.iter().cloned());
+
+    let joined = break_lines(&items, pt(70.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+    let alone = break_lines(&single, pt(70.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    assert_eq!(box_counts(&joined), [box_counts(&alone), box_counts(&alone)].concat(), "{joined:?}");
+  }
+
+  #[test]
+  fn markers_do_not_change_the_fitness_choice() {
+    let mut items = latin(&LATIN_WIDTHS);
+    // 箱は偶数番目。3 語目（index 4）をリンクで包み、5 語目（index 8）の後ろに索引語を置く
+    items.insert(9, index_mark("x", None));
+    items.insert(5, HItem::LinkEnd);
+    items.insert(4, HItem::LinkStart(link_target()));
+
+    let lines = break_lines(&items, pt(70.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE).expect("値域内");
+
+    assert_eq!(box_counts(&lines), [3, 4, 2], "{lines:?}");
   }
 }
