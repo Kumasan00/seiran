@@ -881,7 +881,45 @@ mod tests {
     assert_eq!(bookmark(r"$\sin x$"), "sin x");
     assert_eq!(bookmark(r"$\sin^{2} x$"), "sin² x");
     assert_eq!(bookmark(r"$\sin\quad x$"), "sin x");
-    assert_eq!(bookmark(r"$x \sin$"), "xsin");
+    assert_eq!(bookmark(r"$x \sin$"), "x sin");
+  }
+
+  #[test]
+  fn bookmark_math_space_before_operator_name() {
+    assert_eq!(bookmark(r"$a\sin x$"), "a sin x");
+    assert_eq!(bookmark(r"$2\cos\theta$"), "2 cos θ");
+    assert_eq!(bookmark(r"$a+\sin x$"), "a+sin x");
+    assert_eq!(bookmark(r"$a{\sin x}$"), "a sin x");
+  }
+
+  #[test]
+  fn bookmark_math_space_before_bare_numerator() {
+    assert_eq!(bookmark(r"$a\frac{b}{c}$"), "a b/c");
+    assert_eq!(bookmark(r"$a\frac{b+1}{c}$"), "a(b+1)/c");
+  }
+
+  #[test]
+  fn bookmark_math_japanese_is_not_alphanumeric() {
+    assert_eq!(bookmark(r"$x^{n}\text{と}$"), "x^nと");
+  }
+
+  #[test]
+  fn bookmark_math_empty_text_is_an_empty_group() {
+    assert_eq!(bookmark(r"$\text{}^{2}$"), "²");
+    assert_eq!(bookmark("${}^{2}$"), "²");
+  }
+
+  #[test]
+  fn bookmark_math_accent_on_empty_base_vanishes() {
+    assert_eq!(bookmark(r"$\hat{}$"), "");
+  }
+
+  #[test]
+  fn bookmark_math_pinned_rules() {
+    // 演算子名の後の空白は負のアキでも消えず、アクセント付きの 1 字は包まず、上線は包む
+    assert_eq!(bookmark(r"$\sin\negthinspace x$"), "sin x");
+    assert_eq!(bookmark(r"$\hat{x}^{2}$"), "x\u{0302}\u{00B2}");
+    assert_eq!(bookmark(r"$\overline{x}^{2}$"), "(\u{00AF}x)\u{00B2}");
   }
 
   #[test]
