@@ -31,9 +31,10 @@ enum Shape {
   Other,
 }
 
-/// 数式ノード列を `UnicodeMath` の線形表記にする（数値・単位は `quantity_style` の書式の平文）
-pub(in crate::typeset::lowering) fn unicode_math_text(nodes: &[HirMath], quantity_style: &QuantityStyle) -> String {
-  return list_text(&flatten(nodes), quantity_style).text;
+/// 数式ノード列を `UnicodeMath` の線形表記にする（数値・単位は `quantity_style` の書式の平文）。両端の開きは数式の外の
+/// 字との継ぎ目に使う
+pub(in crate::typeset::lowering) fn unicode_math_text(nodes: &[HirMath], quantity_style: &QuantityStyle) -> Linear {
+  return list_text(&flatten(nodes), quantity_style);
 }
 
 /// 字（`0`〜`9` `+` `-` U+2212 `=` `(` `)`）を Unicode の上付き字にする。上付き字の無い字は `None`
@@ -85,7 +86,7 @@ fn flatten(nodes: &[HirMath]) -> Vec<&HirMath> {
 /// 自動のアキもソースの空白も出さないので、開いた端に英数字が接すると 1 つの被演算子・名前に読める（`x^ny` /
 /// `asin x` / `ab/c`）。継ぎ目の空白は [`Linear::append`] が入れる。
 #[derive(Debug, Default)]
-struct Linear {
+pub(in crate::typeset::lowering) struct Linear {
   /// 線形表記
   text: String,
   /// 先頭が裸の被演算子（分子）か演算子名か
@@ -96,7 +97,7 @@ struct Linear {
 
 impl Linear {
   /// 両端の閉じた線形表記
-  fn closed(text: String) -> Self {
+  pub(in crate::typeset::lowering) fn closed(text: String) -> Self {
     return Linear {
       text,
       open_start: false,
@@ -118,7 +119,7 @@ impl Linear {
   ///
   /// 左の末尾が開いていて右が英数字で始まるとき、または右の先頭が開いていて左が英数字で終わるとき、継ぎ目に空白
   /// 1 個を入れる。空の `piece`（`{}`）は何も足さず、直前の被演算子を閉じない。
-  fn append(&mut self, piece: Linear) {
+  pub(in crate::typeset::lowering) fn append(&mut self, piece: Linear) {
     if !piece.text.is_empty()
       && !self.text.is_empty()
       && ((self.open_end && starts_word(&piece.text)) || (piece.open_start && ends_word(&self.text)))
@@ -127,6 +128,9 @@ impl Linear {
     }
     self.attach(piece);
   }
+
+  /// 線形表記の文字列
+  pub(in crate::typeset::lowering) fn into_text(self) -> String { return self.text; }
 
   /// 後ろに `piece` を継ぎ目の空白なしで続ける（スクリプトは同じ基底に付くので、上付き字が数字でも離さない）
   fn attach(&mut self, piece: Linear) {
