@@ -1,0 +1,19 @@
+\section{隣接行の疎密}
+
+// 本文幅 160pt の版面。両端揃えの段落で、隣り合う非最終行の疎密の区分（調整比 r の 4 区分）が 2 段以上離れる並びを
+// 避ける。各段落は、隣接行の疎密を見ない分割では区分が跳ぶ並びになる文面にしてある。
+
+// 欧文: 語間だけで伸縮する行
+The quick brown fox jumps over the lazy dog while the typesetter compares every legal way of breaking the paragraph into lines and picks the one with the lowest total cost.
+
+// 欧文: 長めの段落
+Justified text spreads the leftover width of each line over its word spaces, so a line that is set tight right above a line that is set loose looks uneven even when each line on its own is acceptable.
+
+// 和文: 読点・句点の後ろのアキを詰める行と、字間を広げる行
+句読点が多い文では、読点や句点の後ろのアキを詰めて行に収めることがある。そのため、詰めた行と、字間を広げた行が、上下に並ぶと、行ごとの疎密の差が目に付く。
+
+// 和文: 括弧が続く行
+「括弧」や（丸括弧）が続く文、たとえば「これは」「あれは」と言った。（外側（内側））の順に並ぶ文でも、行の疎密が揃うように分割位置を選びたい。
+
+// 和欧混植: 欧文の語間・和欧文間アキ・和文字間が混ざる行
+和欧混植の段落では、Knuth と Plass の line breaking algorithm を使い、欧文の word space と和文の字間で余り幅を配る。そのため Latin text の量によって行の疎密が変わる。
