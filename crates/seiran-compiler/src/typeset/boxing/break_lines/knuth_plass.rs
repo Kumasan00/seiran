@@ -148,9 +148,57 @@ enum Edge {
     rigid: bool,
     /// 行末の句読点をぶら下げて組む案か
     hanging: bool,
+    /// 疎密の区分。最終行（段落末・強制改行直前）は隣と比べないので `None`
+    fitness: Option<Fitness>,
   },
   /// ぶら下げる案を含めて収縮能力を超えて溢れる（実現不能）。行頭を前へずらすと更に長くなるため早期打ち切りに使う
   Overflow,
+}
+
+/// 非最終行の疎密の区分（宣言順に疎 → 密）
+///
+/// 尺度は badness と同じ調整比 r。各 glue の伸縮能力は自分の文字サイズの em で決まるので、r は文字サイズにも
+/// 和欧の比率にもよらない。
+#[derive(Debug, Clone, Copy, PartialEq, Eq)]
+enum Fitness {
+  /// r > 1（伸長能力を使い切っても利用幅に届かない）か、伸縮点が無いのに余る行。どちらも右端が揃わない
+  VeryLoose,
+  /// 0.5 < r ≤ 1
+  Loose,
+  /// −0.5 ≤ r ≤ 0.5
+  Decent,
+  /// r < −0.5（r ≥ −1 は可否判定が保証する）
+  Tight,
+}
+
+impl Fitness {
+  /// 伸縮点を持つ非最終行の調整比 `ratio` から区分を決める
+  fn of_ratio(ratio: f64) -> Self {
+    return if ratio > 1.0 {
+      Fitness::VeryLoose
+    } else if ratio > 0.5 {
+      Fitness::Loose
+    } else if ratio >= -0.5 {
+      Fitness::Decent
+    } else {
+      Fitness::Tight
+    };
+  }
+}
+
+/// DP の 1 状態へ到達する最良経路と、その末尾の行
+#[derive(Debug, Clone, Copy)]
+struct Reach {
+  /// 経路全体のコスト
+  cost: PathCost,
+  /// 末尾の行の直前の破断点の添字。`None` で行頭（item 0）から始まる
+  from: Option<usize>,
+  /// 末尾の行の疎密の区分（最終行は `None`）
+  fitness: Option<Fitness>,
+  /// 末尾の行単体の badness（TRACE 観測用。DP の選択には使わない）
+  badness: f64,
+  /// 末尾の行が行末の句読点をぶら下げる案か
+  hanging: bool,
 }
 
 /// 強制改行を含まない 1 サブ段落を最適分割する。溢れる行を避けられない（末尾まで実現可能な分割が無い）サブ段落だけを
@@ -165,6 +213,60 @@ fn break_subparagraph(
   first_line: OpenBracketAki,
   line_start: OpenBracketAki,
 ) -> Result<Vec<Line>, LengthOverflow> {
+  let breaks = breakpoints(items);
+  let Some(chain) = choose_path(items, &breaks, text_width, hang_room, first_line, line_start)? else {
+    // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
+    return greedy::break_lines(items, text_width, TextAlignment::Justify, open_links, order, first_line, line_start);
+  };
+
+  let mut lines: Vec<Line> = Vec::new();
+  let mut start = 0usize;
+  for (line_index, (node, reach)) in chain.iter().enumerate() {
+    let brk = &breaks[*node];
+    let refs: Vec<&HItem> = items[start..brk.at].iter().collect();
+    let refs = strip_leading_glue(&refs);
+    let end = if reach.hanging {
+      LineEnd::Hang(trailing_comma(refs).expect("ぶら下げ案は行末が句読点の候補行にだけ作る"))
+    } else {
+      match items.get(brk.at) {
+        Some(HItem::Discretionary { hyphen }) => LineEnd::Hyphen(hyphen),
+        _ => LineEnd::Plain,
+      }
+    };
+    let lead = open_bracket_lead(
+      refs.iter().copied(),
+      if line_index == 0 {
+        first_line
+      } else {
+        line_start
+      },
+    );
+    let mut line =
+      build_line(refs, brk.is_end, text_width.try_sub(lead)?, TextAlignment::Justify, open_links, end, order)?;
+    line.shift_x(lead)?;
+    let width = line.width()?;
+    // `line_index` はサブ段落内の連番（強制改行ごとに 0 へ戻る）。段落通し番号ではない
+    trace!(
+      line_index,
+      break_at = brk.at,
+      is_last = brk.is_end,
+      is_hyphenated = brk.hyphen,
+      is_math_break = brk.math_penalty.is_some(),
+      is_hanging = reach.hanging,
+      badness = reach.badness,
+      fitness = ?reach.fitness,
+      width_pt = %width.to_pt(),
+      text = observe::summarize_line(&line),
+      "行を確定"
+    );
+    lines.push(line);
+    start = brk.at + 1;
+  }
+  return Ok(lines);
+}
+
+/// 合法破断点を item 順に列挙し、末尾にサブ段落末尾の仮想破断点を足す
+fn breakpoints(items: &[HItem]) -> Vec<Breakpoint> {
   let mut breaks: Vec<Breakpoint> = Vec::new();
   for (i, item) in items.iter().enumerate() {
     match item {
@@ -215,16 +317,29 @@ fn break_subparagraph(
     math_penalty: None,
     is_end: true,
   });
+  return breaks;
+}
 
-  // DP: best[j] = 破断点 breaks[j] で行を終える最小経路コスト（到達不能なら None）。
-  // prev[j] = Some(i) で直前破断が breaks[i]、None で行頭（item 0）から始まる（best[j] が Some の時のみ有効）。
-  // best_badness[j] = 採用したエッジ単体の badness（TRACE 観測用。DP の選択には使わない）。
-  // best_hanging[j] = 採用したエッジが行末の句読点をぶら下げる案か。
+/// 段落全体で経路コスト（[`PathCost`]）が最小の破断点の列を選ぶ
+///
+/// 末尾の仮想破断点へ到達できなければ `None`。到達すれば行順の（`breaks` の添字, その行で終わる [`Reach`]）の列で、
+/// 最後の要素の `cost` が経路全体のコスト。行頭の始め括弧の前アキは 1 行目が `first_line`、2 行目以降が `line_start`
+/// に従う。
+///
+/// # Errors
+///
+/// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+fn choose_path(
+  items: &[HItem],
+  breaks: &[Breakpoint],
+  text_width: Length,
+  hang_room: Length,
+  first_line: OpenBracketAki,
+  line_start: OpenBracketAki,
+) -> Result<Option<Vec<(usize, Reach)>>, LengthOverflow> {
+  // best[j] = 破断点 breaks[j] で行を終える最良の到達（到達不能なら None）
   let node_count = breaks.len();
-  let mut best: Vec<Option<PathCost>> = vec![None; node_count];
-  let mut prev: Vec<Option<usize>> = vec![None; node_count];
-  let mut best_badness = vec![0.0f64; node_count];
-  let mut best_hanging = vec![false; node_count];
+  let mut best: Vec<Option<Reach>> = vec![None; node_count];
 
   for j in 0..node_count {
     // 行頭候補を近い側（短い行）から見て、溢れたら以降（より長い行）は不要なので打ち切る
@@ -241,16 +356,20 @@ fn break_subparagraph(
           badness,
           rigid,
           hanging,
+          fitness,
           ..
         } => {
           if let Some(from) = best[i] {
-            let total = from.then(&breaks[j], demerits, rigid);
-            if best[j].is_none_or(|current| return total < current) {
-              best[j] = Some(total);
-              prev[j] = Some(i);
-              best_badness[j] = badness;
-              best_hanging[j] = hanging;
-            }
+            relax(
+              &mut best[j],
+              Reach {
+                cost: from.cost.then(&breaks[j], demerits, rigid),
+                from: Some(i),
+                fitness,
+                badness,
+                hanging,
+              },
+            );
           }
         },
       }
@@ -262,78 +381,45 @@ fn break_subparagraph(
         badness,
         rigid,
         hanging,
+        fitness,
         ..
       } = edge_cost(items, 0, &breaks[j], false, text_width, hang_room, first_line)?
     {
-      let total = PathCost::START.then(&breaks[j], demerits, rigid);
-      if best[j].is_none_or(|current| return total < current) {
-        best[j] = Some(total);
-        prev[j] = None;
-        best_badness[j] = badness;
-        best_hanging[j] = hanging;
-      }
+      relax(
+        &mut best[j],
+        Reach {
+          cost: PathCost::START.then(&breaks[j], demerits, rigid),
+          from: None,
+          fitness,
+          badness,
+          hanging,
+        },
+      );
     }
   }
 
-  // 末尾の仮想破断点へ到達できない（実現可能な分割が無い）ならフォールバック
-  if best[node_count - 1].is_none() {
-    return greedy::break_lines(items, text_width, TextAlignment::Justify, open_links, order, first_line, line_start);
-  }
-
-  let mut chain: Vec<usize> = Vec::new();
+  let Some(mut reach) = best[node_count - 1] else {
+    return Ok(None);
+  };
+  let mut chain: Vec<(usize, Reach)> = Vec::new();
   let mut node = node_count - 1;
   loop {
-    chain.push(node);
-    match prev[node] {
-      Some(i) => node = i,
-      None => break,
-    }
+    chain.push((node, reach));
+    let Some(from) = reach.from else {
+      break;
+    };
+    node = from;
+    reach = best[from].expect("採用した到達の直前の破断点は到達済み");
   }
   chain.reverse();
+  return Ok(Some(chain));
+}
 
-  let mut lines: Vec<Line> = Vec::new();
-  let mut start = 0usize;
-  for (line_index, &node) in chain.iter().enumerate() {
-    let brk = &breaks[node];
-    let refs: Vec<&HItem> = items[start..brk.at].iter().collect();
-    let refs = strip_leading_glue(&refs);
-    let end = if best_hanging[node] {
-      LineEnd::Hang(trailing_comma(refs).expect("ぶら下げ案は行末が句読点の候補行にだけ作る"))
-    } else {
-      match items.get(brk.at) {
-        Some(HItem::Discretionary { hyphen }) => LineEnd::Hyphen(hyphen),
-        _ => LineEnd::Plain,
-      }
-    };
-    let lead = open_bracket_lead(
-      refs.iter().copied(),
-      if line_index == 0 {
-        first_line
-      } else {
-        line_start
-      },
-    );
-    let mut line =
-      build_line(refs, brk.is_end, text_width.try_sub(lead)?, TextAlignment::Justify, open_links, end, order)?;
-    line.shift_x(lead)?;
-    let width = line.width()?;
-    // `line_index` はサブ段落内の連番（強制改行ごとに 0 へ戻る）。段落通し番号ではない
-    trace!(
-      line_index,
-      break_at = brk.at,
-      is_last = brk.is_end,
-      is_hyphenated = brk.hyphen,
-      is_math_break = brk.math_penalty.is_some(),
-      is_hanging = best_hanging[node],
-      badness = best_badness[node],
-      width_pt = %width.to_pt(),
-      text = observe::summarize_line(&line),
-      "行を確定"
-    );
-    lines.push(line);
-    start = brk.at + 1;
+/// `slot` の到達より `candidate` のコストが小さければ置き換える（同値は先に入った方を残す）
+fn relax(slot: &mut Option<Reach>, candidate: Reach) {
+  if slot.is_none_or(|current| return candidate.cost < current.cost) {
+    *slot = Some(candidate);
   }
-  return Ok(lines);
 }
 
 /// 候補行のコストを評価し、結果を TRACE へ出す
@@ -347,15 +433,23 @@ fn edge_cost(
   aki: OpenBracketAki,
 ) -> Result<Edge, LengthOverflow> {
   let edge = evaluate_edge(items, line_start, brk, prev_hyphen, text_width, hang_room, aki)?;
-  let (outcome, demerits, badness, ratio, is_hanging) = match &edge {
+  let (outcome, demerits, badness, ratio, is_hanging, fitness) = match &edge {
     Edge::Feasible {
       demerits,
       badness,
       ratio,
       rigid,
       hanging,
-    } => (if *rigid { "rigid" } else { "feasible" }, Some(*demerits), Some(*badness), Some(*ratio), *hanging),
-    Edge::Overflow => ("overflow", None, None, None, false),
+      fitness,
+    } => (
+      if *rigid { "rigid" } else { "feasible" },
+      Some(*demerits),
+      Some(*badness),
+      Some(*ratio),
+      *hanging,
+      *fitness,
+    ),
+    Edge::Overflow => ("overflow", None, None, None, false, None),
   };
   trace!(
     line_start,
@@ -369,6 +463,7 @@ fn edge_cost(
     demerits = ?demerits,
     badness = ?badness,
     ratio = ?ratio,
+    fitness = ?fitness,
     "行分割の候補を評価"
   );
   return Ok(edge);
@@ -460,6 +555,7 @@ fn fit_edge(
       ratio: 0.0,
       rigid: false,
       hanging,
+      fitness: None,
     };
   }
 
@@ -480,6 +576,7 @@ fn fit_edge(
           ratio: 0.0,
           rigid: true,
           hanging,
+          fitness: Some(Fitness::VeryLoose),
         };
       }
       leftover.ratio(stretch)
@@ -495,6 +592,7 @@ fn fit_edge(
     ratio,
     rigid: false,
     hanging,
+    fitness: Some(Fitness::of_ratio(ratio)),
   };
 }
 
@@ -519,7 +617,12 @@ fn demerits(badness: f64, hyphen: bool, prev_hyphen: bool, math_penalty: Option<
 
 #[cfg(test)]
 mod tests {
-  use super::{AdjustmentOrder, Breakpoint, Edge, PathCost, break_lines, break_subparagraph, demerits, evaluate_edge};
+  use proptest::prelude::*;
+
+  use super::{
+    AdjustmentOrder, Breakpoint, Edge, Fitness, PathCost, break_lines, break_subparagraph, breakpoints, choose_path,
+    demerits, evaluate_edge,
+  };
   use crate::{
     document::TextAlignment,
     length::Length,
@@ -1429,5 +1532,135 @@ mod tests {
 
     assert_eq!(lines[0].hanging, pt(5.0), "{lines:?}");
     assert_eq!((lines[0].links[0].x0, lines[0].links[0].x1), (pt(0.0), pt(35.0)), "{lines:?}");
+  }
+
+  #[test]
+  fn fitness_follows_the_ratio_boundaries() {
+    assert_eq!(Fitness::of_ratio(-1.0), Fitness::Tight);
+    assert_eq!(Fitness::of_ratio(-0.51), Fitness::Tight);
+    assert_eq!(Fitness::of_ratio(-0.5), Fitness::Decent);
+    assert_eq!(Fitness::of_ratio(0.0), Fitness::Decent);
+    assert_eq!(Fitness::of_ratio(0.5), Fitness::Decent);
+    assert_eq!(Fitness::of_ratio(0.51), Fitness::Loose);
+    assert_eq!(Fitness::of_ratio(1.0), Fitness::Loose);
+    assert_eq!(Fitness::of_ratio(1.01), Fitness::VeryLoose);
+  }
+
+  #[test]
+  fn rigid_and_last_lines_are_not_decent() {
+    let items = [box_width(10.0)];
+    let brk = |is_end| {
+      return Breakpoint {
+        at: 1,
+        hyphen: false,
+        math_penalty: None,
+        is_end,
+      };
+    };
+
+    let rigid = evaluate_edge(&items, 0, &brk(false), false, pt(30.0), Length::ZERO, NONE).expect("値域内");
+    let last = evaluate_edge(&items, 0, &brk(true), false, pt(30.0), Length::ZERO, NONE).expect("値域内");
+
+    assert!(
+      matches!(
+        rigid,
+        Edge::Feasible {
+          rigid: true,
+          fitness: Some(Fitness::VeryLoose),
+          ..
+        }
+      ),
+      "伸縮点の無い余る行は最も疎"
+    );
+    assert!(matches!(last, Edge::Feasible { fitness: None, .. }), "最終行は区分なし");
+  }
+
+  /// 総当たりで、末尾まで実現可能な分割の列のうち最小の経路コストを求める（行頭の始め括弧の前アキなし）
+  fn brute_force_cost(
+    items: &[HItem],
+    breaks: &[Breakpoint],
+    text_width: Length,
+    hang_room: Length,
+  ) -> Option<PathCost> {
+    let inner = breaks.len() - 1;
+    let mut best: Option<PathCost> = None;
+    for mask in 0u32..(1u32 << inner) {
+      let mut chosen: Vec<&Breakpoint> =
+        (0..inner).filter(|i| return mask & (1 << i) != 0).map(|i| return &breaks[i]).collect();
+      chosen.push(&breaks[inner]);
+      let mut cost = PathCost::START;
+      let mut start = 0usize;
+      let mut prev_hyphen = false;
+      let mut feasible = true;
+      for brk in chosen {
+        match evaluate_edge(items, start, brk, prev_hyphen, text_width, hang_room, NONE).expect("値域内") {
+          Edge::Overflow => {
+            feasible = false;
+            break;
+          },
+          Edge::Feasible {
+            demerits, rigid, ..
+          } => cost = cost.then(brk, demerits, rigid),
+        }
+        start = brk.at + 1;
+        prev_hyphen = brk.hyphen;
+      }
+      if feasible && best.is_none_or(|current| return cost < current) {
+        best = Some(cost);
+      }
+    }
+    return best;
+  }
+
+  /// 総当たりで比べられる小さい段落（box・glue・語中分割点・数式内分割点・句読点）
+  fn small_paragraph() -> impl Strategy<Value = Vec<HItem>> {
+    let kinds = [
+      GlueKind::WordSpace,
+      GlueKind::JaLatinAki,
+      GlueKind::InterCharacter,
+      GlueKind::MiddleDotAki,
+      GlueKind::PunctuationAki,
+    ];
+    // 収縮は自然幅を超えない（実際の glue と同じ。行を長くすると溢れが減らない前提を DP の打ち切りが使う）
+    let glue = (
+      0usize..5,
+      0.0f32..8.0,
+      prop_oneof![Just(0.0f32), 0.0f32..4.0],
+      prop_oneof![Just(0.0f32), 0.0f32..=1.0],
+      any::<bool>(),
+    )
+      .prop_map(move |(kind, natural, stretch, shrink_fraction, breakable)| {
+        return HItem::Glue {
+          natural: pt(natural),
+          stretch: pt(stretch),
+          shrink: pt(natural * shrink_fraction),
+          breakable,
+          kind: kinds[kind],
+        };
+      });
+    let item = prop_oneof![
+      (1.0f32..30.0).prop_map(box_width),
+      glue,
+      (1.0f32..4.0).prop_map(discretionary),
+      (0.0f32..3.0, 0i32..1000).prop_map(|(spacing, penalty)| return math_break(spacing, penalty)),
+      (2.0f32..6.0).prop_map(comma),
+    ];
+    return prop::collection::vec(item, 1..12);
+  }
+
+  proptest! {
+    #[test]
+    fn chosen_path_matches_brute_force_minimum(
+      items in small_paragraph(),
+      width in 10.0f32..80.0,
+      hang in prop::sample::select(vec![0.0f32, 5.0]),
+    ) {
+      let breaks = breakpoints(&items);
+
+      let chosen = choose_path(&items, &breaks, pt(width), pt(hang), NONE, NONE).expect("値域内");
+      let brute = brute_force_cost(&items, &breaks, pt(width), pt(hang));
+
+      prop_assert_eq!(chosen.map(|path| return path.last().expect("到達した経路は 1 行以上").1.cost), brute);
+    }
   }
 }
