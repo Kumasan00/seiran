@@ -22,10 +22,15 @@ const ADJUSTMENT_RANKS: usize = 3;
 /// `hang_room` は両端揃えの行末で句読点を利用幅の外へ出してよい幅。0 ならぶら下げない。両端揃え以外と貪欲法へ
 /// 落ちたサブ段落は使わない。`order` は両端揃えの行の伸縮の配分だけが使う。行頭の始め括弧の前アキは、段落の最初の
 /// 行が `paragraph_start`、それ以外の行（折返し後・強制改行後）が `line_start` に従う（[`open_bracket_lead`]）。
+/// `last_line_em` は両端揃えの段落末尾の行の短さを測る em で、`None` なら測らない。貪欲法は使わない。
 ///
 /// # Errors
 ///
 /// 行の幅や伸縮の計算が長さの値域を超えたら [`LengthOverflow`] を返す。
+#[expect(
+  clippy::too_many_arguments,
+  reason = "段落 1 つの組み方を決める互いに独立な値で、束ねても守る不変条件が無い"
+)]
 pub(super) fn break_lines(
   items: &[HItem],
   text_width: Length,
@@ -34,9 +39,10 @@ pub(super) fn break_lines(
   order: AdjustmentOrder,
   paragraph_start: OpenBracketAki,
   line_start: OpenBracketAki,
+  last_line_em: Option<Length>,
 ) -> Result<Vec<Line>, LengthOverflow> {
   return if alignment == TextAlignment::Justify {
-    knuth_plass::break_lines(items, text_width, hang_room, order, paragraph_start, line_start, None)
+    knuth_plass::break_lines(items, text_width, hang_room, order, paragraph_start, line_start, last_line_em)
   } else {
     greedy::break_lines(items, text_width, alignment, &mut Vec::new(), order, paragraph_start, line_start)
   };
@@ -705,6 +711,7 @@ mod tests {
           AdjustmentOrder::ByKind,
           paragraph_start,
           line_start,
+          None,
         )
         .expect("値域内");
         return first_box_dx(&lines);
@@ -1009,8 +1016,9 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines = break_lines(&items, Length::pt(27.0), alignment, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
-        .expect("テストの寸法は値域内");
+      let lines =
+        break_lines(&items, Length::pt(27.0), alignment, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE, None)
+          .expect("テストの寸法は値域内");
       let greedy =
         greedy::break_lines(&items, Length::pt(27.0), alignment, &mut Vec::new(), AdjustmentOrder::Uniform, NONE, NONE)
           .expect("テストの寸法は値域内");
@@ -1042,9 +1050,17 @@ mod tests {
       box_width(8.0),
     ];
 
-    let lines =
-      break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
-        .expect("テストの寸法は値域内");
+    let lines = break_lines(
+      &items,
+      Length::pt(25.0),
+      TextAlignment::Justify,
+      Length::ZERO,
+      AdjustmentOrder::Uniform,
+      NONE,
+      NONE,
+      None,
+    )
+    .expect("テストの寸法は値域内");
     let optimal =
       knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE, None)
         .expect("テストの寸法は値域内");
@@ -1061,9 +1077,17 @@ mod tests {
       TextAlignment::Center,
       TextAlignment::Right,
     ] {
-      let lines =
-        break_lines(&hang_items(), Length::pt(30.0), alignment, Length::pt(5.0), AdjustmentOrder::Uniform, NONE, NONE)
-          .expect("テストの寸法は値域内");
+      let lines = break_lines(
+        &hang_items(),
+        Length::pt(30.0),
+        alignment,
+        Length::pt(5.0),
+        AdjustmentOrder::Uniform,
+        NONE,
+        NONE,
+        None,
+      )
+      .expect("テストの寸法は値域内");
 
       assert!(lines.iter().all(|line| return line.hanging == Length::ZERO), "{alignment:?}: {lines:?}");
     }
@@ -1131,8 +1155,9 @@ mod tests {
     ];
     let width = min_content_width(&items).expect("テストの寸法は値域内");
 
-    let lines = break_lines(&items, width, TextAlignment::Left, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
-      .expect("テストの寸法は値域内");
+    let lines =
+      break_lines(&items, width, TextAlignment::Left, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE, None)
+        .expect("テストの寸法は値域内");
 
     assert!(lines.iter().all(|line| return line.width().expect("値域内") <= width), "{lines:?}");
   }

@@ -232,6 +232,19 @@ pub(super) mod test_support {
     return origins;
   }
 
+  /// 段落の本文系の印（`body_text`）を文書順に集める（`VBox` の中へも降りる）
+  pub(super) fn paragraph_body_text_flags(nodes: &[LayoutNode]) -> Vec<bool> {
+    let mut flags = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Paragraph(paragraph) => flags.push(paragraph.body_text),
+        LayoutNode::VBox { children, .. } => flags.extend(paragraph_body_text_flags(children)),
+        _ => {},
+      }
+    }
+    return flags;
+  }
+
   /// 段落のぶら下げ可否を文書順に集める（`VBox` の中へも降りる）
   pub(super) fn paragraph_hanging_flags(nodes: &[LayoutNode]) -> Vec<bool> {
     let mut flags = Vec::new();
@@ -421,6 +434,7 @@ pub(super) fn lower_nodes<'a>(
         origin: pending_space_origin,
         content: mem::take(&mut pending_space),
         spacing_after: Length::ZERO,
+        body_text: false,
         hanging_punctuation: false,
         open_bracket_paragraph_start: OpenBracketAki::None,
         open_bracket_line_start: OpenBracketAki::None,
@@ -436,6 +450,7 @@ pub(super) fn lower_nodes<'a>(
       origin: pending_space_origin,
       content: pending_space,
       spacing_after: Length::ZERO,
+      body_text: false,
       hanging_punctuation: false,
       open_bracket_paragraph_start: OpenBracketAki::None,
       open_bracket_line_start: OpenBracketAki::None,
@@ -460,7 +475,10 @@ fn with_label_anchors<'a>(labels: impl IntoIterator<Item = &'a LabelId>, nodes: 
 #[cfg(test)]
 mod tests {
   use super::{
-    test_support::{analyzed, context, inlines, paragraph_hanging_flags, paragraph_layout, paragraph_origins},
+    test_support::{
+      analyzed, context, inlines, paragraph_body_text_flags, paragraph_hanging_flags, paragraph_layout,
+      paragraph_origins,
+    },
     *,
   };
   use crate::{
@@ -581,6 +599,16 @@ mod tests {
     assert_eq!(paragraph_open_bracket_keys(&nodes), expected);
     assert!(expected.contains(&(OpenBracketAki::None, OpenBracketAki::None)), "{expected:?}");
     assert!(expected.contains(&(OpenBracketAki::Half, OpenBracketAki::Half)), "{expected:?}");
+  }
+
+  #[test]
+  fn body_text_marks_body_paragraphs_regardless_of_hanging_punctuation() {
+    // 見出し → 本文 → リスト項目 → 引用 → コード → 定理（見出し段落と本文段落）。ぶら下げは既定（無効）のまま
+    let source = "\\section{見出し}\n\n本文。\n\n\\begin{itemize}\n\\item{項目。}\n\\end{itemize}\n\n\\begin{quote}\n引用。\n\\end{quote}\n\n\\begin{code}\nx\n\\end{code}\n\n\\begin{theorem}\n定理。\n\\end{theorem}\n";
+
+    let flags = paragraph_body_text_flags(&lower_source(&ReadStyle::default(), source));
+
+    assert_eq!(flags, vec![false, true, true, true, false, false, true]);
   }
 
   #[test]

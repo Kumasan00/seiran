@@ -60,6 +60,7 @@ pub(crate) fn lower_title_page(meta: &TitlePageMetadata, style: &TitlePageStyle)
       origin: None,
       content: vec![inline],
       spacing_after: Length::ZERO,
+      body_text: false,
       hanging_punctuation: false,
       open_bracket_paragraph_start: OpenBracketAki::None,
       open_bracket_line_start: OpenBracketAki::None,

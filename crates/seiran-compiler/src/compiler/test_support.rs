@@ -592,10 +592,19 @@ fn apply_fixture_style_overrides(name: &str, table: &mut toml::value::Table) {
         set(table, "text", "punctuation_spacing", false);
       }
     },
-    // 本文幅を 260pt に狭め、両端揃えの段落で隣接行の疎密差が出る版面
-    "line_fitness" => {
+    // 左右余白 20pt。line_fitness は本文幅を 260pt に狭め、両端揃えの段落で隣接行の疎密差が出る版面。
+    // short_last_line は本文 12pt で 1 行およそ 41 字の版面
+    "line_fitness" | "short_last_line" => {
       set(table, "page", "margin_left", "20pt");
       set(table, "page", "margin_right", "20pt");
+    },
+    // 2 段組み・本文 10pt・字下げ 1 字。1 段およそ 12 字で、字を送ると字間が伸長限界を超える版面
+    "short_last_line_columns" => {
+      set(table, "columns", "count", 2);
+      set(table, "page", "margin_left", "20pt");
+      set(table, "page", "margin_right", "20pt");
+      set(table, "text", "font_size", "10pt");
+      set(table, "text", "first_line_indent", "10pt");
     },
     _ => {},
   }
@@ -630,7 +639,9 @@ fn apply_fixture_config_overrides(name: &str, table: &mut toml::value::Table) {
     // 左右余白 20pt と合わせて本文幅を 105pt にする用紙幅
     "line_adjustment" | "line_adjustment_uniform" => set(table, "pdf", "width", "145pt"),
     // 左右余白 20pt と合わせて本文幅を 260pt にする用紙幅
-    "line_fitness" => set(table, "pdf", "width", "300pt"),
+    "line_fitness" | "short_last_line_columns" => set(table, "pdf", "width", "300pt"),
+    // 左右余白 20pt と合わせて本文幅を 500pt にする用紙幅
+    "short_last_line" => set(table, "pdf", "width", "540pt"),
     // serif は先頭の STIX Two Text の後ろに sans_serif と同じ Noto Sans を足し、japanese_serif は先頭を
     // japanese_monospace と同じ Source Han Code JP にして既存の Noto Serif JP を 2 つ目へ回す（先頭のままでは代替が起きない）
     "font_fallback" => {

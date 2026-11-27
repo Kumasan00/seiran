@@ -43,6 +43,7 @@ pub(super) fn lower_code_block(ctx: &LoweringContext<'_>, id: NodeId, text: &str
   }
   return vec![LayoutNode::VBox {
     children: vec![LayoutNode::Paragraph(ParagraphLayout {
+      body_text: false,
       hanging_punctuation: false,
       open_bracket_paragraph_start: OpenBracketAki::None,
       open_bracket_line_start: OpenBracketAki::None,
