@@ -36,7 +36,7 @@ pub(super) fn break_lines(
   line_start: OpenBracketAki,
 ) -> Result<Vec<Line>, LengthOverflow> {
   return if alignment == TextAlignment::Justify {
-    knuth_plass::break_lines(items, text_width, hang_room, order, paragraph_start, line_start)
+    knuth_plass::break_lines(items, text_width, hang_room, order, paragraph_start, line_start, None)
   } else {
     greedy::break_lines(items, text_width, alignment, &mut Vec::new(), order, paragraph_start, line_start)
   };
@@ -1046,7 +1046,7 @@ mod tests {
       break_lines(&items, Length::pt(25.0), TextAlignment::Justify, Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
         .expect("テストの寸法は値域内");
     let optimal =
-      knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE)
+      knuth_plass::break_lines(&items, Length::pt(25.0), Length::ZERO, AdjustmentOrder::Uniform, NONE, NONE, None)
         .expect("テストの寸法は値域内");
 
     assert_same_lines(&lines, &optimal);
