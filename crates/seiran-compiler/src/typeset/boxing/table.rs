@@ -599,6 +599,7 @@ fn layout_row_cells(
         AdjustmentOrder::Uniform,
         OpenBracketAki::None,
         OpenBracketAki::None,
+        None,
       )?;
       let widest = lines.iter().try_fold(Length::ZERO, |widest, line| return Ok(widest.max(line.width()?)))?;
       overrun = overrun.max(widest.try_sub(content_width)?);

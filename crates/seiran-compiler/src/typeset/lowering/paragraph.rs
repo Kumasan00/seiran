@@ -45,6 +45,7 @@ pub(super) fn assemble_paragraph(
     origin,
     content: result,
     spacing_after: ctx.style.text.paragraph_spacing,
+    body_text: true,
     hanging_punctuation: ctx.style.text.hanging_punctuation,
     open_bracket_paragraph_start: ctx.style.text.open_bracket_paragraph_start,
     open_bracket_line_start: ctx.style.text.open_bracket_line_start,

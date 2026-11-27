@@ -1,6 +1,5 @@
 ---
 source: crates/seiran-compiler/src/compiler/golden.rs
-assertion_line: 295
 expression: dump
 input_file: tests/text/open_bracket_half.sei
 ---
@@ -32,9 +31,9 @@ keywords=["test", "seiran"]
   glyphs x=57.20 y=382.21 font=JapaneseSerif size=12.00 text="う" glyph_count=1
   glyphs x=69.20 y=382.21 font=JapaneseSerif size=12.00 text="」" glyph_count=1
   glyphs x=81.20 y=382.21 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=93.80 y=382.21 font=JapaneseSerif size=12.00 text="言っ" glyph_count=2
-  glyphs x=20.00 y=399.46 font=JapaneseSerif size=12.00 text="た" glyph_count=1
-  glyphs x=32.00 y=399.46 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=20.00 y=399.46 font=JapaneseSerif size=12.00 text="言っ" glyph_count=2
+  glyphs x=44.00 y=399.46 font=JapaneseSerif size=12.00 text="た" glyph_count=1
+  glyphs x=56.00 y=399.46 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=32.00 y=424.06 font=JapaneseSerif size=12.00 text="あ" glyph_count=1
   glyphs x=44.00 y=424.06 font=JapaneseSerif size=12.00 text="い" glyph_count=1
   glyphs x=56.00 y=424.06 font=JapaneseSerif size=12.00 text="う" glyph_count=1

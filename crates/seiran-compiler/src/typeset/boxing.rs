@@ -340,6 +340,7 @@ impl BlockBuilder<'_> {
       order,
       paragraph.open_bracket_paragraph_start,
       paragraph.open_bracket_line_start,
+      paragraph.body_text.then_some(dominant_font_size),
     )
     .map_err(overflow)?;
     return Ok(Some(Block::Paragraph {
@@ -353,7 +354,8 @@ impl BlockBuilder<'_> {
 /// 段落を段幅・インデント・揃えに従って行に割り、左インデントまで加えた行列を返す。
 ///
 /// `hang_room` は両端揃えの行末の句読点を利用幅の外へぶら下げてよい幅（0 ならぶら下げない）。`order` は両端揃えの行の
-/// 伸縮を配る順序。`paragraph_start` / `line_start` は段落先頭 / それ以外の行頭の始め括弧の前アキ。
+/// 伸縮を配る順序。`paragraph_start` / `line_start` は段落先頭 / それ以外の行頭の始め括弧の前アキ。`last_line_em` は
+/// 両端揃えの段落末尾の行の短さを測る em（`None` なら測らない）。
 /// 揃えのずらしは行分割が利用可能幅の中で済ませる。段オフセットは段をまたぐと行ごとに変わるため、
 /// ここでは足さず着地段が決まってから足す。
 ///
@@ -374,9 +376,11 @@ fn break_paragraph(
   order: AdjustmentOrder,
   paragraph_start: OpenBracketAki,
   line_start: OpenBracketAki,
+  last_line_em: Option<Length>,
 ) -> Result<Vec<Line>, LengthOverflow> {
   let available = boxes::usable_width(column_width, indent, right_indent)?;
-  let mut lines = break_lines::break_lines(items, available, alignment, hang_room, order, paragraph_start, line_start)?;
+  let mut lines =
+    break_lines::break_lines(items, available, alignment, hang_room, order, paragraph_start, line_start, last_line_em)?;
   for line in &mut lines {
     line.shift_x(indent)?;
   }
@@ -545,6 +549,7 @@ impl<'a> Measurer<'a> {
           AdjustmentOrder::Uniform,
           OpenBracketAki::None,
           OpenBracketAki::None,
+          None,
         )
         .map_err(|LengthOverflow| {
           return ElementOverflow {
@@ -1024,6 +1029,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1060,6 +1066,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1084,6 +1091,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1104,6 +1112,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1125,6 +1134,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1147,6 +1157,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1167,6 +1178,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     )
     .expect("値域内");
 
@@ -1191,6 +1203,7 @@ mod tests {
       AdjustmentOrder::Uniform,
       OpenBracketAki::None,
       OpenBracketAki::None,
+      None,
     );
 
     assert_eq!(result.map(|lines| return lines.len()), Err(LengthOverflow));

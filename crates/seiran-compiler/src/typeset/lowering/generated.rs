@@ -123,7 +123,10 @@ mod tests {
     style::{RunningTemplate, Style as ReadStyle},
     typeset::lowering::{
       lower_sources_with_headings, running_text_style,
-      test_support::{analyzed, context, inlines, lower, paragraph_hanging_flags, paragraph_layout, paragraph_origins},
+      test_support::{
+        analyzed, context, inlines, lower, paragraph_body_text_flags, paragraph_hanging_flags, paragraph_layout,
+        paragraph_origins,
+      },
     },
   };
 
@@ -192,6 +195,14 @@ mod tests {
 
     // 先頭は書誌見出しの段落（独立行なので false）、続くのが書誌エントリ
     assert_eq!(paragraph_hanging_flags(&layout), vec![false, true], "{layout:?}");
+  }
+
+  #[test]
+  fn bibliography_entries_are_body_text() {
+    let (layout, _headings) = lower_bibliography(&context(&ReadStyle::default()), Some(&bibliography()), 0, 0);
+
+    // 先頭は書誌見出しの段落、続くのが書誌エントリ
+    assert_eq!(paragraph_body_text_flags(&layout), vec![false, true], "{layout:?}");
   }
 
   #[test]

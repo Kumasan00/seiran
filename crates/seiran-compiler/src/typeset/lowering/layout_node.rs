@@ -73,6 +73,9 @@ pub(in crate::typeset) struct ParagraphLayout {
   pub content: Vec<InlineNode>,
   /// 内容が空でも残す段落後の固定アキ。0 はアキなし
   pub spacing_after: Length,
+  /// 本文系の段落（本文・リスト項目・引用・定理の本体・文献リスト）か。style によらず決まり、段落末尾の短い行を測る
+  /// 対象になる
+  pub body_text: bool,
   /// 行末の和文句読点をぶら下げてよい本文系の段落か。揃えは見ない（両端揃えかどうかは継いだ揃えを知る boxing が判定する）
   pub hanging_punctuation: bool,
   /// 段落先頭の始め括弧の前アキ。本文系の段落だけが style の値を持ち、ほかは前アキなし

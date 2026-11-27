@@ -122,17 +122,17 @@ keywords=["test", "seiran"]
   glyphs x=54.09 y=599.71 font=Math size=12.00 text="+" glyph_count=1
   glyphs x=65.40 y=599.71 font=Math size=12.00 text="𝑦" glyph_count=1
   glyphs x=71.70 y=599.71 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=84.30 y=599.71 font=JapaneseSerif size=12.00 text="棒" glyph_count=1
-  glyphs x=20.00 y=616.96 font=JapaneseSerif size=12.00 text="と" glyph_count=1
-  glyphs x=35.60 y=616.96 font=Math size=12.00 text="3" glyph_count=1
-  glyphs x=45.14 y=616.96 font=JapaneseSerif size=12.00 text="本" glyph_count=1
-  glyphs x=57.74 y=616.96 font=JapaneseSerif size=12.00 text="の" glyph_count=1
-  glyphs x=70.34 y=616.96 font=JapaneseSerif size=12.00 text="棒" glyph_count=1
-  glyphs x=82.94 y=616.96 font=JapaneseSerif size=12.00 text="を" glyph_count=1
-  glyphs x=95.54 y=616.96 font=JapaneseSerif size=12.00 text="並" glyph_count=1
-  glyphs x=108.14 y=616.96 font=JapaneseSerif size=12.00 text="べ" glyph_count=1
-  glyphs x=20.00 y=634.20 font=JapaneseSerif size=12.00 text="る" glyph_count=1
-  glyphs x=32.00 y=634.20 font=JapaneseSerif size=12.00 text="。" glyph_count=1
+  glyphs x=20.00 y=616.96 font=JapaneseSerif size=12.00 text="棒" glyph_count=1
+  glyphs x=32.60 y=616.96 font=JapaneseSerif size=12.00 text="と" glyph_count=1
+  glyphs x=48.20 y=616.96 font=Math size=12.00 text="3" glyph_count=1
+  glyphs x=57.74 y=616.96 font=JapaneseSerif size=12.00 text="本" glyph_count=1
+  glyphs x=70.34 y=616.96 font=JapaneseSerif size=12.00 text="の" glyph_count=1
+  glyphs x=82.94 y=616.96 font=JapaneseSerif size=12.00 text="棒" glyph_count=1
+  glyphs x=95.54 y=616.96 font=JapaneseSerif size=12.00 text="を" glyph_count=1
+  glyphs x=108.14 y=616.96 font=JapaneseSerif size=12.00 text="並" glyph_count=1
+  glyphs x=20.00 y=634.20 font=JapaneseSerif size=12.00 text="べ" glyph_count=1
+  glyphs x=32.00 y=634.20 font=JapaneseSerif size=12.00 text="る" glyph_count=1
+  glyphs x=44.00 y=634.20 font=JapaneseSerif size=12.00 text="。" glyph_count=1
   glyphs x=20.00 y=658.80 font=Serif size=12.00 text="Supercalifragilisticexpialidocious" glyph_count=34
   glyphs x=20.00 y=675.47 font=JapaneseSerif size=12.00 text="と" glyph_count=1
   glyphs x=32.60 y=675.47 font=JapaneseSerif size=12.00 text="い" glyph_count=1
