@@ -174,7 +174,8 @@ pub(crate) struct TheoremStyle {
   pub reset_by: TheoremReset,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
   /// （`reset_by` 以外のカウンタも書ける。counter の `number_format` と同形で、値 0 のカウンタも同じく区切りごと
-  /// 省く。例: `"{n}"`、`"{chapter}.{n}"`）
+  /// 省く。例: `"{n}"`、`"{chapter}.{n}"`）。付録の下で付録番号を出すには `{appendix}` も書く
+  /// （`"{appendix}.{chapter}.{n}"`。`"{chapter}.{n}"` では章番号が 0 の付録の下で `"1"` になる）
   #[garde(dive)]
   pub number_format: CounterTemplate,
   /// 採番しない（`proof` 等）

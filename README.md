@@ -249,7 +249,8 @@ format = "付録 {number} {title}"
 [counters.appendix]            # 付録の番号（既定は alpha_upper で A, B, …）
 display_name = "付録"
 # 番号書式を自分で書くときは付録番号も書く: [counters.section] number_format = "{appendix}.{chapter}.{n}"
-# （"{chapter}.{n}" だけでは付録の下の節が "1" になる）
+# （"{chapter}.{n}" だけでは付録の下の節が "1" になる。[theorems.<class>] の number_format も同じで、
+#   reset_by = "chapter" と "{chapter}.{n}" では各付録の定理が "1", "2", … と付録番号なしで数え直される）
 
 [heading.section]
 format = "{number} {title}"
