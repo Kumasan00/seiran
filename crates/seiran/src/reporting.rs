@@ -163,8 +163,7 @@ const FALLBACK_HEADER: &str = "診断を描けなかったため、本文と cod
 ///
 /// `Report` の `Debug` は構築時に既定 handler（`set_hook` していなければ `MietteHandler::new()`。seiran は
 /// `set_hook` を呼ばない）を捕まえて `handler.debug(診断, f)` を呼ぶだけなので、同じ handler で同じ関数を
-/// 呼べば、出るバイト列は `Report` 経由のときと一致する。`Report` は所有した診断からしか作れないので、
-/// `Warnings` が貸す `&dyn Diagnostic` を描くにはこの形が要る。
+/// 呼べば、出るバイト列は `Report` 経由のときと一致する。
 struct Rendered<'a>(&'a dyn ReportHandler, &'a dyn Diagnostic);
 
 impl fmt::Debug for Rendered<'_> {

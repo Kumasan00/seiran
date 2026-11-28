@@ -87,14 +87,14 @@ impl Outcome {
   /// 描けない診断は [`reporting::render_diagnostic`] の簡略表示（本文と code）に置き換わる。`stderr` への
   /// 書き込み失敗は捨てる。どちらの場合も、終了コードは報告を描けたか・書けたかに依らず本来のものを返す。
   pub(super) fn report(self, stderr: &mut impl Write) -> ExitCode {
-    let handler = MietteHandler::new();
     return match self {
       Outcome::Success => ExitCode::SUCCESS,
       Outcome::LogOnlyFailure(error) => {
-        let _ = writeln!(stderr, "Error: {}", reporting::render_diagnostic(&handler, &error));
+        let _ = writeln!(stderr, "Error: {}", reporting::render_diagnostic(&MietteHandler::new(), &error));
         ExitCode::FAILURE
       },
       Outcome::Failure { report, log } => {
+        let handler = MietteHandler::new();
         let _ = writeln!(stderr, "Error: {}", reporting::render_diagnostic(&handler, report.as_ref()));
         if let Some(error) = log {
           let _ = writeln!(stderr, "{}", reporting::render_diagnostic(&handler, &error));
