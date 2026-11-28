@@ -5,6 +5,7 @@ use serde::Deserialize;
 
 use crate::{
   color::Color,
+  document::Typeface,
   length::{Length, non_negative, positive},
   project::{non_negative_finite, positive_finite},
   style::{NumberTemplate, number_style::NumberStyle},
@@ -47,6 +48,8 @@ pub(crate) struct FootnoteStyle {
   /// マーカーの上付きシフト量（基準フォントサイズに対する比、正で上方向）
   #[garde(custom(non_negative_finite))]
   pub marker_raise_factor: f32,
+  /// マーカー番号の書体（本文中・脚注本体先頭の両方に使う。外側の装飾の書体は継がない）
+  pub marker_typeface: Typeface,
   /// 本文と区切り罫線の間隔
   #[garde(custom(non_negative))]
   pub top_margin: Length,
@@ -72,6 +75,7 @@ impl Default for FootnoteStyle {
       marker_format: NumberTemplate::parse("{number}"),
       marker_size_factor: 0.7,
       marker_raise_factor: 0.4,
+      marker_typeface: Typeface::Serif,
       top_margin: Length::pt(6.0),
       rule_length: Length::pt(72.0),
       rule_thickness: Length::pt(0.4),
@@ -87,6 +91,7 @@ mod tests {
 
   use super::{FootnoteNumbering, FootnoteStyle};
   use crate::{
+    document::Typeface,
     length::Length,
     style::{NumberTemplate, number_style::NumberStyle},
   };
@@ -106,6 +111,33 @@ mod tests {
     let style: FootnoteStyle = toml::from_str("numbering = \"per_page\"\n").expect("per_page は受理されるはず");
 
     assert_eq!(style.numbering, FootnoteNumbering::PerPage);
+  }
+
+  #[test]
+  fn default_marker_typeface_is_serif() {
+    assert_eq!(FootnoteStyle::default().marker_typeface, Typeface::Serif);
+  }
+
+  #[test]
+  fn deserialize_overrides_marker_typeface() {
+    let style: FootnoteStyle =
+      toml::from_str("marker_typeface = \"sans_serif\"\n").expect("sans_serif は受理されるはず");
+
+    assert_eq!(style.marker_typeface, Typeface::SansSerif);
+  }
+
+  #[test]
+  fn deserialize_accepts_math_marker_typeface() {
+    let style: FootnoteStyle = toml::from_str("marker_typeface = \"math\"\n").expect("math は受理されるはず");
+
+    assert_eq!(style.marker_typeface, Typeface::Math);
+  }
+
+  #[test]
+  fn deserialize_rejects_unknown_marker_typeface() {
+    let result: Result<FootnoteStyle, _> = toml::from_str("marker_typeface = \"sans\"\n");
+
+    assert!(result.is_err(), "未知の書体名は既定へ落とさず拒否する");
   }
 
   #[test]
