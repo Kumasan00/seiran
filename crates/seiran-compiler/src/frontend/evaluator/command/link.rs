@@ -16,10 +16,10 @@
 //! 名前空間を持つ。第 2 引数は `\href` の第 2 引数と同じ表示内容の規則に従う（[`link_display`]）。
 
 use crate::{
-  document::{HirInline, HirInlineKind, HirMath, HirMathKind, LinkDestination},
+  document::{HirInline, HirInlineKind, LinkDestination},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, color_reach,
       inline::{InlinePolicy, evaluate_inline_children},
       signature::Signature,
       string_arg,
@@ -129,7 +129,7 @@ fn has_visible_content(inlines: &[HirInline]) -> bool {
     return match &inline.kind {
       HirInlineKind::Text(text) | HirInlineKind::Code(text) => !text.trim().is_empty(),
       HirInlineKind::Styled { children, .. } | HirInlineKind::Colored { children, .. } => has_visible_content(children),
-      HirInlineKind::Math(nodes) => math_has_content(nodes),
+      HirInlineKind::Math(nodes) => color_reach::math_has_content(nodes),
       HirInlineKind::Symbol(_) | HirInlineKind::Number(_) | HirInlineKind::Unit(_) | HirInlineKind::Quantity { .. } => {
         true
       },
@@ -147,35 +147,6 @@ fn has_visible_content(inlines: &[HirInline]) -> bool {
       HirInlineKind::NoIndent => unreachable!(
         "\\noindent は Placement::accept_block を通らないと結果を作れず、インライン文脈の表示内容では拒否済み"
       ),
-    };
-  });
-}
-
-/// 数式の要素列が字・記号・構造を 1 つでも含むか
-///
-/// ソースの空白・明示アキ・空のグループ・空白だけの数式内の文章は字を持たないので含まない扱い。
-fn math_has_content(nodes: &[HirMath]) -> bool {
-  return nodes.iter().any(|node| {
-    return match &node.kind {
-      HirMathKind::Text(text) | HirMathKind::Prose(text) => !text.trim().is_empty(),
-      HirMathKind::Group(children) => math_has_content(children),
-      HirMathKind::Space(_) => false,
-      HirMathKind::Symbol { .. }
-      | HirMathKind::OperatorName { .. }
-      | HirMathKind::Number(_)
-      | HirMathKind::Unit(_)
-      | HirMathKind::Quantity { .. }
-      | HirMathKind::Superscript(_)
-      | HirMathKind::Subscript(_)
-      | HirMathKind::Frac { .. }
-      | HirMathKind::Binom { .. }
-      | HirMathKind::Sqrt { .. }
-      | HirMathKind::Accent { .. }
-      | HirMathKind::Fenced { .. }
-      | HirMathKind::Bar { .. }
-      | HirMathKind::Styled { .. }
-      | HirMathKind::Matrix { .. }
-      | HirMathKind::Cases { .. } => true,
     };
   });
 }

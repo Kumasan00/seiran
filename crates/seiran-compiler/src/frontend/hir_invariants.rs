@@ -8,7 +8,9 @@ use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   frontend::{
     self, ParseError,
-    evaluator::{InlinePolicy, column_value_violation, math_typeface_violation, typeface_violation, value_cells},
+    evaluator::{
+      InlinePolicy, color_violation, column_value_violation, math_typeface_violation, typeface_violation, value_cells,
+    },
   },
   project::PathResolver,
   source::{SourceId, Span},
@@ -124,7 +126,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
 /// # Panics
 ///
 /// `policy` が禁じるリンクを作る要素・索引マーカーがあるとき、複数参照のラベルが 2 個未満・空・重複を含むとき、
-/// 範囲参照の両端が同じラベルのとき、または書体コマンドの中身に書体が届く要素が無いとき。
+/// 範囲参照の両端が同じラベルのとき、書体コマンドの中身に書体が届く要素が無いとき、または `\color` の中身に色が届く要素が
+/// 無いとき。
 fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePolicy, out: &mut Vec<Visited>) {
   let (index_allowed, links_allowed) = match policy {
     InlinePolicy::Allow => (true, true),
@@ -156,7 +159,11 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePol
         );
         walk_inlines(children, here, policy, out);
       },
-      HirInlineKind::Colored { children, .. } | HirInlineKind::Footnote { body: children, .. } => {
+      HirInlineKind::Colored { children, .. } => {
+        assert!(color_violation(children).is_none(), "`\\color` の中身には色が届く要素があるはず: {:?}", inline.id);
+        walk_inlines(children, here, policy, out);
+      },
+      HirInlineKind::Footnote { body: children, .. } => {
         walk_inlines(children, here, policy, out);
       },
       HirInlineKind::Link { children, .. } => walk_inlines(children, here, InlinePolicy::RejectIndexAndLinks, out),
@@ -369,6 +376,7 @@ mod tests {
 
   use super::{parse_checked, visit_source, walk_inlines, walk_math};
   use crate::{
+    color::Color,
     document::{
       HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, LinkDestination,
       MathVariant, NodeId, Typeface,
@@ -504,6 +512,22 @@ mod tests {
             },
           ),
         ],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\color` の中身には色が届く要素があるはず")]
+  fn colored_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、中身の無い `\color` を作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Colored {
+        color: Color::new(255, 0, 0),
+        children: Vec::new(),
       },
     )];
 

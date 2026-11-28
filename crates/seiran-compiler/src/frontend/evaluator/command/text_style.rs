@@ -5,7 +5,7 @@ use crate::{
   document::{HirInline, HirInlineKind, Typeface},
   frontend::{
     evaluator::{
-      EvalContext, EvalError,
+      EvalContext, EvalError, color_reach,
       inline::{InlinePolicy, evaluate_inline_children},
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::Signature,
@@ -54,6 +54,7 @@ pub(super) fn styled_text(
 /// # Errors
 ///
 /// 色の欠落で [`EvalError::MissingCommandArgument`] を返します。引数内の評価エラーはそのまま伝播します。
+/// 引数に色が届く要素が無いとき [`EvalError::IneffectiveColor`] を返します。
 pub(super) fn colored_text(
   view: &CommandView<'_>,
   arg: &CstNode<'_>,
@@ -71,6 +72,12 @@ pub(super) fn colored_text(
 
   let id = ctx.alloc(view.span());
   let children = evaluate_inline_children(view.source(), ctx, arg, inline_policy)?;
+  if let Some(label) = color_reach::color_violation(&children) {
+    return Err(EvalError::IneffectiveColor {
+      span: view.span().into(),
+      label: label.to_string(),
+    });
+  }
   return Ok(HirInline::new(id, HirInlineKind::Colored { color, children }));
 }
 

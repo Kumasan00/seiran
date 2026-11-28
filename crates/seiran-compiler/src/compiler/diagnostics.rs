@@ -774,6 +774,18 @@ fn diagnostic_ineffective_typeface() {
 }
 
 #[test]
+fn diagnostic_ineffective_color() {
+  // 色が届く字の無い `\color` は、外した書き方と同じ出力への第 2 の書き方なので拒否する
+  let failure = compile_err(&[
+    "tests/text/diagnostics/ineffective_color_a.sei",
+    "tests/text/diagnostics/ineffective_color_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::ineffective_color".to_string(); 2]);
+  assert_matches_golden("ineffective_color", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_unknown_cite_key() {
   let failure = compile_err(&["tests/text/diagnostics/unknown_cite_key.sei"]);
 
