@@ -20,13 +20,16 @@ use std::{
 
 use miette::Diagnostic;
 use thiserror::Error;
+use time::{UtcOffset, format_description::well_known::Rfc3339};
 use tracing::{Level, Metadata};
-use tracing_subscriber::fmt::MakeWriter;
+use tracing_subscriber::fmt::{MakeWriter, time::OffsetTime};
 
 /// ログファイルへの書き出し口。
 pub(super) struct LogSink {
   /// 書き出し先と保持した失敗（layer 側と共有する）
   state: Arc<Mutex<SinkState>>,
+  /// 工程と実行記録で共用する時刻表現。ファイルを開くときにローカルオフセットを決める。
+  pub(super) timer: OffsetTime<Rfc3339>,
   /// 失敗の報告に使うログファイルのパス
   path: PathBuf,
 }
@@ -53,6 +56,12 @@ impl SinkState {
         Err(io::Error::new(kind, message))
       },
     };
+  }
+
+  /// バッファを流し切り、その成否を記録する。
+  fn flush(&mut self) -> io::Result<()> {
+    let result = self.writer.flush();
+    return self.check(result);
   }
 }
 
@@ -107,18 +116,20 @@ impl Write for SinkGuard<'_> {
     return self.guard.check(result);
   }
 
-  fn flush(&mut self) -> io::Result<()> {
-    let result = self.guard.writer.flush();
+  /// tracing は event 全体を `write_all` する。短い書き込みの再試行まで終わってから成否を記録する。
+  fn write_all(&mut self, buf: &[u8]) -> io::Result<()> {
+    let result = self.guard.writer.write_all(buf);
     return self.guard.check(result);
   }
+
+  fn flush(&mut self) -> io::Result<()> { return self.guard.flush(); }
 }
 
 impl Drop for SinkGuard<'_> {
   /// INFO 以上の event を書き終えたガードだけ flush する。
   fn drop(&mut self) {
     if self.flush_on_drop {
-      let result = self.guard.writer.flush();
-      let _ = self.guard.check(result);
+      let _ = self.guard.flush();
     }
   }
 }
@@ -150,6 +161,7 @@ impl LogSink {
         writer: BufWriter::new(writer),
         first_error: None,
       })),
+      timer: OffsetTime::local_rfc_3339().unwrap_or_else(|_| return OffsetTime::new(UtcOffset::UTC, Rfc3339)),
       path,
     };
   }
@@ -169,8 +181,7 @@ impl LogSink {
     let mut guard = lock(&self.state);
     let written = writeln!(guard.writer, "{text}");
     let _ = guard.check(written);
-    let flushed = guard.writer.flush();
-    let _ = guard.check(flushed);
+    let _ = guard.flush();
   }
 
   /// 書き残しを流し切り、保持していた最初の失敗を返す。
@@ -182,8 +193,7 @@ impl LogSink {
   /// 書き込みまたは flush が失敗していたとき [`LogFailure`] を返す。
   pub(super) fn finish(self) -> Result<(), LogFailure> {
     let mut guard = lock(&self.state);
-    let flushed = guard.writer.flush();
-    let _ = guard.check(flushed);
+    let _ = guard.flush();
     let first_error = guard.first_error.take();
     // `self` の `Drop`（同じ Mutex を取り直して flush する）より前に手放す — 暗黙の drop 順に頼らない。
     drop(guard);
@@ -206,8 +216,7 @@ impl Drop for LogSink {
   /// 読む主体がいない（`finish` を経ない経路なので `LogFailure` を受け取る側が存在しない）ため捨てる。
   fn drop(&mut self) {
     let mut guard = lock(&self.state);
-    let flushed = guard.writer.flush();
-    let _ = guard.check(flushed);
+    let _ = guard.flush();
   }
 }
 
@@ -296,6 +305,7 @@ mod tests {
   };
 
   use tracing::{debug, info};
+  use tracing_subscriber::fmt::MakeWriter;
 
   use super::{LogSink, open_log_file};
 
@@ -431,6 +441,17 @@ mod tests {
     let failure = sink.finish().expect_err("書き込みに失敗した実行は失敗を報告する");
 
     assert_eq!(failure.path, "run.log", "失敗はログのパスとともに報告する");
+  }
+
+  #[test]
+  fn incomplete_event_write_is_reported_at_finish() {
+    // 固定長 0 の出力先にバッファ容量を超える event を渡すと、write は Ok(0) を返す。
+    let empty: &'static mut [u8] = &mut [];
+    let writer = io::Cursor::new(empty);
+    let sink = LogSink::from_writer(PathBuf::from("run.log"), Box::new(writer));
+    let error = sink.writer().make_writer().write_all(&[0; 16 * 1024]).expect_err("event 全体は書けない");
+    assert_eq!(error.kind(), io::ErrorKind::WriteZero);
+    assert_eq!(sink.finish().expect_err("未記録の event は終了時に報告する").source.kind(), error.kind());
   }
 
   #[test]

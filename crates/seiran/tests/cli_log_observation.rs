@@ -40,7 +40,7 @@ fn verbose_terminal_shows_one_activity_per_phase_and_file_keeps_the_results() {
     "PDF を保存中",
   ] {
     let line = lines.next().expect("工程の開始が 1 行ある");
-    assert_eq!(line.trim_start().strip_prefix("INFO "), Some(activity), "{stderr}");
+    assert_eq!(line, activity, "{stderr}");
   }
   assert!(lines.next().is_some_and(|line| return line.contains("out/doc.pdf")), "{stderr}");
   assert!(lines.next().is_none(), "{stderr}");

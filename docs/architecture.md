@@ -1071,7 +1071,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   する。工程の開始と結果付きの終了は `Phase` が INFO event として出す。工程の span と両 event は同じ
   `seiran_compiler::phase` または `seiran::phase` を target とし、target を絞っても工程名を読めるようにする。
   開始 event の名前は両 crate 共通の `seiran.progress`。メッセージはそれだけで作業が分かる日本語にし、
-  CLI が `-v` の端末に表示する進捗をメタデータで選べるようにする。
+  CLI はこの名前で開始 event を選び、`-v` の端末に作業名を 1 行で表示する。ファイルには工程の span と終了 event も記録する。
   `render` / `write` の件数を持つ DEBUG event は callee（`seiran_pdf::render` / `pdf_output`）が
   出し、CLI は同じ工程の完了 event を重ねない（1 事象 1 行。compiler 側は span を開いた側が出す — `compiler`
   節）。所要時間を持つのは工程の終了 event と DEBUG の集計 event だけ。

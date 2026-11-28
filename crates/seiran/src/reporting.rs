@@ -1,8 +1,8 @@
 //! CLI のユーザー向け報告と開発者向け tracing 設定
 //!
 //! 出力を、warning 診断と成功サマリからなるユーザー向け報告と、処理観測用の tracing に分ける。
-//! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知り、フィルタ優先順位・表示形式・端末装飾は
-//! 本 module に閉じる。端末側の出力先は stderr で、stdout はパイプできる成果物のための経路として空けておく。
+//! 呼び出し側は [`Reporter`] の初期化と報告操作だけを知る。
+//! `trace` が進捗と詳細ログを各出力先へ振り分け、`log_file` がファイル書き込みの成否を保持する。端末側の出力先は stderr で、stdout はパイプできる成果物のための経路として空けておく。
 //!
 //! `--log-file` を指定したときは、端末の出力をそのままに**ログファイルを足す**。実行記録と終了記録は
 //! tracing を通さないので、フィルタに依らず残る。
@@ -11,6 +11,7 @@
 //! 記録は、端末へ書けたかに依らない。
 
 mod log_file;
+mod trace;
 
 use std::{
   ffi::OsStr,
@@ -22,64 +23,13 @@ use std::{
 use log_file::LogSink;
 pub(super) use log_file::{LogFailure, LogFileError};
 use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, MietteHandler, ReportHandler};
-use thiserror::Error;
-use time::{UtcOffset, format_description::well_known::Rfc3339};
-use tracing::Level;
-use tracing_subscriber::{
-  EnvFilter, Registry,
-  filter::{FilterExt, LevelFilter, ParseError, filter_fn},
-  fmt::{
-    self,
-    format::Writer,
-    time::{FormatTime, OffsetTime},
-  },
-  layer::{Layer, SubscriberExt},
-  util::SubscriberInitExt,
+use time::format_description::well_known::Rfc3339;
+use tracing_subscriber::fmt::{
+  format::Writer,
+  time::{FormatTime, OffsetTime},
 };
 
 use crate::cli::Command;
-
-/// 実効フィルタの決定に伴う、ユーザーが直せる通知。
-///
-/// warning 診断として [`Reporter::warning`] が端末（`-q` 以外）とログファイルへ出す。
-#[derive(Debug, Error, Diagnostic)]
-enum FilterWarning {
-  /// `RUST_LOG` を解釈できず、`--verbose` の設定へ戻した
-  #[error("環境変数 RUST_LOG を解釈できないため、--verbose の設定を使用します")]
-  #[diagnostic(
-    code(cli::rust_log::invalid),
-    severity(Warning),
-    help(
-      "RUST_LOG の書式（例: seiran_compiler::typeset=trace）を確認するか、RUST_LOG を外して -v / -vv / -vvv を使ってください。"
-    )
-  )]
-  Invalid {
-    /// 解釈の失敗
-    #[source]
-    source: ParseError,
-  },
-
-  /// 環境変数の値を Unicode として読めなかった
-  #[error("環境変数 RUST_LOG を文字列として読み取れないため、--verbose の設定を使用します")]
-  #[diagnostic(
-    code(cli::rust_log::invalid),
-    severity(Warning),
-    help("RUST_LOG を有効な Unicode 文字列に設定してください。")
-  )]
-  NonUnicode,
-
-  /// 有効な `RUST_LOG` が `--verbose` を覆った
-  #[error("環境変数 RUST_LOG が設定されているため、--verbose の指定を無視します: RUST_LOG={value}")]
-  #[diagnostic(
-    code(cli::rust_log::overrides_verbose),
-    severity(Warning),
-    help("-v を効かせるには RUST_LOG を外してください。RUST_LOG で詳細度を決めるなら -v は不要です。")
-  )]
-  OverridesVerbose {
-    /// 設定されていた `RUST_LOG` の値
-    value: String,
-  },
-}
 
 /// CLI のユーザー向け報告器。
 ///
@@ -94,18 +44,10 @@ pub(super) struct Reporter {
   log: Option<LogSink>,
   /// 端末へ warning 診断を描く miette の既定 handler（`Report` の `Debug` 表示が使うのと同じもの）。
   terminal: MietteHandler,
-  /// ログファイルの時刻表現（実行記録の開始・終了時刻に使う。イベントの時刻と同じ）
-  timer: OffsetTime<Rfc3339>,
 }
 
 impl Reporter {
   /// tracing を初期化し、同じ quiet 方針と装飾方針を持つ報告器を返す。
-  ///
-  /// 端末側の出力先は stderr を明示する（`fmt` の既定は stdout で、そのままではログが成果物の経路へ流れる）。
-  /// span の enter / close は行にしない（`FmtSpan` は既定の `NONE` のまま）— 工程の開始と終了は `Phase` の event が
-  /// 出すので、span は各行の prefix と行末のフィールドとしてだけ現れる。
-  /// 端末装飾の可否はここで 1 回だけ決め、ログ（`with_ansi`）と成功サマリで同じ値を使う。`fmt` の既定は
-  /// `NO_COLOR` しか見ず出力先が端末かを問わないため、明示的に与える必要がある。
   ///
   /// # Errors
   ///
@@ -116,57 +58,17 @@ impl Reporter {
     log_file: Option<&Path>,
     header: &RunHeader<'_>,
   ) -> Result<Self, LogFileError> {
-    // ローカル時刻の解決を先に済ませる（`OffsetTime::local_rfc_3339` はプロセスが単一スレッドのうちに解決する）。
-    let timer = log_timer();
-    let raw_filter = std::env::var_os("RUST_LOG");
-    let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log_file.is_some());
     let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), io::stderr().is_terminal());
     let log = log_file.map(LogSink::open).transpose()?;
-    // -v は作業に入った時点で 1 行出す。工程の span と結果は詳細表示・ファイル側が使う。
-    let progress_only = plan.progress_only;
-    let terminal_events = filter_fn(move |meta| {
-      return !progress_only || *meta.level() <= Level::WARN || meta.name() == "seiran.progress";
-    })
-    .with_max_level_hint(LevelFilter::TRACE);
-    let stderr_layer = fmt::layer()
-      .compact()
-      .with_target(shows_target(&plan.stderr))
-      .with_writer(io::stderr)
-      .with_ansi(ansi)
-      .with_file(false)
-      .with_line_number(false)
-      .without_time()
-      // 端末へ書けない event は捨てる（module doc）。有効にすると失敗の報告を `eprintln!` で同じ stderr へ書き、
-      // stderr が閉じていると panic する。
-      .log_internal_errors(false)
-      .with_filter(plan.stderr.and(terminal_events));
-    let file_layer = log.as_ref().zip(plan.file).map(|(sink, filter)| {
-      sink.write_block(&run_header_text(&now_text(&timer), header, &filter.to_string()));
-      return fmt::layer()
-        .compact()
-        .with_target(shows_target(&filter))
-        .with_writer(sink.writer())
-        .with_ansi(false)
-        .with_file(false)
-        .with_line_number(false)
-        .with_timer(timer.clone())
-        // 書き込み失敗は sink が保持して `finish` が報告するので、layer 側から stderr へ出させない。
-        // このフラグは書き込み失敗だけでなく event の整形失敗の報告も同じく抑止する。整形失敗は
-        // `compact()` と seiran が出すフィールドの単純さからいって理論上のものでしかなく、しかも
-        // 何も書かれないので sink 側も保持しようがない（保持できるのは writer へ渡った後の失敗だけ）。
-        .log_internal_errors(false)
-        .with_filter(filter);
-    });
-    Registry::default().with(stderr_layer).with(file_layer).init();
+    let warning = trace::install(verbose, quiet, ansi, log.as_ref(), header);
 
     let reporter = Reporter {
       quiet,
       ansi,
       log,
       terminal: MietteHandler::new(),
-      timer,
     };
-    if let Some(warning) = &plan.warning {
+    if let Some(warning) = &warning {
       reporter.warning(warning);
     }
     return Ok(reporter);
@@ -233,7 +135,7 @@ impl Reporter {
     let Some(log) = self.log else {
       return Ok(());
     };
-    log.write_block(&run_footer_text(&now_text(&self.timer), succeeded));
+    log.write_block(&run_footer_text(&now_text(&log.timer), succeeded));
     return log.finish();
   }
 }
@@ -288,14 +190,6 @@ fn ansi_enabled(no_color: Option<&OsStr>, stderr_is_terminal: bool) -> bool {
   return no_color.is_none_or(|value| return value.is_empty()) && stderr_is_terminal;
 }
 
-/// ログファイルへ書く時刻の表現を決める。
-///
-/// tracing の layer（イベントの時刻）と実行記録（開始・終了時刻）の両方が使う。ローカル時刻のオフセットを採り、
-/// 取得できない環境では UTC（オフセット 0。RFC 3339 では `Z`）へ落とす（取得失敗そのものは報告しない）。
-fn log_timer() -> OffsetTime<Rfc3339> {
-  return OffsetTime::local_rfc_3339().unwrap_or_else(|_| return OffsetTime::new(UtcOffset::UTC, Rfc3339));
-}
-
 /// 現在時刻を `timer` の表現で文字列にする。
 fn now_text(timer: &OffsetTime<Rfc3339>) -> String {
   let mut text = String::new();
@@ -336,72 +230,6 @@ fn run_footer_text(ended_at: &str, succeeded: bool) -> String {
   return format!("# seiran 実行終了\n終了時刻: {ended_at}\n終了状態: {status}");
 }
 
-/// 出力先ごとの実効フィルタと、設定を選んだ際の通知。
-struct LogPlan {
-  /// 端末のフィルタ。静音時はすべて抑止する。
-  stderr: EnvFilter,
-  /// 端末の INFO を利用者向けの進捗だけに絞るか。
-  progress_only: bool,
-  /// 指定されたログファイルのフィルタ。
-  file: Option<EnvFilter>,
-  /// 診断として出すフィルタ設定の警告。
-  warning: Option<FilterWarning>,
-}
-
-/// 有効な環境設定は両出力先に適用する。未指定・不正ならファイルには最低でも工程を残す。
-fn build_log_plan(raw_filter: Option<&OsStr>, verbose: u8, quiet: bool, has_log_file: bool) -> LogPlan {
-  let (env_filter, warning) = match raw_filter.map(OsStr::to_str) {
-    Some(None) => (None, Some(FilterWarning::NonUnicode)),
-    Some(Some(raw)) if !raw.trim().is_empty() => match EnvFilter::builder().parse(raw) {
-      Ok(filter) => {
-        let warning = (verbose > 0).then(|| {
-          return FilterWarning::OverridesVerbose {
-            value: raw.to_owned(),
-          };
-        });
-        (Some(filter), warning)
-      },
-      Err(source) => (None, Some(FilterWarning::Invalid { source })),
-    },
-    Some(Some(_)) | None => (None, None),
-  };
-  let progress_only = verbose == 1 && env_filter.is_none();
-  let file = has_log_file.then(|| return env_filter.clone().unwrap_or_else(|| return flag_filter(verbose.max(1))));
-  let stderr = if quiet {
-    EnvFilter::new("off")
-  } else {
-    env_filter.unwrap_or_else(|| return flag_filter(verbose))
-  };
-  return LogPlan {
-    stderr,
-    progress_only,
-    file,
-    warning,
-  };
-}
-
-/// CLI の詳細度を表す固定の directive からフィルタを作る。
-fn flag_filter(verbose: u8) -> EnvFilter {
-  return EnvFilter::builder()
-    .parse(flag_directive(verbose))
-    .expect("各詳細度には固定の検証済み directive がある");
-}
-
-/// フィルタが TRACE を出しうるか（出しうるときだけ target を表示する）。
-fn shows_target(filter: &EnvFilter) -> bool {
-  return <EnvFilter as Layer<Registry>>::max_level_hint(filter).is_none_or(|hint| return hint >= LevelFilter::TRACE);
-}
-
-/// `--verbose` に対応するフィルタ directive を返す。
-fn flag_directive(verbose: u8) -> &'static str {
-  return match verbose {
-    0 => "warn",
-    1 => "warn,seiran=info,seiran_compiler=info,seiran_pdf=info",
-    2 => "warn,seiran=debug,seiran_compiler=debug,seiran_pdf=debug",
-    _ => "warn,seiran=trace,seiran_compiler=trace,seiran_pdf=trace",
-  };
-}
-
 #[cfg(test)]
 mod tests {
   use std::{ffi::OsStr, path::Path};
@@ -412,8 +240,7 @@ mod tests {
   use tracing_subscriber::fmt::time::OffsetTime;
 
   use super::{
-    FilterWarning, RunHeader, TerminalDiagnostic, ansi_enabled, build_log_plan, flag_directive, flag_filter, now_text,
-    render_diagnostic_plain, run_header_text, shows_target, summary_line,
+    RunHeader, TerminalDiagnostic, ansi_enabled, now_text, render_diagnostic_plain, run_header_text, summary_line,
   };
   use crate::cli::Command;
 
@@ -427,102 +254,6 @@ mod tests {
     url("https://example.com/warning")
   )]
   struct TestWarning;
-
-  /// `--verbose` の段数に対応する directive をフィルタ表記へ揃える。
-  fn flag_filter_text(verbose: u8) -> String { return flag_filter(verbose).to_string(); }
-
-  #[test]
-  fn verbose_only_increases_seiran_targets() {
-    assert_eq!(flag_directive(0), "warn");
-    assert_eq!(flag_directive(1), "warn,seiran=info,seiran_compiler=info,seiran_pdf=info");
-    assert_eq!(flag_directive(2), "warn,seiran=debug,seiran_compiler=debug,seiran_pdf=debug");
-    assert_eq!(flag_directive(3), "warn,seiran=trace,seiran_compiler=trace,seiran_pdf=trace");
-  }
-
-  #[test]
-  fn quiet_keeps_the_log_file_verbose() {
-    let plan = build_log_plan(None, 3, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.to_string(), "off", "端末は黙る");
-    assert_eq!(file.to_string(), flag_filter_text(3), "ファイルは -q を見ない");
-    assert!(!shows_target(&plan.stderr));
-    assert!(shows_target(&file), "ファイル側は TRACE を出すので target を表示する");
-  }
-
-  #[test]
-  fn valid_rust_log_takes_priority_over_verbose() {
-    let plan = build_log_plan(Some(OsStr::new("seiran_compiler=trace")), 0, false, false);
-
-    assert_eq!(plan.stderr.to_string(), "seiran_compiler=trace");
-    assert!(plan.warning.is_none());
-  }
-
-  #[test]
-  fn invalid_rust_log_falls_back_to_verbose() {
-    let plan = build_log_plan(Some(OsStr::new("seiran=not-a-level")), 1, false, false);
-
-    assert_eq!(plan.stderr.to_string(), flag_filter_text(1));
-    assert!(matches!(plan.warning, Some(FilterWarning::Invalid { .. })));
-  }
-
-  #[test]
-  fn valid_rust_log_with_verbose_warns_override() {
-    let plan = build_log_plan(Some(OsStr::new("info")), 3, false, false);
-
-    assert_eq!(plan.stderr.to_string(), "info", "実効フィルタは RUST_LOG のまま");
-    assert!(
-      matches!(&plan.warning, Some(FilterWarning::OverridesVerbose { value }) if value == "info"),
-      "覆った RUST_LOG の値を持つ"
-    );
-  }
-
-  #[test]
-  fn blank_rust_log_with_verbose_does_not_warn() {
-    for raw in [None, Some(""), Some("  ")] {
-      let plan = build_log_plan(raw.map(OsStr::new), 2, false, false);
-
-      assert_eq!(plan.stderr.to_string(), flag_filter_text(2), "{raw:?} は未設定として --verbose が効く");
-      assert!(plan.warning.is_none(), "{raw:?} では警告しない");
-    }
-  }
-
-  #[test]
-  fn quiet_and_verbose_without_log_file_is_harmless() {
-    let plan = build_log_plan(None, 2, true, false);
-
-    assert_eq!(plan.stderr.to_string(), "off");
-    assert!(plan.file.is_none());
-    assert!(plan.warning.is_none(), "効果が無いだけで警告しない");
-  }
-
-  #[test]
-  fn override_warning_survives_quiet() {
-    let plan = build_log_plan(Some(OsStr::new("info")), 1, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.to_string(), "off");
-    assert_eq!(file.to_string(), "info");
-    assert!(plan.warning.is_some(), "端末が黙っていても無視の警告はログファイルへ残す");
-  }
-
-  #[test]
-  fn target_is_shown_only_from_trace() {
-    for verbose in 0..=2 {
-      assert!(
-        !shows_target(&build_log_plan(None, verbose, false, false).stderr),
-        "-v{verbose} 相当では target を表示しない"
-      );
-    }
-
-    assert!(shows_target(&build_log_plan(None, 3, false, false).stderr), "-vvv では target を表示する");
-  }
-
-  #[test]
-  fn rust_log_trace_shows_target() {
-    assert!(shows_target(&build_log_plan(Some(OsStr::new("seiran_compiler=trace")), 0, false, false).stderr));
-    assert!(!shows_target(&build_log_plan(Some(OsStr::new("info")), 0, false, false).stderr));
-  }
 
   #[test]
   fn ansi_needs_both_terminal_and_unset_no_color() {
