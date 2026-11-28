@@ -3,52 +3,72 @@
 //! TRACE で使うときは `trace!` のフィールド値として呼ぶ。`tracing` のフィールド値は callsite が有効な
 //! ときだけ評価されるので、TRACE 無効時は文字列を作らない。
 
+use std::ops::ControlFlow;
+
 use crate::typeset::boxes::{HBox, HBoxContent, Line};
 
 /// TRACE に載せるテキストの最大文字数
 const SUMMARY_MAX_CHARS: usize = 40;
 
-/// テキストを [`SUMMARY_MAX_CHARS`] で切り詰めた要約を返す。
-///
-/// 切り詰めは char 境界で行い、落とした部分がある場合だけ末尾に `…` を付ける。
-pub(super) fn summarize_text(text: &str) -> String {
-  let mut summary: String = text.chars().take(SUMMARY_MAX_CHARS).collect();
-  if text.chars().nth(SUMMARY_MAX_CHARS).is_some() {
-    summary.push('…');
+/// テキスト・行・閉じた箱から先頭の文字を集める。上限の次の文字で省略を確定して探索を終える。
+struct Excerpt {
+  /// 要約の本文
+  text: String,
+  /// 省略記号を付けずに追加できる文字数
+  remaining: usize,
+}
+
+impl Excerpt {
+  /// 空の要約。
+  fn new() -> Self {
+    return Self {
+      text: String::new(),
+      remaining: SUMMARY_MAX_CHARS,
+    };
   }
-  return summary;
-}
 
-/// 確定した行の内容を、載っているグリフ列のテキストを繋いだ要約で返す。
-///
-/// 数式などの閉じた箱（[`HBoxContent::Atom`]）は子要素へ再帰する。
-pub(super) fn summarize_line(line: &Line) -> String {
-  let mut text = String::new();
-  for placed in &line.boxes {
-    push_content_text(&mut text, &placed.hbox.content);
-  }
-  return summarize_text(&text);
-}
-
-/// 閉じた箱（ディスプレイ数式の本体など）の内容を、載っているグリフ列のテキストを繋いだ要約で返す。
-pub(super) fn summarize_box(hbox: &HBox) -> String {
-  let mut text = String::new();
-  push_content_text(&mut text, &hbox.content);
-  return summarize_text(&text);
-}
-
-/// ボックス内容のテキストを `out` へ連結する。
-fn push_content_text(out: &mut String, content: &HBoxContent) {
-  match content {
-    HBoxContent::Glyphs(run) => out.push_str(&run.text),
-    HBoxContent::Atom(children) => {
-      for child in children {
-        push_content_text(out, &child.hbox.content);
+  /// 字形列の文字を追加する。上限ぴったりでは後続の字形列に文字があるまで省略しない。
+  fn push_text(&mut self, text: &str) -> ControlFlow<()> {
+    for ch in text.chars() {
+      if self.remaining == 0 {
+        self.text.push('…');
+        return ControlFlow::Break(());
       }
-    },
-    // 罫はテキストを持たない
-    HBoxContent::Rule { .. } => {},
+      self.text.push(ch);
+      self.remaining -= 1;
+    }
+    return ControlFlow::Continue(());
   }
+
+  /// 閉じた箱を子の配置順にたどり、字形列の文字を追加する。
+  fn push_box(&mut self, hbox: &HBox) -> ControlFlow<()> {
+    return match &hbox.content {
+      HBoxContent::Glyphs(run) => self.push_text(&run.text),
+      HBoxContent::Atom(children) => children.iter().try_for_each(|child| return self.push_box(&child.hbox)),
+      HBoxContent::Rule { .. } => ControlFlow::Continue(()),
+    };
+  }
+}
+
+/// テキストの先頭から最大 [`SUMMARY_MAX_CHARS`] 文字を採り、続きがあるときだけ省略記号を付ける。
+pub(super) fn summarize_text(text: &str) -> String {
+  let mut excerpt = Excerpt::new();
+  let _ = excerpt.push_text(text);
+  return excerpt.text;
+}
+
+/// 行に載った字形列を、閉じた箱の中も含めて要約する。
+pub(super) fn summarize_line(line: &Line) -> String {
+  let mut excerpt = Excerpt::new();
+  let _ = line.boxes.iter().try_for_each(|placed| return excerpt.push_box(&placed.hbox));
+  return excerpt.text;
+}
+
+/// 閉じた箱（ディスプレイ数式の本体など）の字形列を要約する。
+pub(super) fn summarize_box(hbox: &HBox) -> String {
+  let mut excerpt = Excerpt::new();
+  let _ = excerpt.push_box(hbox);
+  return excerpt.text;
 }
 
 #[cfg(test)]
@@ -130,5 +150,23 @@ mod tests {
     };
 
     assert_eq!(summarize_line(&line), "外中");
+  }
+
+  #[test]
+  fn excerpt_truncates_across_the_boundary_of_nested_boxes() {
+    let prefix = "あ".repeat(SUMMARY_MAX_CHARS);
+    let mut line = Line {
+      boxes: vec![glyph_box(&prefix), atom_box("")],
+      height: Length::ZERO,
+      depth: Length::ZERO,
+      links: Vec::new(),
+      footnotes: Vec::new(),
+      index_marks: Vec::new(),
+      hanging: Length::ZERO,
+    };
+    assert_eq!(summarize_line(&line), prefix);
+    line.boxes.push(atom_box("続"));
+    line.boxes.push(glyph_box("き"));
+    assert_eq!(summarize_line(&line), format!("{prefix}…"));
   }
 }
