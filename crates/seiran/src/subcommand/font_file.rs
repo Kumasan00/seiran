@@ -5,6 +5,7 @@ use std::{fs, io, path::Path};
 use miette::Diagnostic;
 use read_fonts::{FontRef, ReadError};
 use thiserror::Error;
+use tracing::debug;
 
 /// フォントファイルを読めなかったときのエラー。
 #[derive(Debug, Error, Diagnostic)]
@@ -43,12 +44,14 @@ pub(super) struct SelectFaceError {
 ///
 /// ファイルを読めなかったとき [`ReadFontFileError`] を返す。
 pub(super) fn read(path: &Path) -> Result<Vec<u8>, ReadFontFileError> {
-  return fs::read(path).map_err(|source| {
+  let bytes = fs::read(path).map_err(|source| {
     return ReadFontFileError {
       path: path.display().to_string(),
       source,
     };
-  });
+  })?;
+  debug!(byte_count = bytes.len(), "調査用フォントを読込");
+  return Ok(bytes);
 }
 
 /// 読み込んだバイト列から `font_index` 番目の face を選ぶ（単体フォントは 0 だけが有効）。

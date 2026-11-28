@@ -8,7 +8,7 @@ use clap::{Parser, Subcommand};
 #[derive(Parser, Debug)]
 #[command(version, about = "PDFテキスト生成ツール")]
 pub(super) struct Cli {
-  /// Seiran のログを詳しくする（`-v` = 工程、`-vv` = 内部詳細、`-vvv` = 最大）。`-q` と併用でき、そのときは `--log-file` だけが詳しくなる。有効な `RUST_LOG` があるときは無視される（警告を出す）
+  /// Seiran のログを詳しくする（`-v` = 作業の進捗、`-vv` = 工程の成否・所要時間と内部詳細、`-vvv` = 行・グリフ単位まで）。`-q` と併用でき、そのときは `--log-file` だけが詳しくなる。有効な `RUST_LOG` があるときは無視される（警告を出す）
   #[arg(short, long, global = true, action = clap::ArgAction::Count)]
   pub(super) verbose: u8,
 

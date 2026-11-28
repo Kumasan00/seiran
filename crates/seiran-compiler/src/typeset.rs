@@ -101,7 +101,7 @@ pub(crate) fn compose(
     Err(failures) => return (Err(ComposeError::Typeset(failures)), warnings),
   };
 
-  let phase = Phase::enter(info_span!(target: Phase::TARGET, "typeset"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "typeset"), "文書を組版中");
   let fonts = emit::publication_fonts(font_data, &font_resources);
   let font_warning_count = warnings.len();
   let (laid_out, content_warnings) = lay_out(source, config, style, geometry, &font_resources, &fonts, document);
@@ -145,7 +145,7 @@ fn load_fonts(
   config: &ProjectConfig,
   font_data: &FontData,
 ) -> (Result<FontSystem, Failures<TypesetError>>, Vec<FontWarning>) {
-  let phase = Phase::enter(info_span!(target: Phase::TARGET, "font"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "font"), "組版用フォントを準備中");
   let (font_resources, font_warnings) = FontSystem::load(&config.font_configs, font_data);
   let font_resources = font_resources.map_err(|failures| return failures.map(TypesetError::from));
   if font_resources.is_ok() {

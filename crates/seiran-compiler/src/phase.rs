@@ -1,6 +1,6 @@
 //! 工程（phase）の開始と、結果付きの終了の記録
 //!
-//! 工程の入れ子は span が表す。この module は、その span の中で「工程を開始」と
+//! 工程の入れ子は span が表す。この module は、その span の中で作業を示す開始 event と
 //! 「工程を終了」（`status` と `elapsed`）の 2 つの INFO event を出す唯一の site を持つ。
 //!
 //! 終了の状態は「[`Phase::succeed`] が呼ばれたか」だけで決まる。`?` の早期 return・失敗を返す
@@ -37,9 +37,9 @@ impl Phase {
   pub(crate) const TARGET: &'static str = module_path!();
 
   /// 工程の span に入り、開始を記録する。
-  pub(crate) fn enter(span: Span) -> Self {
+  pub(crate) fn enter(span: Span, activity: &'static str) -> Self {
     let span = span.entered();
-    info!("工程を開始");
+    info!(name: "seiran.progress", "{activity}");
     return Phase {
       _span: span,
       started: Instant::now(),
@@ -138,13 +138,13 @@ mod tests {
       // 並列に走る他のテストのスレッド（subscriber なし）が `Phase` の callsite を先に通る状況を、
       // 捕捉の開始後（最大レベルが上がり callsite が登録されうる時点）に必ず起こす
       thread::spawn(|| {
-        drop(Phase::enter(Span::none()));
+        drop(Phase::enter(Span::none(), "テスト中"));
       })
       .join()
       .expect("subscriber の無いスレッドで工程を開始・終了しても panic しないはず");
 
       let unwound = panic::catch_unwind(AssertUnwindSafe(|| {
-        let _phase = Phase::enter(info_span!(target: Phase::TARGET, "probe"));
+        let _phase = Phase::enter(info_span!(target: Phase::TARGET, "probe"), "テスト中");
         panic!("わざと落として Phase の Drop 経路を確かめる");
       }));
       assert!(unwound.is_err(), "panic が起きるはず");

@@ -24,9 +24,10 @@ pub(super) use log_file::{LogFailure, LogFileError};
 use miette::{Diagnostic, GraphicalReportHandler, GraphicalTheme, MietteHandler, ReportHandler};
 use thiserror::Error;
 use time::{UtcOffset, format_description::well_known::Rfc3339};
+use tracing::Level;
 use tracing_subscriber::{
   EnvFilter, Registry,
-  filter::{LevelFilter, ParseError},
+  filter::{FilterExt, LevelFilter, ParseError, filter_fn},
   fmt::{
     self,
     format::Writer,
@@ -121,6 +122,12 @@ impl Reporter {
     let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log_file.is_some());
     let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), io::stderr().is_terminal());
     let log = log_file.map(LogSink::open).transpose()?;
+    // -v は作業に入った時点で 1 行出す。工程の span と結果は詳細表示・ファイル側が使う。
+    let progress_only = plan.progress_only;
+    let terminal_events = filter_fn(move |meta| {
+      return !progress_only || *meta.level() <= Level::WARN || meta.name() == "seiran.progress";
+    })
+    .with_max_level_hint(LevelFilter::TRACE);
     let stderr_layer = fmt::layer()
       .compact()
       .with_target(shows_target(&plan.stderr))
@@ -132,7 +139,7 @@ impl Reporter {
       // 端末へ書けない event は捨てる（module doc）。有効にすると失敗の報告を `eprintln!` で同じ stderr へ書き、
       // stderr が閉じていると panic する。
       .log_internal_errors(false)
-      .with_filter(plan.stderr);
+      .with_filter(plan.stderr.and(terminal_events));
     let file_layer = log.as_ref().zip(plan.file).map(|(sink, filter)| {
       sink.write_block(&run_header_text(&now_text(&timer), header, &filter.to_string()));
       return fmt::layer()
@@ -333,6 +340,8 @@ fn run_footer_text(ended_at: &str, succeeded: bool) -> String {
 struct LogPlan {
   /// 端末のフィルタ。静音時はすべて抑止する。
   stderr: EnvFilter,
+  /// 端末の INFO を利用者向けの進捗だけに絞るか。
+  progress_only: bool,
   /// 指定されたログファイルのフィルタ。
   file: Option<EnvFilter>,
   /// 診断として出すフィルタ設定の警告。
@@ -356,6 +365,7 @@ fn build_log_plan(raw_filter: Option<&OsStr>, verbose: u8, quiet: bool, has_log_
     },
     Some(Some(_)) | None => (None, None),
   };
+  let progress_only = verbose == 1 && env_filter.is_none();
   let file = has_log_file.then(|| return env_filter.clone().unwrap_or_else(|| return flag_filter(verbose.max(1))));
   let stderr = if quiet {
     EnvFilter::new("off")
@@ -364,6 +374,7 @@ fn build_log_plan(raw_filter: Option<&OsStr>, verbose: u8, quiet: bool, has_log_
   };
   return LogPlan {
     stderr,
+    progress_only,
     file,
     warning,
   };

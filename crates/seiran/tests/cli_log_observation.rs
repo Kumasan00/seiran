@@ -22,30 +22,52 @@ const BODY: &str = "Hello, Seiran!";
 fn write_ok_project(dir: &Path) { write_project(dir, "doc.sei", BODY, "out"); }
 
 #[test]
-fn verbose_terminal_shows_start_and_end_of_render_and_write() {
+fn verbose_terminal_shows_one_activity_per_phase_and_file_keeps_the_results() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
-
-  let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v"], None);
-
+  let output = seiran(dir.path(), &["build", "-c", "config.toml", "-v", "--log-file", "run.log"], None);
   let stderr = stderr_text(&output);
-  assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
-  for prefix in ["compile:", "compile:frontend:", "render:", "write:"] {
-    assert!(
-      stderr
-        .lines()
-        .any(|line| return line.contains(&format!("{prefix} ")) && line.contains("工程を開始")),
-      "{prefix} の開始が出るはず: {stderr}"
-    );
-    assert!(
-      stderr.lines().any(|line| {
-        return line.contains(&format!("{prefix} "))
-          && line.contains("工程を終了")
-          && line.contains("status=Succeeded")
-          && line.contains("elapsed=");
-      }),
-      "{prefix} の成功した終了が出るはず: {stderr}"
-    );
+  assert_eq!(output.status.code(), Some(0), "{stderr}");
+  let mut lines = stderr.lines();
+  for activity in [
+    "文書をコンパイル中",
+    "設定と入力ファイルを読み込み中",
+    "ソースを解析中",
+    "参照と引用を解決中",
+    "組版用フォントを準備中",
+    "文書を組版中",
+    "PDF を描画中",
+    "PDF を保存中",
+  ] {
+    let line = lines.next().expect("工程の開始が 1 行ある");
+    assert_eq!(line.trim_start().strip_prefix("INFO "), Some(activity), "{stderr}");
+  }
+  assert!(lines.next().is_some_and(|line| return line.contains("out/doc.pdf")), "{stderr}");
+  assert!(lines.next().is_none(), "{stderr}");
+  let log = fs::read_to_string(dir.path().join("run.log")).expect("ログを読めるはず");
+  assert_eq!(log.matches("status=Succeeded").count(), 8, "{log}");
+  assert!(log.contains("compile:frontend: ソースを解析中"), "{log}");
+}
+
+#[test]
+fn font_inspections_record_the_phase_even_when_the_input_cannot_be_opened() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  for (cmd, activity) in [
+    ("ttc-names", "フォント名を調査中"),
+    ("variation-axes", "バリエーション軸を調査中"),
+    ("script-langs", "スクリプトと言語を調査中"),
+  ] {
+    let path = format!("{cmd}.log");
+    let output = seiran(dir.path(), &[cmd, "missing.ttf", "-v", "--log-file", &path], None);
+    let stderr = stderr_text(&output);
+    assert_eq!(output.status.code(), Some(1), "{stderr}");
+    assert!(output.stdout.is_empty(), "フォントを調査できなかったときは一覧を出さない");
+    assert!(stderr.lines().next().is_some_and(|line| return line.ends_with(activity)), "{stderr}");
+    assert!(!stderr.contains("status="), "{stderr}");
+    let log = fs::read_to_string(dir.path().join(path)).expect("ログを読めるはず");
+    let end = log.lines().find(|line| return line.contains("status=Failed")).expect("失敗した終了行がある");
+    assert!(end.contains("elapsed=") && end.contains("font_path=missing.ttf"), "{end}");
+    assert!(log.contains("cli::font_file::read_file"), "{log}");
   }
 }
 
@@ -94,7 +116,9 @@ fn failed_frontend_is_recorded_without_duplicating_the_diagnostic() {
   assert_eq!(output.status.code(), Some(1), "未知コマンドは処理失敗: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(
-    log.lines().any(|line| return line.contains("compile:frontend: ") && line.contains("工程を開始")),
+    log
+      .lines()
+      .any(|line| return line.contains("compile:frontend: ") && line.contains("ソースを解析中")),
     "frontend の開始が残る: {log}"
   );
   assert!(
@@ -123,7 +147,10 @@ fn phase_targets_keep_names_when_filtered_on_their_own() {
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "{stderr}");
   for prefix in ["compile:input:", "compile:typeset:", "render:", "write:"] {
-    assert!(stderr.contains(&format!("{prefix} 工程を開始")), "{stderr}");
+    assert!(
+      stderr.lines().any(|line| return line.contains(&format!("{prefix} ")) && line.ends_with('中')),
+      "{stderr}"
+    );
     assert!(stderr.contains(&format!("{prefix} 工程を終了 status=Succeeded")), "{stderr}");
   }
 }
@@ -145,10 +172,10 @@ fn override_notice_survives_a_rust_log_that_hides_warn() {
   let stderr = stderr_text(&output);
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert!(stderr.contains(OVERRIDE_CODE), "端末に通知が出る: {stderr}");
-  assert!(!stderr.contains("工程を開始"), "実効フィルタは RUST_LOG=error のまま: {stderr}");
+  assert!(!stderr.contains("文書をコンパイル中"), "実効フィルタは RUST_LOG=error のまま: {stderr}");
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(log.contains(OVERRIDE_CODE), "ファイルにも通知が残る: {log}");
-  assert!(!log.contains("工程を開始"), "ファイルでも RUST_LOG=error を優先する: {log}");
+  assert!(!log.contains("文書をコンパイル中"), "ファイルでも RUST_LOG=error を優先する: {log}");
 }
 
 #[test]
@@ -177,7 +204,10 @@ fn invalid_rust_log_is_a_warning_diagnostic_on_both_sinks() {
   assert!(stderr.contains(INVALID_CODE), "端末に通知が出る: {stderr}");
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(log.contains(INVALID_CODE), "ファイルにも通知が残る: {log}");
-  assert!(log.contains("compile:input: 工程を開始"), "ファイルは既定の工程記録へ戻る: {log}");
+  assert!(
+    log.contains("compile:input: 設定と入力ファイルを読み込み中"),
+    "ファイルは既定の工程記録へ戻る: {log}"
+  );
 }
 
 /// ログファイルの空行でない行を集める。
@@ -210,8 +240,8 @@ fn log_file_alone_records_progress_without_printing_it_to_stderr() {
     log.contains(&canonical_dir.display().to_string()) || log.contains(&dir.path().display().to_string()),
     "基準ディレクトリは起動時のカレントディレクトリ: {log}"
   );
-  assert!(!stderr_text(&output).contains("工程を開始"), "端末に工程が出ない");
-  assert_eq!(log.matches("工程を開始").count(), 8, "全工程の開始を記録する: {log}");
+  assert!(!stderr_text(&output).contains("文書をコンパイル中"), "端末に工程が出ない");
+  assert_eq!(log.lines().filter(|line| return line.ends_with('中')).count(), 8, "全工程の開始を記録する: {log}");
   assert_eq!(log.matches("status=Succeeded").count(), 8, "全工程の結果を記録する: {log}");
   assert!(log.contains('\u{2713}'), "成功サマリは残る: {log}");
   let footer = &lines[lines.len() - 3..];
@@ -325,7 +355,7 @@ fn terminal_without_flags_shows_only_the_summary() {
   assert_eq!(output.status.code(), Some(0), "成功するはず: {stderr}");
   assert!(stderr.contains('\u{2713}'), "成功サマリが出る: {stderr}");
   assert!(stderr.contains("out/doc.pdf · 1 ページ · "), "サマリは保存先・ページ数・所要時間を出す: {stderr}");
-  assert!(!stderr.contains("工程を開始"), "既定では工程の event は出ない: {stderr}");
+  assert!(!stderr.contains("文書をコンパイル中"), "既定では工程の event は出ない: {stderr}");
   assert!(!stderr.contains("# seiran 実行記録"), "実行記録はファイルだけ: {stderr}");
 }
 

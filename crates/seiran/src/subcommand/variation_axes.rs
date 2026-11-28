@@ -13,9 +13,12 @@ use read_fonts::{
   types::NameId,
 };
 use thiserror::Error;
-use tracing::info;
+use tracing::info_span;
 
-use crate::subcommand::{font_file, listing};
+use crate::{
+  phase::Phase,
+  subcommand::{font_file, listing},
+};
 
 /// fvar を持たないフォントに対して出す 1 行。
 const NOT_VARIABLE: &str = "The font is not a variable font.";
@@ -113,12 +116,16 @@ struct FvarRecords<'a> {
 /// ファイルの読み込み、フォント・fvar・name テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn variation_axes(font_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
+  let phase = Phase::enter(
+    info_span!(target: Phase::TARGET, "variation_axes", font_path = %font_path.display(), font_index),
+    "バリエーション軸を調査中",
+  );
   let font_bytes = font_file::read(font_path)?;
-  info!(font_path = %font_path.display(), font_index, "バリエーション軸を調べるフォントファイルを読込");
 
   let font_ref = font_file::select_face(&font_bytes, font_index, font_path)?;
   let lines = listing_lines(&font_ref, font_path)?;
   listing::emit(&lines, out)?;
+  phase.succeed();
   return Ok(());
 }
 

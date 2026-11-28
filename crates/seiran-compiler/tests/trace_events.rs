@@ -21,7 +21,7 @@ const TRACE_FILTER: &str = "seiran_compiler::typeset::breaking=trace,seiran_comp
 /// 同じ target を DEBUG までに留めるフィルタ（TRACE が出ないことの対照）。
 const DEBUG_FILTER: &str = "seiran_compiler::typeset::breaking=debug,seiran_compiler::typeset::boxing=debug";
 
-/// compiler crate 全体の INFO を通すフィルタ（CLI の `-v` が compiler に対して張るものと同じ形）。
+/// compiler crate 全体の INFO を通すフィルタ（ファイルが既定で記録する工程）。
 const INFO_FILTER: &str = "seiran_compiler=info";
 
 /// compiler crate 全体の DEBUG を通すフィルタ（CLI の `-vv` が compiler に対して張るものと同じ形）。
@@ -223,7 +223,7 @@ fn assert_info_lines(log: &str, expected: &[Expected]) {
     match *expected {
       Expected::Start(prefix) => {
         assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
-        assert!(line.contains("工程を開始"), "{line:?} は開始 event のはず");
+        assert!(line.ends_with('中'), "{line:?} は開始 event のはず");
         assert!(!line.contains("elapsed="), "開始 event は所要時間を持たない: {line:?}");
       },
       Expected::End(prefix, status) => {
@@ -301,6 +301,12 @@ fn debug_reports_each_step_once_under_its_matter_span() {
     "compile の完了 event は確定ページ数を持つはず:\n{log}"
   );
 
+  assert!(
+    log
+      .lines()
+      .any(|line| return line.contains("CST を構築") && line.contains("source_path=/project/text.sei")),
+    "構文解析の詳細をソースのパスで追えるはず:\n{log}"
+  );
   for line in log.lines() {
     assert!(line.contains("compile:"), "全行が所属する phase を span の prefix で示すはず: {line:?}");
   }
