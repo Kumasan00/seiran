@@ -135,12 +135,12 @@ fn build(config_path: &Path, base_dir: io::Result<PathBuf>, reporter: &Reporter)
 /// 描画または保存のエラーを `miette` 診断として返す。
 fn render_and_write(compilation: &seiran_compiler::Compilation, reporter: &Reporter) -> miette::Result<()> {
   let pdf_bytes = {
-    let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "render"));
+    let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "render"), "PDF を描画中");
     let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
     phase.succeed();
     pdf_bytes
   };
-  let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "write"));
+  let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "write"), "PDF を保存中");
   pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path())?;
   phase.succeed();
   return Ok(());

@@ -1,6 +1,6 @@
-//! CLI が開く工程（`render` / `write`）の開始と、結果付きの終了の記録
+//! CLI が開く工程（PDF の描画・保存とフォント調査）の開始と、結果付きの終了の記録
 //!
-//! compiler の工程は `seiran-compiler` の同名 module が記録する。メッセージ（「工程を開始」「工程を終了」）と
+//! compiler の工程は `seiran-compiler` の同名 module が記録する。開始 event の名前（`seiran.progress`）と終了 event の
 //! フィールド（`status` / `elapsed`）は 2 つの module で同一に保つ。
 //!
 //! 終了の状態は「[`Phase::succeed`] が呼ばれたか」だけで決まり、`?` の早期 return・panic の unwind は
@@ -35,9 +35,9 @@ impl Phase {
   pub(super) const TARGET: &'static str = module_path!();
 
   /// 工程の span に入り、開始を記録する。
-  pub(super) fn enter(span: Span) -> Self {
+  pub(super) fn enter(span: Span, activity: &'static str) -> Self {
     let span = span.entered();
-    info!("工程を開始");
+    info!(name: "seiran.progress", "{activity}");
     return Phase {
       _span: span,
       started: Instant::now(),

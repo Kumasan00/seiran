@@ -29,7 +29,7 @@ pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
 use input::CompilationInputs;
 use source_diagnostic::SourceDiagnostic;
-use tracing::{debug, info_span};
+use tracing::{debug, debug_span, info_span};
 pub use warnings::Warnings;
 
 use crate::{
@@ -79,7 +79,7 @@ pub fn compile<S: ProjectSource>(
   config_path: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
-  let phase = Phase::enter(info_span!(target: Phase::TARGET, "compile"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "compile"), "文書をコンパイル中");
 
   let mut warnings = Warnings::default();
   let (publication, dependencies, pdf_path) = match run_phases(source, config_path, base_dir, &mut warnings) {
@@ -165,7 +165,7 @@ fn load_inputs(
   config_path: &ProjectPath,
   resolver: &PathResolver,
 ) -> (Result<CompilationInputs, CompileFailure>, Vec<ConfigWarning>) {
-  let phase = Phase::enter(info_span!(target: Phase::TARGET, "input"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "input"), "設定と入力ファイルを読み込み中");
   let (inputs, config_warnings) = input::load(source, config_path, resolver);
   if inputs.is_ok() {
     debug!(config_path = %config_path, "入力を読込");
@@ -185,7 +185,7 @@ fn analyze_document(
   resolver: &PathResolver,
 ) -> Result<SemanticDocument, CompileFailure> {
   let document = {
-    let phase = Phase::enter(info_span!(target: Phase::TARGET, "frontend"));
+    let phase = Phase::enter(info_span!(target: Phase::TARGET, "frontend"), "ソースを解析中");
     let document = parse_project(inputs, resolver)?;
     debug!(
       source_count = document.source_nodes().len(),
@@ -197,7 +197,7 @@ fn analyze_document(
   };
 
   let semantic_document = {
-    let phase = Phase::enter(info_span!(target: Phase::TARGET, "semantics"));
+    let phase = Phase::enter(info_span!(target: Phase::TARGET, "semantics"), "参照と引用を解決中");
     let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
       .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
     debug!(heading_count = semantic_document.heading_count(), "文書を意味解析");
@@ -224,6 +224,7 @@ fn parse_all_sources(sources: &SourceSet, resolver: &PathResolver) -> Result<Vec
   let results = sources
     .iter()
     .map(|(source_id, entry)| {
+      let _source = debug_span!("source", source_path = %entry.name).entered();
       return frontend::parse(&entry.content, source_id, resolver)
         .map_err(|error| return attribute_parse_error(error, sources, source_id));
     })

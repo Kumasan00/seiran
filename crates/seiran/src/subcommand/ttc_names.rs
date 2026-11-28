@@ -5,9 +5,12 @@ use std::{io::Write, path::Path};
 use miette::Diagnostic;
 use read_fonts::{FileRef, ReadError, TableProvider};
 use thiserror::Error;
-use tracing::info;
+use tracing::info_span;
 
-use crate::subcommand::{font_file, listing};
+use crate::{
+  phase::Phase,
+  subcommand::{font_file, listing},
+};
 
 /// TTC ファイル情報取得時のエラー型
 #[derive(Debug, Error, Diagnostic)]
@@ -66,11 +69,15 @@ enum TtcNamesError {
 /// ファイルの読み込み、フォントまたは name テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn ttc_names(file_path: &Path, out: &mut impl Write) -> miette::Result<()> {
+  let phase = Phase::enter(
+    info_span!(target: Phase::TARGET, "ttc_names", font_path = %file_path.display()),
+    "フォント名を調査中",
+  );
   let data = font_file::read(file_path)?;
-  info!(ttc_path = %file_path.display(), "TTC ファイルを読込");
 
   let lines = listing_lines(&data, file_path)?;
   listing::emit(&lines, out)?;
+  phase.succeed();
   return Ok(());
 }
 

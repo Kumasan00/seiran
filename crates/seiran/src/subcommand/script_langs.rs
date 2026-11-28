@@ -8,9 +8,12 @@ use read_fonts::{
   tables::layout::{FeatureList, FeatureParams, LangSys, ScriptList, ScriptRecord},
 };
 use thiserror::Error;
-use tracing::info;
+use tracing::info_span;
 
-use crate::subcommand::{font_file, listing};
+use crate::{
+  phase::Phase,
+  subcommand::{font_file, listing},
+};
 
 /// フォントの Script/Language System 解析エラー。
 #[derive(Error, Debug, Diagnostic)]
@@ -115,12 +118,16 @@ enum ScriptLangsError {
 /// ファイルの読み込み、フォントや GSUB/GPOS 内の各テーブルの解析、一覧の書き込み（受け手の終了を除く）に
 /// 失敗した場合にエラーを返す。
 pub(crate) fn script_langs(file_path: &Path, font_index: u32, out: &mut impl Write) -> miette::Result<()> {
+  let phase = Phase::enter(
+    info_span!(target: Phase::TARGET, "script_langs", font_path = %file_path.display(), font_index),
+    "スクリプトと言語を調査中",
+  );
   let font_data = font_file::read(file_path)?;
-  info!(font_path = %file_path.display(), font_index, "スクリプト・言語を調べるフォントファイルを読込");
 
   let font_ref = font_file::select_face(&font_data, font_index, file_path)?;
   let lines = listing_lines(&font_ref, file_path)?;
   listing::emit(&lines, out)?;
+  phase.succeed();
   return Ok(());
 }
 

@@ -992,7 +992,7 @@ crate 内部の `#[cfg(test)]` ではなく独立テストバイナリ。`compil
   （網羅目的の fixture 追加はしない）と、エラー経路の報告順（画像欠落はパス昇順・ソース欠落は宣言順・
   診断 `code` 列が実行間で一致）を固定する（#306）
 - `tests/trace_events.rs`: 同じ入力で `typeset::breaking` / `typeset::boxing`（行分割の `boxing::break_lines` を含む）の TRACE ログが実行間で一致する
-  こと（event の発行順の決定性。比較できるよう、この 2 module の event には所要時間を載せない）と、compiler の INFO（`-v` 相当）の工程構造（「tracing の phase 構造」）を
+  こと（event の発行順の決定性。比較できるよう、この 2 module の event には所要時間を載せない）と、compiler の INFO に記録する工程構造（「tracing の phase 構造」）を
   固定する（CLI が足す `render` / `write` は `seiran` の統合テスト）
 
 ## `seiran-pdf`
@@ -1050,7 +1050,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 
 ### 境界
 
-- `phase`: `render` / `write` 工程の RAII ガード。`seiran-compiler` の同名 leaf module とメッセージ・
+- `phase`: PDF の描画・保存とフォント調査の工程を記録する RAII ガード。`seiran-compiler` の同名 leaf module とメッセージ・
   フィールドを揃えるが、型は共有しない（event の target を各 crate に保つ）
 - `subcommand`: フォント調査 3 サブコマンド。`read-fonts` を直接使い、`seiran-compiler` のフォント処理には
   依存しない（組版を伴わない）。`variation-axes` の `fvar` の有無は compiler のフォント検証
@@ -1070,6 +1070,8 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   DEBUG の span で区別する（区画ごとの改ページ等）。span のレベルはその中の event の最上位レベルと同じに
   する。工程の開始と結果付きの終了は `Phase` が INFO event として出す。工程の span と両 event は同じ
   `seiran_compiler::phase` または `seiran::phase` を target とし、target を絞っても工程名を読めるようにする。
+  開始 event の名前は両 crate 共通の `seiran.progress`。メッセージはそれだけで作業が分かる日本語にし、
+  CLI が `-v` の端末に表示する進捗をメタデータで選べるようにする。
   `render` / `write` の件数を持つ DEBUG event は callee（`seiran_pdf::render` / `pdf_output`）が
   出し、CLI は同じ工程の完了 event を重ねない（1 事象 1 行。compiler 側は span を開いた側が出す — `compiler`
   節）。所要時間を持つのは工程の終了 event と DEBUG の集計 event だけ。
@@ -1101,7 +1103,7 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
   | 浮動小数 | f32 は `%`（Display。sigil なしだと f64 へ昇格し `1.0499999523162842` のような表示になる）。f64 は sigil なし |
   | enum / `Option` / `Duration` | `?`（Debug） |
   | フィールド順 | 識別（パス・種別・添字）→ 事実（件数・寸法・真偽）→ 末尾に `elapsed` |
-  | メッセージ | 事象名の名詞止め（「行を確定」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない。例外は `Phase` の「工程を開始」「工程を終了」で、どの工程かは span の prefix が示す |
+  | メッセージ | 事象名の名詞止め（「行を確定」）で site 間一意 — `-vv` 以下では target が出ないため、同文だと発行元を区別できない。工程の開始は作業を表す現在進行形、終了は共通の「工程を終了」とし、span の prefix で区別する |
 
 - **event / span を rayon の並列 closure の中に置かない**。発行順が完了順に依存して非決定に
   なり、thread-local subscriber では worker thread の発行が捕捉されない（`tests/trace_events.rs` の捕捉はこれに
