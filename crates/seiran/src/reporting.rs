@@ -81,7 +81,7 @@ impl Reporter {
 
   /// warning 診断 1 件を報告する。
   ///
-  /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`TerminalDiagnostic`]）。
+  /// 端末へは致命的エラー（`Report` の `Debug` 表示）と同じ体裁で描く（[`render_diagnostic`]）。
   /// ログファイルへは `--quiet` でも省かない。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
