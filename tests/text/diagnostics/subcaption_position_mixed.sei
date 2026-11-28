@@ -1,0 +1,11 @@
+// 副キャプションの上下が副図によって違う
+\begin{figure}
+\begin{subfigure}
+\image{a.svg}
+\caption{下}
+\end{subfigure}
+\begin{subfigure}
+\caption{上}
+\image{b.svg}
+\end{subfigure}
+\end{figure}

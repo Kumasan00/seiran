@@ -1,0 +1,4 @@
+// 副図の無い figure への per_row
+\begin{figure}[per_row=2]
+\image{a.svg}
+\end{figure}

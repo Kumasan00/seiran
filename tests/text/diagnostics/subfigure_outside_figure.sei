@@ -1,0 +1,4 @@
+// figure の外の subfigure
+\begin{subfigure}
+\image{a.svg}
+\end{subfigure}

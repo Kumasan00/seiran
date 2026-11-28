@@ -1,0 +1,91 @@
+// 副図（subfigure）の並びの fixture。画像は縮小の費用が無いベクタ（SVG / PDF）だけを使う。
+// 枠の等分・枠の中央寄せ・端数の最終行の中央寄せ・副キャプション下の下端揃え / 上の上端揃え・行間、
+// 副番号（(a)）と参照（Figure 1.2a）を確認する。
+
+\chapter{副図}
+
+1 行に 2 個の副図を並べ、副キャプションと全体のキャプションを下に置きます。
+
+\begin{figure}[label=fig:pair]
+\begin{subfigure}[label=fig:pair-before]
+\image{./tests/image/testimage6.svg}
+\caption{処理前}
+\end{subfigure}
+\begin{subfigure}[label=fig:pair-after]
+\image[width=30mm]{./tests/image/vector1.pdf}
+\caption{処理後（幅を指定した狭い画像は枠の中央）}
+\end{subfigure}
+\caption{1 行の並び}
+\end{figure}
+
+4 個を 2 個ずつ 2 行に並べます。
+
+\begin{figure}[label=fig:grid, per_row=2]
+\begin{subfigure}[label=fig:grid-a]
+\image{./tests/image/vector1.pdf}
+\caption{左上}
+\end{subfigure}
+\begin{subfigure}[label=fig:grid-b]
+\image[page=2]{./tests/image/vector2.pdf}
+\caption{右上}
+\end{subfigure}
+\begin{subfigure}[label=fig:grid-c]
+\image{./tests/image/testimage6.svg}
+\caption{左下}
+\end{subfigure}
+\begin{subfigure}[label=fig:grid-d]
+\image{./tests/image/vector1.pdf}
+\caption{右下}
+\end{subfigure}
+\caption{2 行の並び}
+\end{figure}
+
+3 個を 2 個ずつ並べ、最終行の 1 個は枠の幅を変えずに中央へ寄せます。
+
+\begin{figure}[per_row=2]
+\begin{subfigure}[label=fig:odd-a]
+\image[page=2]{./tests/image/vector2.pdf}
+\caption{一}
+\end{subfigure}
+\begin{subfigure}[label=fig:odd-b]
+\image{./tests/image/vector1.pdf}
+\caption{二}
+\end{subfigure}
+\begin{subfigure}[label=fig:odd-c]
+\image{./tests/image/testimage6.svg}
+\caption{三}
+\end{subfigure}
+\caption{最終行が端数の並び}
+\end{figure}
+
+副キャプションと全体のキャプションを上に置き、行数の違う副キャプションの先頭行を揃えます。
+
+\begin{figure}
+\caption{キャプションが上の並び}
+\begin{subfigure}[label=fig:top-a]
+\caption{短い}
+\image[height=20mm, page=1]{./tests/image/vector2.pdf}
+\end{subfigure}
+\begin{subfigure}[label=fig:top-b]
+\caption{こちらの副キャプションは枠の幅では 1 行に収まらないので 2 行以上に折り返されます。上に置いた副キャプションは最初の行のベースラインが行の中で揃い、画像はいちばん長い副キャプションの下で上端が揃います}
+\image[height=30mm]{./tests/image/vector1.pdf}
+\end{subfigure}
+\end{figure}
+
+\begin{quote}
+引用の字下げの中でも、枠の幅はその場の利用幅から決まります。
+
+\begin{figure}
+\begin{subfigure}[label=fig:quote-a]
+\image{./tests/image/testimage6.svg}
+\caption{引用の中の左}
+\end{subfigure}
+\begin{subfigure}[label=fig:quote-b]
+\image[page=2]{./tests/image/vector2.pdf}
+\caption{引用の中の右}
+\end{subfigure}
+\end{figure}
+\end{quote}
+
+参照は \ref{fig:pair-after}、図全体は \ref{fig:pair}、複数は \refs{fig:grid-a, fig:grid-d}、
+範囲は \refrange{fig:grid-a}{fig:grid-c} と書けます。

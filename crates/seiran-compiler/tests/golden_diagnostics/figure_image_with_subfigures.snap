@@ -1,0 +1,16 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::figure_image_with_subfigures
+
+  × figure の本体に \image と subfigure を混在させることはできません
+   ╭─[tests/text/diagnostics/figure_image_with_subfigures.sei:4:1]
+ 3 │     \image{a.svg}
+ 4 │ ╭─▶ \begin{subfigure}
+ 5 │ │   \image{b.svg}
+ 6 │ ├─▶ \end{subfigure}
+   · ╰──── ここで混在しています
+ 7 │     \end{figure}
+   ╰────
+  help: 画像を 1 枚だけ置くなら \image を、複数並べるなら各画像を subfigure で包んでください

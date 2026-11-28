@@ -1,0 +1,16 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::figure_caption_between_subfigures
+
+  × 図全体の \caption が副図の間にあります
+   ╭─[tests/text/diagnostics/figure_caption_between_subfigures.sei:6:1]
+ 5 │ \end{subfigure}
+ 6 │ \caption{全体}
+   · ───────┬──────
+   ·        ╰── 副図の間です
+ 7 │ \begin{subfigure}
+   ╰────
+  help: \caption を最初の subfigure より前（図の上）か、最後の subfigure より後ろ（図の下）へ移し
+        てください

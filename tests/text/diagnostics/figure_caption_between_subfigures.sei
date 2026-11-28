@@ -1,0 +1,10 @@
+// 図全体の \caption を副図の間に書く
+\begin{figure}
+\begin{subfigure}
+\image{a.svg}
+\end{subfigure}
+\caption{全体}
+\begin{subfigure}
+\image{b.svg}
+\end{subfigure}
+\end{figure}
