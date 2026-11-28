@@ -43,7 +43,7 @@ fn main() -> ExitCode {
   let cli_args = cli::parse_arg();
   let base_dir = std::env::current_dir();
   let header = RunHeader {
-    subcommand: cli_args.command.name(),
+    subcommand: &cli_args.command,
     base_dir: base_dir.as_deref().ok(),
   };
   let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref(), &header) {
@@ -135,12 +135,12 @@ fn build(config_path: &Path, base_dir: io::Result<PathBuf>, reporter: &Reporter)
 /// 描画または保存のエラーを `miette` 診断として返す。
 fn render_and_write(compilation: &seiran_compiler::Compilation, reporter: &Reporter) -> miette::Result<()> {
   let pdf_bytes = {
-    let phase = Phase::enter(tracing::info_span!("render"));
+    let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "render"));
     let pdf_bytes = seiran_pdf::render(&compilation.publication)?;
     phase.succeed();
     pdf_bytes
   };
-  let phase = Phase::enter(tracing::info_span!("write"));
+  let phase = Phase::enter(tracing::info_span!(target: Phase::TARGET, "write"));
   pdf_output::write_pdf_atomically(&compilation.pdf_path, &pdf_bytes, reporter.log_path())?;
   phase.succeed();
   return Ok(());

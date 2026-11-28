@@ -114,6 +114,20 @@ fn failed_frontend_is_recorded_without_duplicating_the_diagnostic() {
   );
 }
 
+#[test]
+fn phase_targets_keep_names_when_filtered_on_their_own() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
+  write_ok_project(dir.path());
+  let output =
+    seiran(dir.path(), &["build", "-c", "config.toml"], Some("seiran_compiler::phase=info,seiran::phase=info"));
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "{stderr}");
+  for prefix in ["compile:input:", "compile:typeset:", "render:", "write:"] {
+    assert!(stderr.contains(&format!("{prefix} 工程を開始")), "{stderr}");
+    assert!(stderr.contains(&format!("{prefix} 工程を終了 status=Succeeded")), "{stderr}");
+  }
+}
+
 /// 不正な `RUST_LOG` の通知に付く診断 code。
 const INVALID_CODE: &str = "cli::rust_log::invalid";
 
@@ -134,6 +148,7 @@ fn override_notice_survives_a_rust_log_that_hides_warn() {
   assert!(!stderr.contains("工程を開始"), "実効フィルタは RUST_LOG=error のまま: {stderr}");
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(log.contains(OVERRIDE_CODE), "ファイルにも通知が残る: {log}");
+  assert!(!log.contains("工程を開始"), "ファイルでも RUST_LOG=error を優先する: {log}");
 }
 
 #[test]
@@ -162,6 +177,7 @@ fn invalid_rust_log_is_a_warning_diagnostic_on_both_sinks() {
   assert!(stderr.contains(INVALID_CODE), "端末に通知が出る: {stderr}");
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
   assert!(log.contains(INVALID_CODE), "ファイルにも通知が残る: {log}");
+  assert!(log.contains("compile:input: 工程を開始"), "ファイルは既定の工程記録へ戻る: {log}");
 }
 
 /// ログファイルの空行でない行を集める。
@@ -170,11 +186,10 @@ fn non_empty_lines(log: &str) -> Vec<&str> {
 }
 
 #[test]
-fn log_file_alone_records_the_run_header_and_footer() {
+fn log_file_alone_records_progress_without_printing_it_to_stderr() {
   let dir = tempfile::tempdir().expect("一時ディレクトリを作れるはず");
   write_ok_project(dir.path());
 
-  // `-v` も `RUST_LOG` も無い: tracing の event は 1 行も通らない
   let output = seiran(dir.path(), &["build", "-c", "config.toml", "--log-file", "x.log"], None);
 
   assert_eq!(output.status.code(), Some(0), "成功するはず: {}", stderr_text(&output));
@@ -184,9 +199,9 @@ fn log_file_alone_records_the_run_header_and_footer() {
   for key in [
     "開始時刻: ",
     "バージョン: ",
-    "サブコマンド: build",
+    r#"サブコマンド: build -c "config.toml""#,
     "基準ディレクトリ: ",
-    "実効フィルタ: warn",
+    "実効フィルタ: ",
   ] {
     assert!(lines.iter().take(6).any(|line| return line.starts_with(key)), "ヘッダに {key:?} がある: {log}");
   }
@@ -195,7 +210,9 @@ fn log_file_alone_records_the_run_header_and_footer() {
     log.contains(&canonical_dir.display().to_string()) || log.contains(&dir.path().display().to_string()),
     "基準ディレクトリは起動時のカレントディレクトリ: {log}"
   );
-  assert!(!log.contains("工程を開始"), "-v なしでは工程の event は出ない: {log}");
+  assert!(!stderr_text(&output).contains("工程を開始"), "端末に工程が出ない");
+  assert_eq!(log.matches("工程を開始").count(), 8, "全工程の開始を記録する: {log}");
+  assert_eq!(log.matches("status=Succeeded").count(), 8, "全工程の結果を記録する: {log}");
   assert!(log.contains('\u{2713}'), "成功サマリは残る: {log}");
   let footer = &lines[lines.len() - 3..];
   assert_eq!(footer[0], "# seiran 実行終了", "末尾は終了記録: {log}");
@@ -268,10 +285,15 @@ fn verbose_log_file_records_every_phase_between_header_and_footer() {
   assert_eq!(output.status.code(), Some(0));
   assert!(output.stderr.is_empty(), "-q の端末は無言: {}", stderr_text(&output));
   let log = fs::read_to_string(dir.path().join("x.log")).expect("ログファイルができているはず");
-  assert!(
-    log.contains("実効フィルタ: warn,seiran=info,seiran_compiler=info,seiran_pdf=info"),
-    "-v の directive: {log}"
-  );
+  let filter = log.lines().find_map(|line| return line.strip_prefix("実効フィルタ: ")).expect("実効フィルタが残る");
+  for directive in [
+    "warn",
+    "seiran=info",
+    "seiran_compiler=info",
+    "seiran_pdf=info",
+  ] {
+    assert!(filter.split(',').any(|part| return part == directive), "{filter:?} に {directive} がある");
+  }
   let footer_at = log.find("# seiran 実行終了").expect("終了記録が残る");
   for prefix in [
     "compile:",

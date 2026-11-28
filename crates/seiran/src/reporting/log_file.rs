@@ -9,7 +9,7 @@
 //! **flush 方針**:INFO 以上の event（`Phase` の「工程を開始」「工程を終了」を含む）と、
 //! 直接の報告（[`LogSink::write_block`]）は書くたびに flush する。DEBUG / TRACE は `BufWriter` に
 //! 溜めたままにする。この方針により、ハングや `SIGINT` / `SIGKILL` で止まった実行でも
-//! ファイルからそこまでの工程の開始・完了・終了を読める。
+//! ファイルからそこまでの工程の開始・終了を読める。
 
 use std::{
   fs::{self, File},

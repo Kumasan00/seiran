@@ -211,8 +211,6 @@ fn has_span_prefix(line: &str, prefix: &str) -> bool { return line.contains(&for
 enum Expected {
   /// 工程の開始
   Start(&'static str),
-  /// 工程の完了 event（件数だけを持つ）
-  Fact(&'static str, &'static str),
   /// 工程の終了（`status` と `elapsed` を持つ）
   End(&'static str, &'static str),
 }
@@ -227,11 +225,6 @@ fn assert_info_lines(log: &str, expected: &[Expected]) {
         assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
         assert!(line.contains("工程を開始"), "{line:?} は開始 event のはず");
         assert!(!line.contains("elapsed="), "開始 event は所要時間を持たない: {line:?}");
-      },
-      Expected::Fact(prefix, message) => {
-        assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
-        assert!(line.contains(message), "{line:?} は {message:?} のはず");
-        assert!(!line.contains("elapsed="), "所要時間は終了 event だけが持つ: {line:?}");
       },
       Expected::End(prefix, status) => {
         assert!(has_span_prefix(line, prefix), "{line:?} は prefix {prefix:?} を持つはず");
@@ -253,27 +246,17 @@ fn info_events_record_start_and_end_of_each_phase() {
     &[
       Expected::Start("compile:"),
       Expected::Start("compile:input:"),
-      Expected::Fact("compile:input:", "入力を読込"),
       Expected::End("compile:input:", "Succeeded"),
       Expected::Start("compile:frontend:"),
-      Expected::Fact("compile:frontend:", "ソースを構文解析"),
       Expected::End("compile:frontend:", "Succeeded"),
       Expected::Start("compile:semantics:"),
-      Expected::Fact("compile:semantics:", "文書を意味解析"),
       Expected::End("compile:semantics:", "Succeeded"),
       Expected::Start("compile:font:"),
-      Expected::Fact("compile:font:", "フォント資源を構築"),
       Expected::End("compile:font:", "Succeeded"),
       Expected::Start("compile:typeset:"),
-      Expected::Fact("compile:typeset:", "文書を組版"),
       Expected::End("compile:typeset:", "Succeeded"),
-      Expected::Fact("compile:", "文書をコンパイル"),
       Expected::End("compile:", "Succeeded"),
     ],
-  );
-  assert!(
-    log.lines().any(|line| return line.contains("文書をコンパイル") && line.contains("page_count=1")),
-    "compile の完了 event は確定ページ数を持つはず:\n{log}"
   );
 }
 
@@ -287,7 +270,6 @@ fn failed_phase_records_start_and_failed_end_without_the_diagnostic() {
     &[
       Expected::Start("compile:"),
       Expected::Start("compile:input:"),
-      Expected::Fact("compile:input:", "入力を読込"),
       Expected::End("compile:input:", "Succeeded"),
       Expected::Start("compile:frontend:"),
       Expected::End("compile:frontend:", "Failed"),
@@ -299,8 +281,25 @@ fn failed_phase_records_start_and_failed_end_without_the_diagnostic() {
 }
 
 #[test]
+fn typeset_warning_count_includes_glyph_fallback() {
+  let (log, result) = capture_compile_log(DEBUG_ALL_FILTER, "$x\u{fe00}$");
+  let compilation = result.expect("数式の異体字列は基底の字形で組める");
+  assert!(compilation.warnings.iter().any(|warning| {
+    return warning.code().is_some_and(|code| return code.to_string() == "typeset::font::variation_sequence");
+  }));
+  assert!(
+    log.lines().any(|line| return line.contains("文書を組版") && line.ends_with("warning_count=1")),
+    "{log}"
+  );
+}
+
+#[test]
 fn debug_reports_each_step_once_under_its_matter_span() {
   let log = compile_and_capture_log(DEBUG_ALL_FILTER);
+  assert!(
+    log.lines().any(|line| return line.contains("文書をコンパイル") && line.contains("page_count=1")),
+    "compile の完了 event は確定ページ数を持つはず:\n{log}"
+  );
 
   for line in log.lines() {
     assert!(line.contains("compile:"), "全行が所属する phase を span の prefix で示すはず: {line:?}");
