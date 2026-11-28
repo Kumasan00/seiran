@@ -1,5 +1,7 @@
 //! 見出し（`document::HirNodeKind::Heading` と、CSL 整形が合成する書誌見出し）の lowering
 
+use itertools::Itertools;
+
 use crate::{
   document::{HeadingLevel, HirHeading, HirInline, HirInlineKind, NodeId, Typeface},
   length::Length,
@@ -11,7 +13,7 @@ use crate::{
     lowering::{
       HeadingRecord, LoweringContext, LoweringState, code, counter, inline,
       layout_node::{InlineNode, LayoutNode, ParagraphLayout, TextStyle, merge_adjacent_text},
-      math::{lower_inline_math, unicode_math_text},
+      math::{Linear, lower_inline_math, unicode_math_text},
       quantity,
     },
   },
@@ -143,45 +145,51 @@ fn toc_label(number: &str, title: Vec<InlineNode>, style: TextStyle) -> Vec<Inli
   return merge_adjacent_text(label);
 }
 
-/// HIR のインライン列をプレーンテキストへ畳む（見出しタイトルのしおり用）
+/// HIR のインライン列をしおりの平文へ畳む（見出しタイトルのしおり用）
 ///
-/// インライン数式は `UnicodeMath` の線形表記、改行は空白 1 個（しおりは 1 行）にする。両方にある種類（文字列・装飾・
-/// リンク）は `GeneratedInline` 側の畳み込み（`semantics` の `generated_inlines_to_plain_text`）と同じ規則を保つ。
-fn hir_inlines_to_plain_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
-  let mut out = String::new();
+/// インライン数式は `UnicodeMath` の線形表記、改行は空白 1 個（しおりは 1 行）にする。数式と外の字の継ぎ目は数式内と
+/// 同じ規則で空白を入れ（[`Linear::append`]）、最後に空白の連続を 1 個にして先頭と末尾の空白を落とす。両方にある種類
+/// （文字列・装飾・リンク）は `GeneratedInline` 側の畳み込み（`semantics` の `generated_inlines_to_plain_text`）と同じ
+/// 規則を保つ。
+fn bookmark_text(inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) -> String {
+  let mut out = Linear::default();
+  push_plain_inlines(&mut out, inlines, style, state);
+  return collapse_spaces(&out.into_text());
+}
+
+/// インライン列の平文を `out` の後ろに続ける（装飾・リンクの中も同じ `out` に積み、継ぎ目の判定を境で切らない）
+fn push_plain_inlines(out: &mut Linear, inlines: &[HirInline], style: &ReadStyle, state: &LoweringState<'_>) {
   for inline in inlines {
-    match &inline.kind {
-      HirInlineKind::Text(s) => out.push_str(s),
+    let text = match &inline.kind {
       HirInlineKind::Styled { children, .. }
       | HirInlineKind::Colored { children, .. }
       | HirInlineKind::Link { children, .. } => {
-        out.push_str(&hir_inlines_to_plain_text(children, style, state));
+        push_plain_inlines(out, children, style, state);
+        continue;
       },
-      HirInlineKind::Cite { .. } => {
-        out.push_str(&generated_inlines_to_plain_text(state.citation_display(inline.id)));
+      HirInlineKind::Math(nodes) => {
+        out.append(unicode_math_text(nodes, &style.quantity));
+        continue;
       },
-      HirInlineKind::Code(text) => out.push_str(text),
-      HirInlineKind::Math(nodes) => out.push_str(&unicode_math_text(nodes, &style.quantity)),
-      HirInlineKind::Symbol(ch) => out.push(*ch),
-      HirInlineKind::LineBreak => out.push(' '),
-      HirInlineKind::Number(numeral) => {
-        out.push_str(&quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)));
-      },
-      HirInlineKind::Unit(factors) => {
-        out.push_str(&quantity::plain_text(&quantity::unit_pieces(factors, &style.quantity)));
-      },
+      HirInlineKind::Text(text) | HirInlineKind::Code(text) => text.clone(),
+      HirInlineKind::Cite { .. } => generated_inlines_to_plain_text(state.citation_display(inline.id)),
+      HirInlineKind::Symbol(ch) => ch.to_string(),
+      HirInlineKind::LineBreak => " ".to_owned(),
+      HirInlineKind::Number(numeral) => quantity::plain_text(&quantity::number_pieces(numeral, &style.quantity)),
+      HirInlineKind::Unit(factors) => quantity::plain_text(&quantity::unit_pieces(factors, &style.quantity)),
       HirInlineKind::Quantity { numeral, unit } => {
-        out.push_str(&quantity::plain_text(&quantity::quantity_pieces(numeral, unit, &style.quantity)));
+        quantity::plain_text(&quantity::quantity_pieces(numeral, unit, &style.quantity))
       },
-      HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => {},
-      HirInlineKind::Ref { .. } => out.push_str(&state.ref_display(style, state.ref_target(inline.id))),
-      HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => {
-        out.push_str(&ref_group_text(style, state, inline.id));
-      },
-    }
+      HirInlineKind::NoIndent | HirInlineKind::Footnote { .. } | HirInlineKind::Index { .. } => continue,
+      HirInlineKind::Ref { .. } => state.ref_display(style, state.ref_target(inline.id)),
+      HirInlineKind::RefList { .. } | HirInlineKind::RefRange { .. } => ref_group_text(style, state, inline.id),
+    };
+    out.append(Linear::closed(text));
   }
-  return out;
 }
+
+/// 空白（U+0020）の連続を 1 個にし、先頭と末尾の空白を落とす。数値・単位のアキ（U+202F 等）は字として残す
+fn collapse_spaces(text: &str) -> String { return text.split(' ').filter(|piece| return !piece.is_empty()).join(" "); }
 
 /// `\refs` / `\refrange` の箇所 `site` の表示を、断片を繋いだ平文にする
 fn ref_group_text(style: &ReadStyle, state: &LoweringState<'_>, site: NodeId) -> String {
@@ -208,7 +216,7 @@ pub(super) fn lower_hir_heading(
   let number = state
     .counter_value(id)
     .map_or_else(String::new, |value| return counter::format_counter_value(ctx.style, value));
-  let plain = hir_inlines_to_plain_text(&heading.title, ctx.style, &*state);
+  let plain = bookmark_text(&heading.title, ctx.style, &*state);
   let entry_style = toc_entry_style(ctx.style);
   let toc = toc_label(&number, title_copy(ctx, &heading.title, entry_style, &*state), entry_style);
   let header_title = running_title(&ctx.style.header, |style| return title_copy(ctx, &heading.title, style, &*state));
@@ -881,7 +889,45 @@ mod tests {
     assert_eq!(bookmark(r"$\sin x$"), "sin x");
     assert_eq!(bookmark(r"$\sin^{2} x$"), "sin² x");
     assert_eq!(bookmark(r"$\sin\quad x$"), "sin x");
-    assert_eq!(bookmark(r"$x \sin$"), "xsin");
+    assert_eq!(bookmark(r"$x \sin$"), "x sin");
+  }
+
+  #[test]
+  fn bookmark_math_space_before_operator_name() {
+    assert_eq!(bookmark(r"$a\sin x$"), "a sin x");
+    assert_eq!(bookmark(r"$2\cos\theta$"), "2 cos θ");
+    assert_eq!(bookmark(r"$a+\sin x$"), "a+sin x");
+    assert_eq!(bookmark(r"$a{\sin x}$"), "a sin x");
+  }
+
+  #[test]
+  fn bookmark_math_space_before_bare_numerator() {
+    assert_eq!(bookmark(r"$a\frac{b}{c}$"), "a b/c");
+    assert_eq!(bookmark(r"$a\frac{b+1}{c}$"), "a(b+1)/c");
+  }
+
+  #[test]
+  fn bookmark_math_japanese_is_not_alphanumeric() {
+    assert_eq!(bookmark(r"$x^{n}\text{と}$"), "x^nと");
+  }
+
+  #[test]
+  fn bookmark_math_empty_text_is_an_empty_group() {
+    assert_eq!(bookmark(r"$\text{}^{2}$"), "²");
+    assert_eq!(bookmark("${}^{2}$"), "²");
+  }
+
+  #[test]
+  fn bookmark_math_accent_on_empty_base_vanishes() {
+    assert_eq!(bookmark(r"$\hat{}$"), "");
+  }
+
+  #[test]
+  fn bookmark_math_pinned_rules() {
+    // 演算子名の後の空白は負のアキでも消えず、アクセント付きの 1 字は包まず、上線は包む
+    assert_eq!(bookmark(r"$\sin\negthinspace x$"), "sin x");
+    assert_eq!(bookmark(r"$\hat{x}^{2}$"), "x\u{0302}\u{00B2}");
+    assert_eq!(bookmark(r"$\overline{x}^{2}$"), "(\u{00AF}x)\u{00B2}");
   }
 
   #[test]
@@ -1010,6 +1056,44 @@ mod tests {
   #[test]
   fn bookmark_math_styled_is_transparent_to_script_base() {
     assert_eq!(bookmark(r"$\mathbold{a+b}^{2}$"), "a+b²");
+  }
+
+  #[test]
+  fn bookmark_spaces_collapse_and_trim() {
+    assert_eq!(bookmark(r"前 $\quad x$ 後"), "前 x 後");
+    assert_eq!(bookmark(r"前半 \\ 後半"), "前半 後半");
+    assert_eq!(bookmark(r"$\sin\quad$"), "sin");
+    assert_eq!(bookmark(r"$\sin\text{ x}$"), "sin x");
+  }
+
+  #[test]
+  fn bookmark_quantity_spaces_are_not_collapsed() {
+    assert_eq!(collapse_spaces("  a \u{202F} b  "), "a \u{202F} b");
+    assert_eq!(collapse_spaces("a\u{205F}\u{2004}b"), "a\u{205F}\u{2004}b");
+  }
+
+  #[test]
+  fn bookmark_math_boundary_uses_the_same_rule() {
+    assert_eq!(bookmark("$x^{n}$y"), "x^n y");
+    assert_eq!(bookmark(r"a$\frac{b}{c}$"), "a b/c");
+    assert_eq!(bookmark(r"a$\sin x$"), "a sin x");
+    assert_eq!(bookmark(r"a$\text{}\sin x$"), "a sin x");
+    assert_eq!(bookmark(r"$x^{n}$\bold{y}"), "x^n y");
+  }
+
+  #[test]
+  fn bookmark_math_boundary_with_japanese() {
+    assert_eq!(bookmark("$x^{n}$ と"), "x^n と");
+    assert_eq!(bookmark("$x^{n}$と"), "x^nと");
+    assert_eq!(bookmark(r"漢$\frac{b}{c}$"), "漢b/c");
+  }
+
+  #[test]
+  fn bookmark_label_does_not_double_space_after_number() {
+    let record = &heading_records(&ReadStyle::default(), "\\section{$\\quad x$}\n")[0];
+
+    assert!(!record.number.is_empty(), "既定の style で \\section は採番される");
+    assert_eq!(record.label(), format!("{} x", record.number));
   }
 
   #[test]
