@@ -27,7 +27,7 @@ const _: () = {
   }
 };
 
-/// 固定 9 種のカウンタそれぞれの値（未登場のカウンタは 0）
+/// 固定 10 種のカウンタそれぞれの値（未登場のカウンタは 0）
 ///
 /// 値は `[u32; 9]` に [`CounterName`] の宣言順で並ぶので、全カウンタの値が揃っていることは型が保証する。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,7 +50,7 @@ impl IndexMut<CounterName> for CounterValues {
 /// 採番された 1 項目の値（構造のみ）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CounterValue {
-  /// 固定 9 種のカウンタのいずれかで採番された項目（見出し・図・表・数式）
+  /// 固定 10 種のカウンタのいずれかで採番された項目（見出し・図・表・数式）
   Counter {
     /// 採番したカウンタ。自身の値は `counters[name]`
     name: CounterName,
@@ -279,6 +279,42 @@ mod tests {
     assert_eq!(theorem_own(&b), 2);
     assert_eq!(counters(&c)[CounterName::Section], 2);
     assert_eq!(theorem_own(&c), 1);
+  }
+
+  #[test]
+  fn appendix_resets_what_chapter_resets_and_chapter() {
+    let policy = default_policy();
+    let mut r = CounterRegistry::from_policy(&policy);
+    r.increment(CounterName::Chapter);
+    r.increment(CounterName::Section);
+    r.increment(CounterName::Figure);
+
+    let appendix = r.increment(CounterName::Appendix);
+    let section = r.increment(CounterName::Section);
+
+    assert_eq!(counters(&appendix)[CounterName::Appendix], 1);
+    assert_eq!(counters(&appendix)[CounterName::Chapter], 0, "付録の下では章番号が 0 に戻る");
+    assert_eq!(counters(&appendix)[CounterName::Section], 0);
+    assert_eq!(counters(&appendix)[CounterName::Figure], 0);
+    assert_eq!(counters(&section)[CounterName::Section], 1);
+    assert_eq!(counters(&section)[CounterName::Appendix], 1);
+    assert_eq!(counters(&section)[CounterName::Chapter], 0);
+  }
+
+  #[test]
+  fn theorem_reset_by_chapter_also_resets_on_appendix() {
+    let mut style = Style::default();
+    style.theorems.theorem.reset_by = TheoremReset::Chapter;
+    let policy = SemanticPolicy::from_style(&style);
+    let mut r = CounterRegistry::from_policy(&policy);
+    r.increment(CounterName::Chapter);
+    r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
+    r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
+
+    r.increment(CounterName::Appendix);
+    let after = r.increment_theorem(TheoremClass::Theorem).expect("採番されるはず");
+
+    assert_eq!(theorem_own(&after), 1, "章でリセットする定理は付録が進んでも戻る");
   }
 
   #[test]

@@ -108,7 +108,7 @@ impl Default for CounterStyles {
       section: CounterStyle::new(
         "Section",
         "Sections",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -121,7 +121,7 @@ impl Default for CounterStyles {
       subsection: CounterStyle::new(
         "Subsection",
         "Subsections",
-        "{chapter}.{section}.{n}",
+        "{appendix}.{chapter}.{section}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -130,7 +130,7 @@ impl Default for CounterStyles {
       paragraph: CounterStyle::new(
         "Paragraph",
         "Paragraphs",
-        "{chapter}.{section}.{subsection}.{n}",
+        "{appendix}.{chapter}.{section}.{subsection}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -139,7 +139,7 @@ impl Default for CounterStyles {
       subparagraph: CounterStyle::new(
         "Subparagraph",
         "Subparagraphs",
-        "{chapter}.{section}.{subsection}.{paragraph}.{n}",
+        "{appendix}.{chapter}.{section}.{subsection}.{paragraph}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -148,7 +148,7 @@ impl Default for CounterStyles {
       table: CounterStyle::new(
         "Table",
         "Tables",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -157,7 +157,7 @@ impl Default for CounterStyles {
       figure: CounterStyle::new(
         "Figure",
         "Figures",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -166,7 +166,7 @@ impl Default for CounterStyles {
       equation: CounterStyle::new(
         "Equation",
         "Equations",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{number}",
         "({number})",
@@ -210,7 +210,8 @@ pub(crate) struct CounterStyle {
   pub display_name_plural: String,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
   /// （`resets` の関係に無いカウンタも書ける）。値 0（未登場）のカウンタは直後の区切りごと省く
-  /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）
+  /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）。
+  /// `appendix` は既定で `chapter` をリセットするので、`"{appendix}.{chapter}.{n}"` は本文で `"1.1"`、付録で `"A.1"`
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
   #[garde(dive)]
@@ -475,7 +476,7 @@ mod tests {
   #[test]
   fn default_counters_section_references_chapter() {
     let counters = CounterStyles::default();
-    assert_eq!(counters.section.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(counters.section.number_format.as_str(), "{appendix}.{chapter}.{n}");
     assert_eq!(counters.section.number_style, NumberStyle::Arabic);
     assert_eq!(counters.section.ref_format.as_str(), "{display_name} {number}");
   }
@@ -550,7 +551,7 @@ display_name = \"図\"
     let counters: CounterStyles = toml::from_str(toml).unwrap();
 
     assert_eq!(counters.figure.display_name, "図");
-    assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(counters.figure.number_format.as_str(), "{appendix}.{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
     assert_eq!(counters.figure.ref_format.as_str(), "{display_name} {number}");
     assert_eq!(counters.figure.resets, []);

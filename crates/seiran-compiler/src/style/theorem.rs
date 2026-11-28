@@ -221,15 +221,16 @@ pub(crate) enum TheoremReset {
 impl TheoremReset {
   /// リセット元の見出しカウンタを返す（`None` はリセットしない＝対応する見出しカウンタなし）
   ///
+  /// `Chapter` は章の深さの区分ごとにリセットするので、章と付録の 2 つを返す。
   /// `TheoremReset` と [`CounterName`] の対応はこの網羅 match が唯一の正典。
   #[must_use]
-  pub(crate) fn counter_name(self) -> Option<CounterName> {
+  pub(crate) fn counter_names(self) -> &'static [CounterName] {
     return match self {
-      Self::Part => Some(CounterName::Part),
-      Self::Chapter => Some(CounterName::Chapter),
-      Self::Section => Some(CounterName::Section),
-      Self::Subsection => Some(CounterName::Subsection),
-      Self::None => None,
+      Self::Part => &[CounterName::Part],
+      Self::Chapter => &[CounterName::Chapter, CounterName::Appendix],
+      Self::Section => &[CounterName::Section],
+      Self::Subsection => &[CounterName::Subsection],
+      Self::None => &[],
     };
   }
 }
@@ -744,17 +745,17 @@ font_knd = \"serif\"
   }
 
   #[test]
-  fn counter_name_covers_every_reset_level() {
-    let expected: [(TheoremReset, Option<CounterName>); 5] = [
-      (TheoremReset::Part, Some(CounterName::Part)),
-      (TheoremReset::Chapter, Some(CounterName::Chapter)),
-      (TheoremReset::Section, Some(CounterName::Section)),
-      (TheoremReset::Subsection, Some(CounterName::Subsection)),
-      (TheoremReset::None, None),
+  fn counter_names_cover_every_reset_level() {
+    let expected: [(TheoremReset, &[CounterName]); 5] = [
+      (TheoremReset::Part, &[CounterName::Part]),
+      (TheoremReset::Chapter, &[CounterName::Chapter, CounterName::Appendix]),
+      (TheoremReset::Section, &[CounterName::Section]),
+      (TheoremReset::Subsection, &[CounterName::Subsection]),
+      (TheoremReset::None, &[]),
     ];
 
     for (level, want) in expected {
-      assert_eq!(level.counter_name(), want, "{level:?} が指す見出しカウンタ");
+      assert_eq!(level.counter_names(), want, "{level:?} が指す見出しカウンタ");
     }
     assert_eq!(expected.map(|(level, _)| return level), TheoremReset::VARIANTS, "全 5 バリアントを宣言順で覆う");
   }

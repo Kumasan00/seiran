@@ -221,6 +221,44 @@ mod tests {
   }
 
   #[test]
+  fn section_under_appendix_uses_appendix_number() {
+    let style = Style::default();
+    let value = counter_value(CounterName::Section, &[(CounterName::Appendix, 1), (CounterName::Section, 1)]);
+
+    assert_eq!(format_counter_value(&style, &value), "A.1");
+  }
+
+  #[test]
+  fn section_in_body_drops_empty_appendix() {
+    let style = Style::default();
+    let value = counter_value(CounterName::Section, &[(CounterName::Chapter, 2), (CounterName::Section, 3)]);
+
+    assert_eq!(format_counter_value(&style, &value), "2.3");
+  }
+
+  #[test]
+  fn appendix_ref_display_uses_appendix_number() {
+    let style = Style::default();
+    let appendix = counter_value(CounterName::Appendix, &[(CounterName::Appendix, 1)]);
+    let section = counter_value(CounterName::Section, &[(CounterName::Appendix, 2), (CounterName::Section, 1)]);
+    let equation = counter_value(CounterName::Equation, &[(CounterName::Appendix, 1), (CounterName::Equation, 2)]);
+
+    assert_eq!(format_ref_display(&style, &appendix), "Appendix A");
+    assert_eq!(format_ref_display(&style, &section), "Section B.1");
+    assert_eq!(format_ref_display(&style, &equation), "(A.2)");
+  }
+
+  #[test]
+  fn user_chapter_format_drops_appendix_number() {
+    // 付録番号は `{appendix}` と書いたときだけ出る。`{chapter}` を付録番号に読み替えることはしない
+    let mut style = Style::default();
+    style.counters.section.number_format = CounterTemplate::parse("{chapter}.{n}");
+    let value = counter_value(CounterName::Section, &[(CounterName::Appendix, 1), (CounterName::Section, 1)]);
+
+    assert_eq!(format_counter_value(&style, &value), "1");
+  }
+
+  #[test]
   fn theorem_without_reset_by_counter_drops_the_separator() {
     let mut style = Style::default();
     style.theorems.theorem.number_format = CounterTemplate::parse("{chapter}.{n}");

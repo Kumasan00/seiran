@@ -914,7 +914,37 @@ mod tests {
     let (_layout, headings) = lower_body(&style, &analyzed);
 
     let numbers: Vec<&str> = headings.iter().map(|h| return h.number.as_str()).collect();
-    assert_eq!(numbers, vec!["1", "1.1", "1.2"], "section は既定で \"{{chapter}}.{{n}}\"");
+    assert_eq!(numbers, vec!["1", "1.1", "1.2"], "section は既定で \"{{appendix}}.{{chapter}}.{{n}}\"");
+  }
+
+  /// 本文の見出し記録の番号を文書順に並べる
+  fn heading_numbers(document: &SemanticDocument) -> Vec<String> {
+    let (_layout, headings) = lower_body(&ReadStyle::default(), document);
+    return headings.into_iter().map(|h| return h.number).collect();
+  }
+
+  #[test]
+  fn appendix_numbers_follow_chapters() {
+    let analyzed = analyzed("\\chapter{C}\n\n\\section{S}\n\n\\appendix{X}\n\n\\section{T}\n\n\\appendix{Y}\n");
+
+    assert_eq!(heading_numbers(&analyzed), vec!["1", "1.1", "A", "A.1", "B"]);
+  }
+
+  #[test]
+  fn appendix_numbers_without_chapters() {
+    let analyzed = analyzed("\\section{S}\n\n\\appendix{X}\n\n\\section{T}\n");
+
+    assert_eq!(heading_numbers(&analyzed), vec!["1", "A", "A.1"]);
+  }
+
+  #[test]
+  fn appendix_numbering_continues_across_sources() {
+    let analyzed = analyzed_sources(&[
+      "\\chapter{C}\n\n\\appendix{X}\n\n\\section{S}\n",
+      "\\section{T}\n\n\\appendix{Y}\n\n\\section{U}\n",
+    ]);
+
+    assert_eq!(heading_numbers(&analyzed), vec!["1", "A", "A.1", "A.2", "B", "B.1"]);
   }
 
   #[test]

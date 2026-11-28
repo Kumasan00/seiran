@@ -1623,7 +1623,7 @@ mod numbering_tests {
               seen,
               |other| return other == Target::Theorem,
               |other| {
-                return matches!(other, Target::Counter(by) if Some(by) == style.theorems.theorem.reset_by.counter_name());
+                return matches!(other, Target::Counter(by) if style.theorems.theorem.reset_by.counter_names().contains(&by));
               },
             ),
             counters,
