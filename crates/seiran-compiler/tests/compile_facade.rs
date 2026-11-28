@@ -677,3 +677,26 @@ fn per_page_footnote_numbering_does_not_duplicate_table_overflow_warnings() {
 
   assert_eq!(warning_codes(&compilation.warnings), vec!["typeset::overflow::table_row"]);
 }
+
+#[test]
+fn compile_rejects_svg_external_reference_without_reading_it() {
+  // 参照先の PNG は登録済み（実在する）だが、SVG からの外部参照は読まずに拒否する
+  let svg = r#"<svg xmlns="http://www.w3.org/2000/svg" width="100" height="100"><image href="b.png" width="100" height="100"/></svg>"#;
+  let source = MemoryProjectSource::new()
+    .with_text("/project/config.toml", minimal_config_toml("text.sei"))
+    .with_text("/project/text.sei", figure_source("fig/a.svg"))
+    .with_text("/project/fig/a.svg", svg)
+    .with_bytes("/project/fig/b.png", read_test_image())
+    .with_bytes("/project/font.ttf", read_test_font())
+    .with_bytes(common::JAPANESE_FONT_PATH, common::read_japanese_test_font());
+  let config_path = ProjectPath::new("/project/config.toml");
+
+  let failure =
+    seiran_compiler::compile(&source, &config_path, project_base_dir()).expect_err("外部参照は失敗するはず");
+
+  assert_eq!(
+    failure.code().expect("leaf の診断コードを持つはず").to_string(),
+    "typeset::image::svg_external_reference"
+  );
+  assert_eq!(source.read_count("/project/fig/b.png"), 0, "参照先は読まないはず");
+}
