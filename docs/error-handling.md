@@ -178,6 +178,7 @@ crate 名（`seiran_compiler::`）を第 1 階層に置かない理由: 全 code
   ```text
   INFO  phase の開始・結果付き終了（status / elapsed）
   DEBUG 工程の集計（件数・出力サイズ）、資源ごとの処理、内部選択
+  TRACE 行分割の候補やグリフなど、文書の要素ごとの処理
   WARN  実行環境上の異常で、ユーザー診断として返せないもの
   ```
 

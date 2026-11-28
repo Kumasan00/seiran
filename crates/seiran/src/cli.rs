@@ -2,13 +2,26 @@
 
 use std::{fmt, path::PathBuf};
 
-use clap::{Parser, Subcommand};
+use clap::{Args, CommandFactory, Parser, Subcommand, error::ErrorKind};
+use tracing_subscriber::EnvFilter;
 
 /// Seiran - PDFテキスト生成ツール
 #[derive(Parser, Debug)]
 #[command(version, about = "PDFテキスト生成ツール")]
 pub(super) struct Cli {
-  /// Seiran のログを詳しくする（`-v` = 作業の進捗、`-vv` = 工程の成否・所要時間と内部詳細、`-vvv` = 行・グリフ単位まで）。`-q` と併用でき、そのときは `--log-file` だけが詳しくなる。有効な `RUST_LOG` があるときは無視される（警告を出す）
+  /// 端末表示とログファイルの設定
+  #[command(flatten)]
+  pub(super) logging: LogOptions,
+
+  /// 実行するサブコマンド
+  #[command(subcommand)]
+  pub(super) command: Command,
+}
+
+/// 全サブコマンドで共通のログ設定。
+#[derive(Args, Debug)]
+pub(super) struct LogOptions {
+  /// ログの詳細度を上げる（-v は進捗、-vv は工程の成否・所要時間と内部詳細、-vvv は行・グリフ単位まで）。有効な `RUST_LOG` が優先される
   #[arg(short, long, global = true, action = clap::ArgAction::Count)]
   pub(super) verbose: u8,
 
@@ -16,13 +29,13 @@ pub(super) struct Cli {
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
-  /// 工程・診断・実行結果を新しいファイルへ記録する。-vv / -vvv で詳細を追加し、`RUST_LOG` で絞り込める。既存パスや記録失敗はエラー
+  /// 工程・診断・実行結果を新規ファイルへ記録する。既存パスや記録失敗はエラー
   #[arg(long, global = true, value_name = "PATH")]
   pub(super) log_file: Option<PathBuf>,
 
-  /// 実行するサブコマンド
-  #[command(subcommand)]
-  pub(super) command: Command,
+  /// --log-file に記録するイベントを選ぶ（例: `seiran_compiler::typeset=trace`）。ファイルでは `RUST_LOG` と -v より優先する
+  #[arg(long, global = true, value_parser = str::parse::<EnvFilter>, value_name = "DIRECTIVES")]
+  pub(super) log_filter: Option<EnvFilter>,
 }
 
 /// アプリケーションがサポートするサブコマンド
@@ -83,11 +96,20 @@ impl fmt::Display for Command {
 }
 
 /// コマンドライン引数を解析する。引数が不正なときは clap が診断を出し、終了コード 2 でプロセスを終える。
-pub(super) fn parse_arg() -> Cli { return Cli::parse() }
+pub(super) fn parse_arg() -> Cli {
+  let cli = Cli::parse();
+  // clap の requires はサブコマンドの前後に分けた global 引数を照合できないので、統合後に調べる。
+  if cli.logging.log_filter.is_some() && cli.logging.log_file.is_none() {
+    Cli::command()
+      .error(ErrorKind::MissingRequiredArgument, "--log-filter には --log-file <PATH> が必要です")
+      .exit();
+  }
+  return cli;
+}
 
 #[cfg(test)]
 mod tests {
-  use clap::{CommandFactory, Parser};
+  use clap::{CommandFactory, Parser, error::ErrorKind};
 
   use super::Cli;
 
@@ -98,9 +120,23 @@ mod tests {
   fn quiet_and_verbose_are_accepted_without_log_file() {
     let cli = Cli::try_parse_from(["seiran", "-q", "-vv", "build"]).expect("--log-file が無くても -q -vv は受理する");
 
-    assert!(cli.quiet);
-    assert_eq!(cli.verbose, 2);
-    assert!(cli.log_file.is_none());
+    assert!(cli.logging.quiet);
+    assert_eq!(cli.logging.verbose, 2);
+    assert!(cli.logging.log_file.is_none());
+  }
+
+  #[test]
+  fn file_filter_requires_valid_directives() {
+    let invalid = Cli::try_parse_from([
+      "seiran",
+      "--log-filter",
+      "seiran=typo",
+      "--log-file",
+      "run.log",
+      "build",
+    ])
+    .expect_err("不正な詳細度を拒否する");
+    assert_eq!(invalid.kind(), ErrorKind::ValueValidation);
   }
 
   #[test]

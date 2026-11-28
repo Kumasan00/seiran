@@ -46,7 +46,7 @@ fn main() -> ExitCode {
     subcommand: &cli_args.command,
     base_dir: base_dir.as_deref().ok(),
   };
-  let reporter = match Reporter::init(cli_args.verbose, cli_args.quiet, cli_args.log_file.as_deref(), &header) {
+  let reporter = match Reporter::init(cli_args.logging, &header) {
     Ok(reporter) => reporter,
     Err(error) => {
       return Outcome::Failure {

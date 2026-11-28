@@ -29,7 +29,7 @@ use tracing_subscriber::fmt::{
   time::{FormatTime, OffsetTime},
 };
 
-use crate::cli::Command;
+use crate::cli::{Command, LogOptions};
 
 /// CLI のユーザー向け報告器。
 ///
@@ -52,15 +52,11 @@ impl Reporter {
   /// # Errors
   ///
   /// `--log-file` のパスを開けないとき、subscriber を 1 つも設置せずに [`LogFileError`] を返す。
-  pub(super) fn init(
-    verbose: u8,
-    quiet: bool,
-    log_file: Option<&Path>,
-    header: &RunHeader<'_>,
-  ) -> Result<Self, LogFileError> {
+  pub(super) fn init(options: LogOptions, header: &RunHeader<'_>) -> Result<Self, LogFileError> {
     let ansi = ansi_enabled(std::env::var_os("NO_COLOR").as_deref(), io::stderr().is_terminal());
-    let log = log_file.map(LogSink::open).transpose()?;
-    let warning = trace::install(verbose, quiet, ansi, log.as_ref(), header);
+    let log = options.log_file.as_deref().map(LogSink::open).transpose()?;
+    let quiet = options.quiet;
+    let warning = trace::install(options, ansi, log.as_ref(), header);
 
     let reporter = Reporter {
       quiet,

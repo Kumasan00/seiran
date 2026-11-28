@@ -155,6 +155,99 @@ fn phase_targets_keep_names_when_filtered_on_their_own() {
   }
 }
 
+#[test]
+fn file_filter_without_a_destination_is_an_argument_error() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れる");
+  let output = seiran(dir.path(), &["--log-filter", "trace", "build"], None);
+  assert_eq!(output.status.code(), Some(2));
+  assert!(stderr_text(&output).contains("--log-file"));
+}
+
+#[test]
+fn file_filter_keeps_the_source_span_while_terminal_shows_progress() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れる");
+  write_ok_project(dir.path());
+  let filter = "seiran_compiler::frontend::syntax::parser=debug";
+  let output = seiran(
+    dir.path(),
+    &[
+      "build",
+      "-c",
+      "config.toml",
+      "-v",
+      "--log-file",
+      "file.log",
+      "--log-filter",
+      filter,
+    ],
+    None,
+  );
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(0), "{stderr}");
+  assert!(stderr.lines().any(|line| return line == "ソースを解析中"), "{stderr}");
+  assert!(!stderr.contains("CST を構築"), "{stderr}");
+
+  let log = fs::read_to_string(dir.path().join("file.log")).expect("ログを読める");
+  assert!(log.contains(&format!("実効フィルタ: {filter}")), "{log}");
+  let event = log.lines().find(|line| return line.contains("CST を構築")).expect("parser の DEBUG 行がある");
+  assert!(event.contains("compile:frontend:source:") && event.contains("source_path="), "{event}");
+  assert!(!log.contains("ソースを解析中") && !log.contains("status=Succeeded"), "{log}");
+}
+
+#[test]
+fn quiet_trace_still_records_detail_and_targets_without_a_file_filter() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れる");
+  write_ok_project(dir.path());
+  let output = seiran(
+    dir.path(),
+    &[
+      "build",
+      "-c",
+      "config.toml",
+      "-q",
+      "-vvv",
+      "--log-file",
+      "file.log",
+    ],
+    None,
+  );
+  assert_eq!(output.status.code(), Some(0), "{}", stderr_text(&output));
+  assert_eq!(stderr_text(&output), "");
+  let log = fs::read_to_string(dir.path().join("file.log")).expect("ログを読める");
+  assert!(
+    log
+      .lines()
+      .any(|line| return line.contains("TRACE") && line.contains("seiran_compiler::typeset::boxing")),
+    "{log}"
+  );
+}
+
+#[test]
+fn file_filter_off_keeps_diagnostics_while_rust_log_selects_terminal_events() {
+  let dir = tempfile::tempdir().expect("一時ディレクトリを作れる");
+  write_project(dir.path(), "doc.sei", r"\unknowncommand{x}", "out");
+  let output = seiran(
+    dir.path(),
+    &[
+      "--log-file",
+      "file.log",
+      "build",
+      "-c",
+      "config.toml",
+      "--log-filter",
+      "off",
+    ],
+    Some("seiran_compiler::frontend::syntax::parser=debug"),
+  );
+  let stderr = stderr_text(&output);
+  assert_eq!(output.status.code(), Some(1), "{stderr}");
+  assert!(stderr.lines().any(|line| return line.contains("compile:frontend:source: CST を構築")), "{stderr}");
+  let log = fs::read_to_string(dir.path().join("file.log")).expect("ログを読める");
+  assert!(!log.contains("CST を構築"), "{log}");
+  assert!(log.contains("実効フィルタ: off") && log.contains("終了状態: 失敗"), "{log}");
+  assert_eq!(log.matches("frontend::eval::unknown_command").count(), 1, "{log}");
+}
+
 /// 不正な `RUST_LOG` の通知に付く診断 code。
 const INVALID_CODE: &str = "cli::rust_log::invalid";
 

@@ -8,16 +8,19 @@ use tracing::Subscriber;
 use tracing_subscriber::{
   EnvFilter, Registry,
   field::RecordFields,
-  filter::{LevelFilter, ParseError, filter_fn},
+  filter::{FilterExt, LevelFilter, ParseError, filter_fn},
   fmt::{
     self, FormatFields, MakeWriter,
     format::{DefaultFields, Writer},
   },
-  layer::{Layer, SubscriberExt},
+  layer::{Filter, Layer, SubscriberExt},
   util::SubscriberInitExt,
 };
 
-use crate::reporting::{self, RunHeader, log_file::LogSink};
+use crate::{
+  cli::LogOptions,
+  reporting::{self, RunHeader, log_file::LogSink},
+};
 
 /// 実効フィルタの決定に伴う、ユーザーが直せる通知。
 ///
@@ -25,7 +28,7 @@ use crate::reporting::{self, RunHeader, log_file::LogSink};
 #[derive(Debug, Error, Diagnostic)]
 pub(super) enum FilterWarning {
   /// `RUST_LOG` を解釈できず、`--verbose` の設定へ戻した
-  #[error("環境変数 RUST_LOG を解釈できないため、--verbose の設定を使用します")]
+  #[error("環境変数 RUST_LOG を解釈できないため、この環境変数を無視します")]
   #[diagnostic(
     code(cli::rust_log::invalid),
     severity(Warning),
@@ -40,7 +43,7 @@ pub(super) enum FilterWarning {
   },
 
   /// 環境変数の値を Unicode として読めなかった
-  #[error("環境変数 RUST_LOG を文字列として読み取れないため、--verbose の設定を使用します")]
+  #[error("環境変数 RUST_LOG を文字列として読み取れないため、この環境変数を無視します")]
   #[diagnostic(
     code(cli::rust_log::invalid),
     severity(Warning),
@@ -63,20 +66,31 @@ pub(super) enum FilterWarning {
 
 /// 実行記録の見出しを書き、プロセスの subscriber を設置する。
 pub(super) fn install(
-  verbose: u8,
-  quiet: bool,
+  options: LogOptions,
   ansi: bool,
   log: Option<&LogSink>,
   header: &RunHeader<'_>,
 ) -> Option<FilterWarning> {
   let raw_filter = std::env::var_os("RUST_LOG");
-  let plan = build_log_plan(raw_filter.as_deref(), verbose, quiet, log.is_some());
-  let file = log.zip(plan.file);
-  if let Some((sink, filter)) = &file {
+  let (env_filter, warning) = parse_environment(raw_filter.as_deref(), options.verbose);
+  let file = log.map(|sink| {
+    let filter = options
+      .log_filter
+      .or_else(|| return env_filter.clone())
+      .unwrap_or_else(|| return flag_filter(options.verbose.max(1)));
     sink.write_block(&reporting::run_header_text(&reporting::now_text(&sink.timer), header, &filter.to_string()));
-  }
-  subscriber(io::stderr, ansi, plan.progress, plan.stderr, file).init();
-  return plan.warning;
+    return (sink, filter);
+  });
+  let progress = !options.quiet && options.verbose == 1 && env_filter.is_none();
+  let terminal = if options.quiet {
+    EnvFilter::new("off")
+  } else if progress {
+    flag_filter(0)
+  } else {
+    env_filter.unwrap_or_else(|| return flag_filter(options.verbose))
+  };
+  subscriber(io::stderr, ansi, progress, terminal, file).init();
+  return warning;
 }
 
 /// 進捗は作業名だけを表示し、詳細ログにはレベル・工程の入れ子・フィールドを付ける。
@@ -112,7 +126,7 @@ where
     .with_ansi(ansi)
     .with_writer(stderr)
     .log_internal_errors(false)
-    .with_filter(filter);
+    .with_filter(with_span_context(filter));
   let record = file.map(|(sink, filter)| {
     return fmt::layer()
       .compact()
@@ -122,7 +136,7 @@ where
       .with_writer(sink.writer())
       .with_timer(sink.timer.clone())
       .log_internal_errors(false)
-      .with_filter(filter);
+      .with_filter(with_span_context(filter));
   });
   return Registry::default().with(progress_layer).with(terminal).with(record);
 }
@@ -137,21 +151,22 @@ impl<'writer> FormatFields<'writer> for FileFields {
   }
 }
 
-/// 出力先ごとの実効フィルタと、設定を選んだ際の通知。
-struct LogPlan {
-  /// 端末のフィルタ。静音時はすべて抑止する。
-  stderr: EnvFilter,
-  /// 端末へ作業名を直接表示するか。
-  progress: bool,
-  /// 指定されたログファイルのフィルタ。
-  file: Option<EnvFilter>,
-  /// 診断として出すフィルタ設定の警告。
-  warning: Option<FilterWarning>,
+/// 選択した event に、同じ詳細度までの Seiran の親 span（工程・入力ファイル・区画）を添える。
+fn with_span_context<S: Subscriber>(filter: EnvFilter) -> impl Filter<S> {
+  let level = filter.max_level_hint().unwrap_or(LevelFilter::TRACE);
+  return filter.or(
+    filter_fn(move |meta| {
+      return meta.is_span()
+        && *meta.level() <= level
+        && matches!(meta.target().split("::").next(), Some("seiran" | "seiran_compiler" | "seiran_pdf"));
+    })
+    .with_max_level_hint(level),
+  );
 }
 
-/// 有効な環境設定は両出力先に適用する。未指定・不正ならファイルには最低でも工程を残す。
-fn build_log_plan(raw_filter: Option<&OsStr>, verbose: u8, quiet: bool, has_log_file: bool) -> LogPlan {
-  let (env_filter, warning) = match raw_filter.map(OsStr::to_str) {
+/// 空の環境変数は未指定とし、不正な値や -v との競合は診断として返す。
+fn parse_environment(raw_filter: Option<&OsStr>, verbose: u8) -> (Option<EnvFilter>, Option<FilterWarning>) {
+  return match raw_filter.map(OsStr::to_str) {
     Some(None) => (None, Some(FilterWarning::NonUnicode)),
     Some(Some(raw)) if !raw.trim().is_empty() => match EnvFilter::builder().parse(raw) {
       Ok(filter) => {
@@ -166,21 +181,6 @@ fn build_log_plan(raw_filter: Option<&OsStr>, verbose: u8, quiet: bool, has_log_
     },
     Some(Some(_)) | None => (None, None),
   };
-  let progress = !quiet && verbose == 1 && env_filter.is_none();
-  let file = has_log_file.then(|| return env_filter.clone().unwrap_or_else(|| return flag_filter(verbose.max(1))));
-  let stderr = if quiet {
-    EnvFilter::new("off")
-  } else if progress {
-    flag_filter(0)
-  } else {
-    env_filter.unwrap_or_else(|| return flag_filter(verbose))
-  };
-  return LogPlan {
-    stderr,
-    progress,
-    file,
-    warning,
-  };
 }
 
 /// CLI の詳細度を表す固定の directive からフィルタを作る。
@@ -192,7 +192,7 @@ fn flag_filter(verbose: u8) -> EnvFilter {
 
 /// フィルタが TRACE を出しうるか（出しうるときだけ target を表示する）。
 fn shows_target(filter: &EnvFilter) -> bool {
-  return <EnvFilter as Layer<Registry>>::max_level_hint(filter).is_none_or(|hint| return hint >= LevelFilter::TRACE);
+  return filter.max_level_hint().is_none_or(|hint| return hint >= LevelFilter::TRACE);
 }
 
 /// `--verbose` に対応するフィルタ directive を返す。
@@ -212,11 +212,8 @@ mod tests {
   use tracing::{info, info_span};
   use tracing_subscriber::EnvFilter;
 
-  use super::{FilterWarning, build_log_plan, flag_directive, flag_filter, shows_target, subscriber};
+  use super::{FilterWarning, flag_directive, flag_filter, parse_environment, shows_target, subscriber};
   use crate::reporting::log_file::LogSink;
-
-  /// `--verbose` の段数に対応する directive をフィルタ表記へ揃える。
-  fn flag_filter_text(verbose: u8) -> String { return flag_filter(verbose).to_string(); }
 
   #[test]
   fn colored_terminal_and_plain_file_format_span_fields_independently() {
@@ -246,88 +243,30 @@ mod tests {
   }
 
   #[test]
-  fn quiet_keeps_the_log_file_verbose() {
-    let plan = build_log_plan(None, 3, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.to_string(), "off", "端末は黙る");
-    assert_eq!(file.to_string(), flag_filter_text(3), "ファイルは -q を見ない");
-    assert!(!shows_target(&plan.stderr));
-    assert!(shows_target(&file), "ファイル側は TRACE を出すので target を表示する");
-  }
-
-  #[test]
-  fn valid_rust_log_takes_priority_over_verbose() {
-    let plan = build_log_plan(Some(OsStr::new("seiran_compiler=trace")), 0, false, false);
-
-    assert_eq!(plan.stderr.to_string(), "seiran_compiler=trace");
-    assert!(plan.warning.is_none());
-  }
-
-  #[test]
-  fn invalid_rust_log_falls_back_to_verbose() {
-    let plan = build_log_plan(Some(OsStr::new("seiran=not-a-level")), 1, false, false);
-
-    assert!(plan.progress);
-    assert_eq!(plan.stderr.to_string(), "warn");
-    assert!(matches!(plan.warning, Some(FilterWarning::Invalid { .. })));
-  }
-
-  #[test]
-  fn valid_rust_log_with_verbose_warns_override() {
-    let plan = build_log_plan(Some(OsStr::new("info")), 3, false, false);
-
-    assert_eq!(plan.stderr.to_string(), "info", "実効フィルタは RUST_LOG のまま");
-    assert!(
-      matches!(&plan.warning, Some(FilterWarning::OverridesVerbose { value }) if value == "info"),
-      "覆った RUST_LOG の値を持つ"
-    );
-  }
-
-  #[test]
-  fn blank_rust_log_with_verbose_does_not_warn() {
+  fn blank_environment_keeps_flag_settings() {
     for raw in [None, Some(""), Some("  ")] {
-      let plan = build_log_plan(raw.map(OsStr::new), 2, false, false);
-
-      assert_eq!(plan.stderr.to_string(), flag_filter_text(2), "{raw:?} は未設定として --verbose が効く");
-      assert!(plan.warning.is_none(), "{raw:?} では警告しない");
+      let (filter, warning) = parse_environment(raw.map(OsStr::new), 2);
+      assert!(filter.is_none() && warning.is_none());
     }
   }
 
   #[test]
-  fn quiet_and_verbose_without_log_file_is_harmless() {
-    let plan = build_log_plan(None, 2, true, false);
+  fn environment_overrides_flags_only_when_valid() {
+    let (filter, warning) = parse_environment(Some(OsStr::new("seiran=not-a-level")), 1);
+    assert!(filter.is_none());
+    assert!(matches!(warning, Some(FilterWarning::Invalid { .. })));
 
-    assert_eq!(plan.stderr.to_string(), "off");
-    assert!(plan.file.is_none());
-    assert!(plan.warning.is_none(), "効果が無いだけで警告しない");
-  }
-
-  #[test]
-  fn override_warning_survives_quiet() {
-    let plan = build_log_plan(Some(OsStr::new("info")), 1, true, true);
-    let file = plan.file.expect("--log-file 指定時はファイル側の計画がある");
-
-    assert_eq!(plan.stderr.to_string(), "off");
-    assert_eq!(file.to_string(), "info");
-    assert!(plan.warning.is_some(), "端末が黙っていても無視の警告はログファイルへ残す");
+    let (filter, warning) = parse_environment(Some(OsStr::new("info")), 1);
+    assert_eq!(filter.expect("有効な directive").to_string(), "info");
+    assert!(matches!(warning, Some(FilterWarning::OverridesVerbose { value }) if value == "info"));
   }
 
   #[test]
   fn target_is_shown_only_from_trace() {
     for verbose in 0..=2 {
-      assert!(
-        !shows_target(&build_log_plan(None, verbose, false, false).stderr),
-        "-v{verbose} 相当では target を表示しない"
-      );
+      assert!(!shows_target(&flag_filter(verbose)));
     }
-
-    assert!(shows_target(&build_log_plan(None, 3, false, false).stderr), "-vvv では target を表示する");
-  }
-
-  #[test]
-  fn rust_log_trace_shows_target() {
-    assert!(shows_target(&build_log_plan(Some(OsStr::new("seiran_compiler=trace")), 0, false, false).stderr));
-    assert!(!shows_target(&build_log_plan(Some(OsStr::new("info")), 0, false, false).stderr));
+    assert!(shows_target(&flag_filter(3)));
+    assert!(shows_target(&EnvFilter::new("seiran_compiler=trace")));
   }
 }
