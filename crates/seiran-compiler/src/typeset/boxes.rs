@@ -11,6 +11,7 @@ mod hitem;
 mod line;
 mod link;
 mod page;
+mod subfigures_box;
 mod table_box;
 
 pub(super) use align::Align;
@@ -23,4 +24,5 @@ pub(super) use line::LineLink;
 pub(crate) use link::{AnchorId, FootnoteId, LinkTarget};
 pub(crate) use page::{Page, PlacedBlock, PlacedTableRow};
 pub(super) use page::{PlacedAnchor, PlacedFootnote, PlacedLink, PlacedMathNumber, PlacedTableRule};
+pub(super) use subfigures_box::{SubfigureImage, SubfigureLine, SubfiguresBox};
 pub(super) use table_box::{TableBoundary, TableBox, TableRowFragment};

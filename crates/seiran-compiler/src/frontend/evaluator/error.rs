@@ -566,6 +566,66 @@ pub(crate) enum EvalError {
     span: SourceSpan,
   },
 
+  /// `subfigure` 環境が `figure` の本体の直下以外に書かれた場合
+  #[error("環境 subfigure は figure の本体にだけ書けます")]
+  #[diagnostic(
+    code(frontend::eval::subfigure_outside_figure),
+    help("subfigure を figure 環境の本体の直下に置いてください")
+  )]
+  SubfigureOutsideFigure {
+    /// `subfigure` 環境のソース位置
+    #[label("figure の外です")]
+    span: SourceSpan,
+  },
+
+  /// `figure` の本体に `\image` と `subfigure` の両方が書かれた場合
+  #[error("figure の本体に \\image と subfigure を混在させることはできません")]
+  #[diagnostic(
+    code(frontend::eval::figure_image_with_subfigures),
+    help("画像を 1 枚だけ置くなら \\image を、複数並べるなら各画像を subfigure で包んでください")
+  )]
+  FigureImageWithSubfigures {
+    /// 後から現れた側の種類の最初の要素のソース位置
+    #[label("ここで混在しています")]
+    span: SourceSpan,
+  },
+
+  /// 図全体の `\caption` が副図と副図の間に書かれた場合
+  #[error("図全体の \\caption が副図の間にあります")]
+  #[diagnostic(
+    code(frontend::eval::figure_caption_between_subfigures),
+    help("\\caption を最初の subfigure より前（図の上）か、最後の subfigure より後ろ（図の下）へ移してください")
+  )]
+  FigureCaptionBetweenSubfigures {
+    /// `\caption` のソース位置
+    #[label("副図の間です")]
+    span: SourceSpan,
+  },
+
+  /// 1 つの `figure` の中で副キャプションの位置（画像の上 / 下）が揃わない場合
+  #[error("副キャプションの位置（画像の上 / 下）が副図によって違います")]
+  #[diagnostic(
+    code(frontend::eval::subcaption_position_mixed),
+    help("1 つの figure の中では、副図の \\caption をすべて \\image の前か、すべて後ろに書いてください")
+  )]
+  SubcaptionPositionMixed {
+    /// 最初の副キャプションと逆の位置にある最初の `\caption` のソース位置
+    #[label("最初の副キャプションと逆の位置です")]
+    span: SourceSpan,
+  },
+
+  /// 副図を持たない `figure` に `per_row` が指定された場合
+  #[error("per_row は副図（subfigure）を並べる figure にだけ指定できます")]
+  #[diagnostic(
+    code(frontend::eval::per_row_without_subfigures),
+    help("per_row を外すか、画像を subfigure で包んでください")
+  )]
+  PerRowWithoutSubfigures {
+    /// `figure` 環境のソース位置
+    #[label("この figure に subfigure はありません")]
+    span: SourceSpan,
+  },
+
   /// 枠罫の持ち場（表の最初の `\head` 行・最初の本体行の上の境界）に `\row[separator=...]` を書いた場合
   #[error("表の先頭行の上とヘッダ直後の境界には separator を置けません")]
   #[diagnostic(

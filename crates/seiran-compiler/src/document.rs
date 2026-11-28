@@ -40,8 +40,8 @@ pub(crate) use heading_level::HeadingLevel;
 pub(crate) use hir::{
   FigureBody, HirBuilder, HirDocument, HirFigure, HirFlush, HirHeading, HirImage, HirInline, HirInlineKind, HirList,
   HirListItem, HirMath, HirMathBlock, HirMathKind, HirMathRow, HirNode, HirNodeKind, HirProofTarget, HirQuote,
-  HirSource, HirTable, HirTableCell, HirTableRow, HirTheorem, LinkDestination, NodeId, NodeMap, SourceLocation,
-  SourceMap,
+  HirSource, HirSubfigure, HirTable, HirTableCell, HirTableRow, HirTheorem, LinkDestination, NodeId, NodeMap,
+  SourceLocation, SourceMap,
 };
 pub use image_format::ImageFormat;
 pub(crate) use math_block::{GridLayout, MathBlockKind, MathDelimiter};

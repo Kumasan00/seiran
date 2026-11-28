@@ -24,7 +24,7 @@ use crate::{
   typeset::{
     boxes::{
       self, Align, Block, FootnoteBody, Galley, HBox, Line, MathRowNumber, Page, PlacedBlock, PlacedMathNumber,
-      PlacedTableRule, TableBoundary, TableBox, TableRowFragment,
+      PlacedTableRule, SubfigureLine, SubfiguresBox, TableBoundary, TableBox, TableRowFragment,
     },
     error::ElementOverflow,
     geometry::PageGeometry,
@@ -516,6 +516,7 @@ pub(in crate::typeset) fn break_pages(galley: Galley) -> Result<(Vec<Page>, Vec<
         );
         composer.cursor = composer.cursor.below(height).map_err(at)?;
       },
+      Block::Subfigures { grid, indent } => place_subfigures(&mut composer, grid, indent)?,
       Block::Table {
         table,
         indent,
@@ -570,6 +571,7 @@ fn is_content_block(block: &Block) -> bool {
     Block::Paragraph { .. }
     | Block::Table { .. }
     | Block::Image { .. }
+    | Block::Subfigures { .. }
     | Block::ComposedLine { .. }
     | Block::Math { .. } => true,
     Block::Glue { .. } | Block::PageBreak | Block::KeepWithNext | Block::Anchor(_) => false,
@@ -594,6 +596,7 @@ fn keep_group_end(blocks: &[Block], start: usize) -> Option<usize> {
         Block::Paragraph { .. }
         | Block::Table { .. }
         | Block::Image { .. }
+        | Block::Subfigures { .. }
         | Block::ComposedLine { .. }
         | Block::Math { .. } => {
           next_content = Some(j);
@@ -617,6 +620,7 @@ fn block_origin(block: &Block) -> Option<NodeId> {
     Block::Paragraph { origin, .. } | Block::ComposedLine { origin, .. } => *origin,
     Block::Image { origin, .. } | Block::Math { origin, .. } => Some(*origin),
     Block::Table { table, .. } => Some(table.origin),
+    Block::Subfigures { grid, .. } => Some(grid.origin),
     Block::Glue { .. } | Block::PageBreak | Block::KeepWithNext | Block::Anchor(_) => None,
   };
 }
@@ -643,6 +647,12 @@ fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Resu
       return Ok(AtomicPlacement {
         starts_region: cursor.overflows(*height, geom).map_err(at)?,
         cursor_after: cursor.below(*height).map_err(at)?,
+      });
+    },
+    Block::Subfigures { grid, .. } => {
+      return Ok(AtomicPlacement {
+        starts_region: defers_subfigures(cursor, grid, geom)?,
+        cursor_after: cursor.below(grid.height).map_err(at)?,
       });
     },
     Block::Math { body, .. } => {
@@ -1052,6 +1062,135 @@ fn defers_unbreakable_table(
   );
 }
 
+/// 副図の並び `grid` を 1 単位としてカーソルから置き、画像と副キャプションの行へ分解する
+fn place_subfigures(
+  composer: &mut PageComposer,
+  mut grid: SubfiguresBox,
+  indent: Length,
+) -> Result<(), ElementOverflow> {
+  let origin = grid.origin;
+  let at = |LengthOverflow| {
+    return ElementOverflow {
+      origin: Some(origin),
+    };
+  };
+  if defers_subfigures(composer.cursor, &grid, &composer.geom)? {
+    composer.advance_region()?;
+  }
+  // 副キャプションの脚注は並び全体を脚注付きの 1 行とみなして、表の行（`place_table_row`）と同じ順で予約・分割・繰越する
+  let charges = FootnoteCharges::of(&composer.geom);
+  let demands: Vec<FootnoteDemand> = grid
+    .lines
+    .iter()
+    .flat_map(|line| return &line.line.footnotes)
+    .map(footnote_demand)
+    .collect::<Result<_, _>>()?;
+  // 脚注は行から外して渡す。着地する行は脚注を持たない
+  let bodies: Vec<PendingFootnote> = grid
+    .lines
+    .iter_mut()
+    .flat_map(|line| return std::mem::take(&mut line.line.footnotes))
+    .map(unplaced)
+    .collect();
+  let (area, splits) = match fit_table_row(composer.cursor, grid.height, &demands, &composer.geom).map_err(at)? {
+    LineFootnoteFit::Full(area) => (area, demands.iter().map(FootnoteDemand::line_count).collect()),
+    LineFootnoteFit::Split(area, splits) => (area, splits),
+    // 予約の無いリージョンでも収まらない病的ケース。送っても改善しないので、はみ出したまま置く
+    LineFootnoteFit::Rejected => {
+      if !bodies.is_empty() {
+        composer.record(OverflowKind::FootnoteLine {
+          footnotes: bodies.iter().map(|footnote| return (footnote.body.number, footnote.body.origin)).collect(),
+        });
+      }
+      (
+        footnote_area_full(&demands, composer.cursor.footnote_reserved, charges).map_err(at)?,
+        demands.iter().map(FootnoteDemand::line_count).collect::<Vec<_>>(),
+      )
+    },
+  };
+
+  // 縦の下限は並び自身の脚注予約を足す前のもの（脚注の溢れは `FootnoteLine` が記録する）
+  let limit = composer.cursor.region_limit(&composer.geom).map_err(at)?;
+  let top = composer.cursor.y;
+  let col_off = composer.column_offset().map_err(at)?;
+  let left = col_off.try_add(indent).map_err(at)?;
+  let SubfiguresBox {
+    height,
+    frame_width,
+    images,
+    lines,
+    ..
+  } = grid;
+  for image in images {
+    let y = top.try_add(image.y).map_err(at)?;
+    composer
+      .record_extent_overflow(image.width, frame_width, y.try_add(image.height).map_err(at)?, limit, |axis, excess| {
+        return OverflowKind::Image {
+          origin: image.origin,
+          path: image.path.clone(),
+          axis,
+          excess,
+        };
+      })
+      .map_err(at)?;
+    // 未解決のアンカー（副図の label を含む）は並びの上端で解決させる
+    composer.draft.place_block(
+      PlacedBlock::Image {
+        path: image.path,
+        page_index: image.page_index,
+        x: left.try_add(image.x).map_err(at)?,
+        y,
+        width: image.width,
+        height: image.height,
+        target_dpi: image.target_dpi,
+      },
+      col_off,
+      top,
+    );
+  }
+  for SubfigureLine {
+    origin: line_origin,
+    mut line,
+    baseline,
+  } in lines
+  {
+    let baseline = top.try_add(baseline).map_err(at)?;
+    line.shift_x(indent).map_err(at)?;
+    composer
+      .record_line_overflow(&line, baseline.try_add(line.depth).map_err(at)?, limit, Some(line_origin))
+      .map_err(at)?;
+    line.shift_x(col_off).map_err(at)?;
+    composer.draft.place_line(line, baseline, col_off).map_err(at)?;
+  }
+  for (footnote, placed) in bodies.into_iter().zip(splits) {
+    let (head, tail) = split_pending(footnote, placed);
+    if let Some(head) = head {
+      composer.push_region_footnote(head)?;
+    }
+    if let Some(tail) = tail {
+      composer.carry.push(tail);
+    }
+  }
+  composer.cursor = composer.cursor.below(height).map_err(at)?;
+  composer.cursor.footnote_reserved = area;
+  return Ok(());
+}
+
+/// 副図の並び `grid` を次リージョンへ送るべきか（分割しない表と同じ判定で、副キャプションの全行の脚注を含める）
+fn defers_subfigures(cursor: RegionCursor, grid: &SubfiguresBox, geom: &PageGeometry) -> Result<bool, ElementOverflow> {
+  let demands: Vec<FootnoteDemand> = grid
+    .lines
+    .iter()
+    .flat_map(|line| return &line.line.footnotes)
+    .map(footnote_demand)
+    .collect::<Result<_, _>>()?;
+  return defers_unbreakable_table(cursor, grid.height, &demands, geom).map_err(|LengthOverflow| {
+    return ElementOverflow {
+      origin: Some(grid.origin),
+    };
+  });
+}
+
 /// 表の断片の枠 — 断片を開くときに行の前へ積むもの（上端の枠罫と、本体行なら再掲ヘッダとヘッダ下の罫線）と、
 /// 断片を閉じる下端の枠罫
 #[derive(Clone)]
@@ -1355,7 +1494,7 @@ mod tests {
     typeset::boxes::{
       Align, AnchorId, Block, FootnoteBody, FootnoteId, HBox, HBoxContent, IndexTerm, Line, LineLink, LinkTarget,
       MathRowNumber, Page, PlacedBlock, PlacedFootnote, PlacedHBox, PlacedLink, PlacedTableRow, PlacedTableRule,
-      TableBoundary, TableBox, TableRowFragment,
+      SubfigureImage, SubfigureLine, SubfiguresBox, TableBoundary, TableBox, TableRowFragment,
     },
   };
 
@@ -5356,5 +5495,171 @@ mod tests {
     let (_, overflows) = break_pages_in_range(vec![table_block(rows)], &test_geometry());
 
     assert!(table_overflows(&overflows).is_empty(), "{overflows:?}");
+  }
+
+  /// 副図の並びが帰属する `figure` 環境の ID
+  fn grid_origin() -> NodeId { return NodeId::for_test(SourceId::new(0), 4); }
+
+  /// 局所座標 (x, y) に幅 `width`・高さ `height` で置く `x.png` の画像
+  fn grid_image(x: f32, y: f32, width: f32, height: f32) -> SubfigureImage {
+    return SubfigureImage {
+      origin: image_origin(),
+      path: ProjectPath::new("x.png"),
+      page_index: None,
+      target_dpi: None,
+      x: pt(x),
+      y: pt(y),
+      width: pt(width),
+      height: pt(height),
+    };
+  }
+
+  /// 局所ベースライン `baseline` に置く副キャプションの行
+  fn grid_line(line: Line, baseline: f32) -> SubfigureLine {
+    return SubfigureLine {
+      origin: paragraph_origin(),
+      line,
+      baseline: pt(baseline),
+    };
+  }
+
+  /// 高さ `height`・枠の幅 `frame_width`、左字下げ `indent` の副図の並び
+  fn subfigures_block(
+    images: Vec<SubfigureImage>,
+    lines: Vec<SubfigureLine>,
+    height: f32,
+    frame_width: f32,
+    indent: f32,
+  ) -> Block {
+    return Block::Subfigures {
+      grid: SubfiguresBox {
+        origin: grid_origin(),
+        height: pt(height),
+        frame_width: pt(frame_width),
+        images,
+        lines,
+      },
+      indent: pt(indent),
+    };
+  }
+
+  /// ページの画像の (x, y)
+  fn image_positions(page: &Page) -> Vec<(Length, Length)> {
+    return page
+      .blocks
+      .iter()
+      .filter_map(|block| match block {
+        PlacedBlock::Image { x, y, .. } => return Some((*x, *y)),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn subfigures_are_placed_as_one_unit() {
+    // 2 行の段落でカーソルは 34pt。高さ 30pt の並びは残り 16pt に入らない
+    let blocks = vec![
+      paragraph_of_lines(2),
+      subfigures_block(
+        vec![
+          grid_image(0.0, 0.0, 40.0, 10.0),
+          grid_image(50.0, 20.0, 40.0, 10.0),
+        ],
+        Vec::new(),
+        30.0,
+        45.0,
+        0.0,
+      ),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(pages.len(), 2);
+    assert_eq!(image_positions(&pages[0]), []);
+    assert_eq!(image_positions(&pages[1]), [(pt(0.0), pt(10.0)), (pt(50.0), pt(30.0))]);
+  }
+
+  #[test]
+  fn subfigures_decompose_into_images_and_lines() {
+    let blocks = vec![subfigures_block(
+      vec![
+        grid_image(0.0, 0.0, 40.0, 10.0),
+        grid_image(50.0, 0.0, 40.0, 10.0),
+      ],
+      vec![grid_line(body_line(), 24.0)],
+      26.0,
+      45.0,
+      5.0,
+    )];
+
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(image_positions(&pages[0]), [(pt(5.0), pt(10.0)), (pt(55.0), pt(10.0))]);
+    let baselines = page_baselines(&pages[0]);
+    assert_eq!(baselines, [pt(34.0)]);
+    assert!(overflows.is_empty(), "{overflows:?}");
+  }
+
+  #[test]
+  fn image_wider_than_frame_is_recorded() {
+    let blocks = vec![subfigures_block(
+      vec![grid_image(0.0, 0.0, 50.0, 10.0)],
+      Vec::new(),
+      10.0,
+      40.0,
+      0.0,
+    )];
+
+    let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(overflows, [image_overflow(0, OverflowAxis::Horizontal, 10.0)]);
+  }
+
+  #[test]
+  fn subfigures_taller_than_page_stay_and_overflow() {
+    // 空のリージョンでも入らない並びは、分割しない表と同じく送らずその場に置く
+    let blocks = vec![
+      paragraph_of_lines(1),
+      subfigures_block(vec![grid_image(0.0, 0.0, 40.0, 60.0)], Vec::new(), 60.0, 45.0, 0.0),
+    ];
+
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(pages.len(), 1);
+    // 1 行の段落の後のカーソル 22pt から高さ 60pt で下端 82pt、下限 50pt を 32pt 超える
+    assert_eq!(overflows, [image_overflow(0, OverflowAxis::Vertical, 32.0)]);
+  }
+
+  #[test]
+  fn subfigures_in_second_column_start_at_column_offset() {
+    let blocks = vec![
+      paragraph_of_lines(3),
+      subfigures_block(vec![grid_image(2.0, 0.0, 20.0, 20.0)], Vec::new(), 20.0, 20.0, 0.0),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &two_column_geometry());
+
+    assert_eq!(pages.len(), 1);
+    assert_eq!(image_positions(&pages[0]), [(pt(57.0), pt(10.0))]);
+  }
+
+  #[test]
+  fn subcaption_footnote_lands_on_the_grid_page() {
+    // 並びだけなら 34 + 5 = 39pt で入るが、副キャプションの脚注と合わせると入らないので並びごと次ページへ送る
+    let footnoted = Line {
+      footnotes: vec![footnote_item(1, vec![body_line()], pt(12.0))],
+      ..body_line()
+    };
+    let blocks = vec![
+      paragraph_of_lines(2),
+      subfigures_block(Vec::new(), vec![grid_line(footnoted, 3.0)], 5.0, 45.0, 0.0),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(pages.len(), 2);
+    assert!(footnote_numbered(&pages[0], 1).is_none());
+    assert!(footnote_numbered(&pages[1], 1).is_some());
+    assert_eq!(page_baselines(&pages[1]), [pt(13.0)]);
   }
 }

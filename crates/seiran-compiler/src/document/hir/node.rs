@@ -1,6 +1,6 @@
 //! HIR のブロックノード [`HirNode`] と付随構造。
 
-use std::iter;
+use std::num::NonZeroU32;
 
 use crate::{
   document::{
@@ -128,13 +128,26 @@ pub(crate) struct HirFigure {
 impl HirFigure {
   /// 図に描く画像（ソースの順）
   pub(crate) fn images(&self) -> impl Iterator<Item = &HirImage> {
-    return match &self.body {
-      FigureBody::Image(image) => iter::once(image),
-    };
+    let (single, subfigures) = self.parts();
+    return single.into_iter().chain(subfigures.iter().map(|subfigure| return &subfigure.image));
   }
 
-  /// 図の中のキャプション（本体側を先に、図全体の `\caption` を最後に）
-  pub(crate) fn captions(&self) -> impl Iterator<Item = &[HirInline]> { return self.caption.as_deref().into_iter(); }
+  /// 図の中のキャプション（本体側の副キャプションを副図の順に先に、図全体の `\caption` を最後に）
+  pub(crate) fn captions(&self) -> impl Iterator<Item = &[HirInline]> {
+    let (_, subfigures) = self.parts();
+    return subfigures
+      .iter()
+      .filter_map(|subfigure| return subfigure.caption.as_deref())
+      .chain(self.caption.as_deref());
+  }
+
+  /// 本体を単独の画像と副図列に分ける（どちらか一方だけが空でない）
+  fn parts(&self) -> (Option<&HirImage>, &[HirSubfigure]) {
+    return match &self.body {
+      FigureBody::Image(image) => (Some(image), &[]),
+      FigureBody::Subfigures { items, .. } => (None, items),
+    };
+  }
 }
 
 /// 図の本体
@@ -142,6 +155,28 @@ impl HirFigure {
 pub(crate) enum FigureBody {
   /// `\image` 1 個
   Image(HirImage),
+  /// `subfigure` 環境 1 個以上の並び
+  Subfigures {
+    /// 1 行に並べる副図の個数（`figure[per_row=N]`。省略時は副図の個数）
+    per_row: NonZeroU32,
+    /// 副キャプションを画像の上下どちらに置くか（キャプションを持つ副図の間で揃っていることは評価時に検査済み）
+    caption_position: CaptionPosition,
+    /// 副図（ソースの順。1 個以上）
+    items: Vec<HirSubfigure>,
+  },
+}
+
+/// 副図（`\begin{subfigure}...\end{subfigure}`）の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirSubfigure {
+  /// `subfigure` 環境の ID（採番とラベルの対象。位置は環境全体）
+  pub(crate) id: NodeId,
+  /// 副図の画像
+  pub(crate) image: HirImage,
+  /// 副キャプションのインライン要素。未指定なら `None`
+  pub(crate) caption: Option<Vec<HirInline>>,
+  /// `\ref{fig:foo}` 解決用のラベル名
+  pub(crate) label: Option<String>,
 }
 
 /// `\image` 1 個の内容

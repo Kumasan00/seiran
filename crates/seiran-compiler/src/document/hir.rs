@@ -17,7 +17,7 @@ pub(crate) use inline::{HirInline, HirInlineKind, LinkDestination};
 pub(crate) use math::{HirMath, HirMathKind, HirMathRow};
 pub(crate) use node::{
   FigureBody, HirFigure, HirFlush, HirHeading, HirImage, HirList, HirListItem, HirMathBlock, HirNode, HirNodeKind,
-  HirProofTarget, HirQuote, HirTable, HirTableCell, HirTableRow, HirTheorem,
+  HirProofTarget, HirQuote, HirSubfigure, HirTable, HirTableCell, HirTableRow, HirTheorem,
 };
 pub(crate) use node_map::NodeMap;
 use source_map::SourceSpans;

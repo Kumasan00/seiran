@@ -1,8 +1,12 @@
 //! レイアウトノードおよびスタイルの型定義
 
+use std::num::NonZeroU32;
+
 use crate::{
   color::Color,
-  document::{ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, RowSeparator, TextAlignment, Typeface},
+  document::{
+    CaptionPosition, ColumnAlign, ColumnWidth, MathClass, MathSpace, NodeId, RowSeparator, TextAlignment, Typeface,
+  },
   length::Length,
   project::ProjectPath,
   style::OpenBracketAki,
@@ -31,20 +35,9 @@ pub(in crate::typeset) enum LayoutNode {
     alignment: Option<TextAlignment>,
   },
   /// 画像（PNG / JPEG / SVG / PDF の 1 ページ）
-  Image {
-    /// はみ出し警告が指す `\image` コマンド
-    origin: NodeId,
-    /// 画像ファイルへのパス
-    path: ProjectPath,
-    /// PDF のページ index（`typeset::image::pdf_page_index` の値。PDF 以外は `None`）
-    page_index: Option<usize>,
-    /// 描画幅（`None` の場合は `typeset::image` が本文幅 / 縦横比から決定）
-    width: Option<Length>,
-    /// 描画高さ（`None` の場合は `typeset::image` が本文幅 / 縦横比から決定）
-    height: Option<Length>,
-    /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
-    target_dpi: Option<u32>,
-  },
+  Image(ImageLayout),
+  /// 副図の並び（`figure` の中の `subfigure` 群。分割しない 1 ブロックとして組む）
+  Subfigures(SubfiguresLayout),
   /// 垂直カーン（固定高さの空白）
   Vkern {
     /// カーンの高さ
@@ -60,6 +53,51 @@ pub(in crate::typeset) enum LayoutNode {
   PageBreak,
   /// keep-with-next マーカー（ゼロサイズ）
   KeepWithNext,
+}
+
+/// 画像 1 枚（PNG / JPEG / SVG / PDF の 1 ページ）
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct ImageLayout {
+  /// はみ出し警告が指す `\image` コマンド
+  pub origin: NodeId,
+  /// 画像ファイルへのパス
+  pub path: ProjectPath,
+  /// PDF のページ index（`typeset::image::pdf_page_index` の値。PDF 以外は `None`）
+  pub page_index: Option<usize>,
+  /// 描画幅（`None` の場合は `typeset::image` が利用幅 / 縦横比から決定）
+  pub width: Option<Length>,
+  /// 描画高さ（`None` の場合は `typeset::image` が利用幅 / 縦横比から決定）
+  pub height: Option<Length>,
+  /// ダウンサンプリング上限 DPI（解決済み）。`None` ならリサイズなし
+  pub target_dpi: Option<u32>,
+}
+
+/// 副図の並び — 等幅の枠に副図を `per_row` 個ずつ並べる
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct SubfiguresLayout {
+  /// 長さの溢れが指す `figure` 環境
+  pub origin: NodeId,
+  /// 1 行に並べる副図の個数（枠の幅は利用幅をこの個数で等分して決まる）
+  pub per_row: NonZeroU32,
+  /// 同じ行の副図どうしの横の間隔
+  pub column_gap: Length,
+  /// 行どうしの縦の間隔
+  pub row_gap: Length,
+  /// 画像と副キャプションの間隔
+  pub inner_margin: Length,
+  /// 副キャプションを画像の上下どちらに置くか（全副図で共通）
+  pub caption_position: CaptionPosition,
+  /// 副図（ソースの順。1 個以上）
+  pub cells: Vec<SubfigureCell>,
+}
+
+/// 副図 1 個 — 画像と、あれば副キャプション
+#[derive(Debug, Clone)]
+pub(in crate::typeset) struct SubfigureCell {
+  /// 副図の画像
+  pub image: ImageLayout,
+  /// 副キャプションの段落（番号を埋めた内容。枠の中で中央揃えに組む）
+  pub caption: Option<ParagraphLayout>,
 }
 
 /// 段落の内容と、その直後に置く固定アキ。

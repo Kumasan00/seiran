@@ -4,7 +4,9 @@ use crate::{
   document::NodeId,
   length::{Length, LengthOverflow},
   project::ProjectPath,
-  typeset::boxes::{align::Align, hitem::HBox, line::Line, link::AnchorId, table_box::TableBox},
+  typeset::boxes::{
+    align::Align, hitem::HBox, line::Line, link::AnchorId, subfigures_box::SubfiguresBox, table_box::TableBox,
+  },
 };
 
 /// 文書の縦リスト要素
@@ -56,6 +58,13 @@ pub(in crate::typeset) enum Block {
     right_indent: Length,
     /// 利用幅（[`usable_width`]）の中での画像の水平揃え（ソースの画像は図表として包む `VBox` の揃えで中央寄せ固定）
     align: Align,
+  },
+  /// 副図の並び（分割しない 1 単位として置き、配置時に画像と行へ分解する）
+  Subfigures {
+    /// 並びの中身（利用幅の左端と並びの上端を原点にした局所座標）
+    grid: SubfiguresBox,
+    /// 本文左端からの左インデント（引用・リストの字下げの和。外では 0。横の位置は利用幅の中で確定済み）
+    indent: Length,
   },
   /// 合成済みの単一行（行分割をかけずそのまま配置する）
   ///

@@ -1,14 +1,19 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
+use std::num::NonZeroU32;
+
 use crate::{
-  document::{FigureBody, HirFigure, HirImage, ImageFormat, NodeId},
+  document::{CaptionPosition, FigureBody, HirFigure, HirImage, HirSubfigure, ImageFormat, NodeId},
+  length::Length,
+  style::OpenBracketAki,
   typeset::{
     error::ElementOverflow,
     image,
     lowering::{
-      LoweringContext, LoweringState,
-      float::{FloatCaption, FloatMargins, lower_numbered_float},
-      layout_node::LayoutNode,
+      LoweringContext, LoweringState, counter,
+      float::{FloatCaption, FloatMargins, build_caption, lower_numbered_float},
+      layout_node::{ImageLayout, LayoutNode, ParagraphLayout, SubfigureCell, SubfiguresLayout},
+      with_label_anchors,
     },
   },
 };
@@ -31,16 +36,72 @@ pub(super) fn lower_figure(
     inlines: figure.caption.as_deref(),
     position: figure.caption_position,
   };
-  return lower_numbered_float(ctx, id, caption, &margins, state, |_state| {
-    // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
+  return lower_numbered_float(ctx, id, caption, &margins, state, |state| {
     return match &figure.body {
-      FigureBody::Image(image) => Ok(image_node(ctx, image)),
+      // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
+      FigureBody::Image(image) => Ok(vec![LayoutNode::Image(image_layout(ctx, image))]),
+      FigureBody::Subfigures {
+        per_row,
+        caption_position,
+        items,
+      } => lower_subfigures(ctx, id, *per_row, *caption_position, items, state),
     };
   });
 }
 
-/// `\image` 1 個を画像ノードにする
-fn image_node(ctx: &LoweringContext<'_>, image: &HirImage) -> LayoutNode {
+/// 副図の並びを、副図のラベルのアンカーに続く [`LayoutNode::Subfigures`] にする
+fn lower_subfigures(
+  ctx: &LoweringContext<'_>,
+  id: NodeId,
+  per_row: NonZeroU32,
+  caption_position: CaptionPosition,
+  items: &[HirSubfigure],
+  state: &mut LoweringState<'_>,
+) -> Result<Vec<LayoutNode>, ElementOverflow> {
+  let style = &ctx.style.figure.subfigure;
+  let mut cells = Vec::with_capacity(items.len());
+  for subfigure in items {
+    let caption = subfigure
+      .caption
+      .as_deref()
+      .map(|inlines| {
+        let Some(value) = state.counter_value(subfigure.id) else {
+          unreachable!("副図は必ず採番される（analyze の Figure 分岐が counters へ登録している）: {:?}", subfigure.id)
+        };
+        let number = counter::format_own_number(ctx.style, value);
+        return build_caption(ctx, &style.caption, inlines, &number, state).map(|content| {
+          return ParagraphLayout {
+            origin: Some(subfigure.id),
+            content,
+            spacing_after: Length::ZERO,
+            body_text: false,
+            hanging_punctuation: false,
+            open_bracket_paragraph_start: OpenBracketAki::None,
+            open_bracket_line_start: OpenBracketAki::None,
+          };
+        });
+      })
+      .transpose()?;
+    cells.push(SubfigureCell {
+      image: image_layout(ctx, &subfigure.image),
+      caption,
+    });
+  }
+  let grid = LayoutNode::Subfigures(SubfiguresLayout {
+    origin: id,
+    per_row,
+    column_gap: style.column_gap,
+    row_gap: style.row_gap,
+    inner_margin: style.inner_margin,
+    caption_position,
+    cells,
+  });
+  let labels = items.iter().filter_map(|subfigure| return state.declared_label(subfigure.id));
+  return Ok(with_label_anchors(labels, vec![grid]));
+}
+
+/// `\image` 1 個を画像のレイアウトにする
+fn image_layout(ctx: &LoweringContext<'_>, image: &HirImage) -> ImageLayout {
   // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
   let target_dpi = match image.format {
     ImageFormat::Png | ImageFormat::Jpeg => image
@@ -49,7 +110,7 @@ fn image_node(ctx: &LoweringContext<'_>, image: &HirImage) -> LayoutNode {
       .then(|| return image.dpi.unwrap_or(ctx.image_max_dpi)),
     ImageFormat::Svg | ImageFormat::Pdf => None,
   };
-  return LayoutNode::Image {
+  return ImageLayout {
     origin: image.site,
     path: image.path.clone(),
     page_index: image::pdf_page_index(image.format, image.page),
@@ -63,7 +124,6 @@ fn image_node(ctx: &LoweringContext<'_>, image: &HirImage) -> LayoutNode {
 mod tests {
   use super::*;
   use crate::{
-    length::Length,
     project::config::ImageConfig,
     style::Style as ReadStyle,
     typeset::lowering::{
@@ -84,7 +144,7 @@ mod tests {
     return nodes
       .iter()
       .find_map(|n| match n {
-        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. })) => {
+        LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image(_))) => {
           return Some(children.as_slice());
         },
         _ => return None,
@@ -104,17 +164,17 @@ mod tests {
 
     let body_idx = nodes
       .iter()
-      .position(|n| matches!(n, LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image { .. }))))
+      .position(|n| matches!(n, LayoutNode::VBox { children, .. } if children.iter().any(|c| matches!(c, LayoutNode::Image(_)))))
       .expect("画像を含む VBox があるはず");
     assert!(matches!(nodes.get(body_idx - 1), Some(LayoutNode::Vkern { .. })), "{nodes:?}");
     let children = figure_children(&nodes);
-    let LayoutNode::Image {
+    let LayoutNode::Image(ImageLayout {
       path,
       width,
       height,
       target_dpi,
       ..
-    } = children.first().expect("先頭は画像")
+    }) = children.first().expect("先頭は画像")
     else {
       panic!("先頭は Image であるべき: {children:?}");
     };
@@ -142,7 +202,7 @@ mod tests {
 
     let children = figure_children(&nodes);
     let first_text_idx = children.iter().position(|n| matches!(n, LayoutNode::Paragraph(_))).expect("Text あり");
-    let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image { .. })).expect("Image あり");
+    let first_image_idx = children.iter().position(|n| matches!(n, LayoutNode::Image(_))).expect("Image あり");
     assert!(first_text_idx < first_image_idx, "Top: caption が image の前");
   }
 
@@ -156,7 +216,7 @@ mod tests {
     let children = figure_children(&nodes);
     let has_text = inlines(children).any(|n| matches!(n, InlineNode::Text(_, _)));
     assert!(!has_text, "caption が None なら Text ノードは出さない: {children:?}");
-    let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image { .. }));
+    let has_image = children.iter().any(|n| matches!(n, LayoutNode::Image(_)));
     assert!(has_image, "画像は出力されている: {children:?}");
   }
 
@@ -167,7 +227,7 @@ mod tests {
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[downsample=false]{a.png}\n\\end{figure}\n");
 
-    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+    let LayoutNode::Image(ImageLayout { target_dpi, .. }) = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
     assert!(target_dpi.is_none());
@@ -180,7 +240,7 @@ mod tests {
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[dpi=600]{a.png}\n\\end{figure}\n");
 
-    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+    let LayoutNode::Image(ImageLayout { target_dpi, .. }) = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
     assert_eq!(*target_dpi, Some(600));
@@ -194,7 +254,7 @@ mod tests {
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.svg}\n\\end{figure}\n");
 
-    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+    let LayoutNode::Image(ImageLayout { target_dpi, .. }) = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
     assert!(target_dpi.is_none());
@@ -207,11 +267,11 @@ mod tests {
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image[page=3]{a.pdf}\n\\end{figure}\n");
 
-    let LayoutNode::Image {
+    let LayoutNode::Image(ImageLayout {
       page_index,
       target_dpi,
       ..
-    } = figure_children(&nodes).first().expect("画像")
+    }) = figure_children(&nodes).first().expect("画像")
     else {
       panic!("Image が期待: {nodes:?}");
     };
@@ -232,9 +292,138 @@ mod tests {
 
     let nodes = lower_source(&ctx, "\\begin{figure}\n\\image{a.png}\n\\end{figure}\n");
 
-    let LayoutNode::Image { target_dpi, .. } = figure_children(&nodes).first().expect("画像") else {
+    let LayoutNode::Image(ImageLayout { target_dpi, .. }) = figure_children(&nodes).first().expect("画像") else {
       panic!("Image が期待: {nodes:?}");
     };
     assert!(target_dpi.is_none());
+  }
+
+  /// インライン列の表示テキスト（リンクの中へも降りる）
+  fn text_of(nodes: &[InlineNode]) -> String {
+    return nodes
+      .iter()
+      .map(|node| match node {
+        InlineNode::Text(text, _) => return text.clone(),
+        InlineNode::Link { children, .. } => return text_of(children),
+        _ => return String::new(),
+      })
+      .collect();
+  }
+
+  /// 段落の表示テキストを文書順に集める（`VBox` の中と副図の副キャプションへも降りる）
+  fn paragraph_texts(nodes: &[LayoutNode]) -> Vec<String> {
+    let mut texts = Vec::new();
+    for node in nodes {
+      match node {
+        LayoutNode::Paragraph(paragraph) => texts.push(text_of(&paragraph.content)),
+        LayoutNode::VBox { children, .. } => texts.extend(paragraph_texts(children)),
+        LayoutNode::Subfigures(grid) => {
+          texts.extend(
+            grid
+              .cells
+              .iter()
+              .filter_map(|cell| return cell.caption.as_ref().map(|p| return text_of(&p.content))),
+          );
+        },
+        _ => {},
+      }
+    }
+    return texts;
+  }
+
+  /// 副図の並びのノードと、その直前の兄弟ノード列を探す（`VBox` の中へも降りる）
+  fn find_subfigures(nodes: &[LayoutNode]) -> Option<(&[LayoutNode], &SubfiguresLayout)> {
+    for (index, node) in nodes.iter().enumerate() {
+      match node {
+        LayoutNode::Subfigures(grid) => return Some((&nodes[..index], grid)),
+        LayoutNode::VBox { children, .. } => {
+          if let Some(found) = find_subfigures(children) {
+            return Some(found);
+          }
+        },
+        _ => {},
+      }
+    }
+    return None;
+  }
+
+  /// 副図 `count` 個（label は `prefix` + `a`, `b`, …、副キャプションは `cap` + 番号）の図のソース
+  fn subfigure_figure(prefix: &str, count: usize, caption: &str) -> String {
+    let items: String = (0..count)
+      .map(|index| {
+        let letter = char::from(b'a' + u8::try_from(index).unwrap());
+        return format!("\\begin{{subfigure}}[label={prefix}{letter}]\n\\image{{{letter}.svg}}\n\\caption{{cap{index}}}\n\\end{{subfigure}}\n");
+      })
+      .collect();
+    return format!("\\begin{{figure}}\n{items}\\caption{{{caption}}}\n\\end{{figure}}\n\n");
+  }
+
+  #[test]
+  fn subfigure_refs_show_figure_and_subfigure_numbers() {
+    let source = format!(
+      "\\chapter{{C}}\n\n\\begin{{figure}}\n\\image{{x.svg}}\n\\end{{figure}}\n\n{}\\ref{{fig:b}} と \\refs{{fig:a, fig:c}} と \\refrange{{fig:a}}{{fig:c}}\n",
+      subfigure_figure("fig:", 3, "全体")
+    );
+
+    let texts = paragraph_texts(&lower_source(&context(&ReadStyle::default()), &source));
+
+    let last = texts.last().expect("本文の段落があるはず");
+    assert!(last.ends_with("Figure 1.2b と Figures 1.2a, 1.2c と Figures 1.2a\u{2013}1.2c"), "{last}");
+  }
+
+  #[test]
+  fn subfigure_counter_restarts_per_figure() {
+    let source = format!(
+      "\\chapter{{C}}\n\n{}{}\\ref{{second:a}}\n",
+      subfigure_figure("first:", 2, "一"),
+      subfigure_figure("second:", 2, "二")
+    );
+
+    let texts = paragraph_texts(&lower_source(&context(&ReadStyle::default()), &source));
+
+    assert_eq!(texts.last().map(String::as_str), Some("Figure 1.2a"));
+  }
+
+  #[test]
+  fn subcaption_uses_own_number() {
+    let source = format!("\\chapter{{C}}\n\n{}", subfigure_figure("fig:", 2, "全体"));
+
+    let texts = paragraph_texts(&lower_source(&context(&ReadStyle::default()), &source));
+
+    assert!(texts.contains(&"(a) cap0".to_string()), "{texts:?}");
+    assert!(texts.contains(&"(b) cap1".to_string()), "{texts:?}");
+    assert!(texts.contains(&"Figure 1.1: 全体".to_string()), "{texts:?}");
+  }
+
+  #[test]
+  fn figure_number_advances_once_per_figure() {
+    let source = format!(
+      "\\chapter{{C}}\n\n{}\\begin{{figure}}\n\\image{{x.svg}}\n\\caption{{次}}\n\\end{{figure}}\n",
+      subfigure_figure("fig:", 3, "全体")
+    );
+
+    let texts = paragraph_texts(&lower_source(&context(&ReadStyle::default()), &source));
+
+    assert!(texts.contains(&"Figure 1.2: 次".to_string()), "{texts:?}");
+  }
+
+  #[test]
+  fn subfigures_layout_carries_style_and_cells() {
+    let style = ReadStyle::default();
+    let source = "\\begin{figure}[per_row=1]\n\\begin{subfigure}[label=s:a]\n\\image{a.svg}\n\\end{subfigure}\n\\begin{subfigure}[label=s:b]\n\\caption{B}\n\\image{b.svg}\n\\end{subfigure}\n\\end{figure}\n";
+
+    let nodes = lower_source(&context(&style), source);
+
+    let (before, grid) = find_subfigures(&nodes).expect("副図の並びがあるはず");
+    assert_eq!(grid.per_row.get(), 1);
+    assert_eq!(grid.column_gap, style.figure.subfigure.column_gap);
+    assert_eq!(grid.row_gap, style.figure.subfigure.row_gap);
+    assert_eq!(grid.inner_margin, style.figure.subfigure.inner_margin);
+    assert_eq!(grid.caption_position, CaptionPosition::Top);
+    assert_eq!(grid.cells.len(), 2);
+    assert!(grid.cells[0].caption.is_none());
+    assert!(grid.cells[1].caption.is_some());
+    let anchors: Vec<&LayoutNode> = before.iter().filter(|node| matches!(node, LayoutNode::Anchor(_))).collect();
+    assert_eq!(anchors.len(), 2, "{before:?}");
   }
 }

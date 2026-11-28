@@ -1,13 +1,24 @@
-//! 図環境 — `figure`
+//! 図環境 — `figure` と、その本体に並べる副図環境 `subfigure`
 //!
-//! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
+//! `figure` の本体は `\image` 1 個か `subfigure` 1 個以上のどちらかと任意の `\caption` 1 個、`subfigure` の本体は
+//! `\image` 1 個と任意の `\caption` 1 個で、[`HirNodeKind::Figure`] に変換する。キャプションの上下はソース上の出現順で
+//! 決まる（本体より前なら上、後ろなら下）。
+
+use std::num::NonZeroU32;
+
+use miette::SourceSpan;
 
 use crate::{
-  document::{CaptionPosition, FigureBody, HirFigure, HirImage, HirInline, HirNode, HirNodeKind, ImageFormat},
+  document::{
+    CaptionPosition, FigureBody, HirFigure, HirImage, HirInline, HirNode, HirNodeKind, HirSubfigure, ImageFormat,
+  },
   frontend::{
     evaluator::{
       EvalContext, EvalError,
-      environment::{body_scan, caption},
+      environment::{
+        body_scan::{self, BodyItem},
+        caption,
+      },
       opt_args::{self, OptArgs, OptDecl, OptKey},
       signature::{Bound, Signature},
       string_arg,
@@ -20,8 +31,10 @@ use crate::{
   length::Length,
 };
 
-/// `figure` 環境の `[label=...]`（`\ref` からの参照用）
+/// `figure` / `subfigure` 環境の `[label=...]`（`\ref` からの参照用）
 const LABEL: OptKey<String> = opt_args::string("label");
+/// `figure[per_row=N]`（1 行に並べる副図の個数。小数と 1 未満は収集時に拒否される）
+const PER_ROW: OptKey<u32> = opt_args::positive_int("per_row");
 /// `\image[width=...]`（描画幅。0 と負値は収集時に拒否される）
 const WIDTH: OptKey<Length> = opt_args::positive_length("width");
 /// `\image[height=...]`（描画高さ。同上）
@@ -33,7 +46,9 @@ const DOWNSAMPLE: OptKey<bool> = opt_args::boolean("downsample");
 /// `\image[page=N]`（PDF のページ。小数と 1 未満は収集時に拒否される）
 const PAGE: OptKey<u32> = opt_args::positive_int("page");
 /// `figure` 環境が受け付けるキー
-const FIGURE_KEYS: &[OptDecl] = &[LABEL.decl()];
+const FIGURE_KEYS: &[OptDecl] = &[LABEL.decl(), PER_ROW.decl()];
+/// `subfigure` 環境が受け付けるキー
+const SUBFIGURE_KEYS: &[OptDecl] = &[LABEL.decl()];
 /// `\image` が受け付けるキー
 const IMAGE_KEYS: &[OptDecl] = &[
   WIDTH.decl(),
@@ -45,10 +60,12 @@ const IMAGE_KEYS: &[OptDecl] = &[
 
 /// `figure` 環境の署名
 pub(super) const SIGNATURE: Signature<0> = Signature::keys_only(FIGURE_KEYS);
+/// `subfigure` 環境の署名
+pub(super) const SUBFIGURE_SIGNATURE: Signature<0> = Signature::keys_only(SUBFIGURE_KEYS);
 /// `\image` の署名
 const IMAGE: Signature<1> = Signature::new([ArgMode::Inherit], "画像ファイルのパス", IMAGE_KEYS);
 
-/// `figure` 環境の本体に書けるコマンド
+/// `figure` / `subfigure` 環境の本体に書けるコマンド
 #[derive(Debug, Clone, Copy)]
 enum FigureCommand {
   /// `\image[...]{path}` — 図の実体
@@ -57,54 +74,175 @@ enum FigureCommand {
   Caption,
 }
 
-/// `figure` 環境の本体で許可するコマンドと種別と署名
+/// `figure` / `subfigure` 環境の本体で許可するコマンドと種別と署名
 const FIGURE_COMMANDS: &[(&str, FigureCommand, Signature<1>)] = &[
   ("image", FigureCommand::Image, IMAGE),
   ("caption", FigureCommand::Caption, caption::SIGNATURE),
 ];
 
+/// `figure` 環境の本体で許可する入れ子の環境と署名
+const FIGURE_ENVIRONMENTS: &[(&str, Signature<0>)] = &[("subfigure", SUBFIGURE_SIGNATURE)];
+
 /// `figure` 環境を評価する
 ///
 /// # Errors
 ///
-/// 本体の許可外コンテンツ、`\image` の欠落などが発生した場合にエラーを返します。
+/// 本体の許可外コンテンツ、`\image` と `subfigure` の欠落・混在、キャプションの位置の矛盾、副図の無い図への
+/// `per_row` などが発生した場合にエラーを返します。
 pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &OptArgs) -> Result<HirNode, EvalError> {
   let label = opts.get(LABEL);
+  let per_row = opts.get(PER_ROW);
 
   let id = ctx.alloc(view.span());
   let source = view.source();
   let mut image: Option<HirImage> = None;
-  let mut caption: Option<Vec<HirInline>> = None;
-  // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
+  let mut subfigures: Vec<HirSubfigure> = Vec::new();
+  // 最初の副キャプションの位置（以降の副キャプションはこれと揃わなければならない）
+  let mut subcaption_position: Option<CaptionPosition> = None;
+  let mut caption: Option<(Vec<HirInline>, SourceSpan)> = None;
+  // `\caption` が本体（`\image` か最初の `subfigure`）よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
   let mut caption_position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
-    for (command, cmd_view, Bound { args: [arg], opts }) in
-      body_scan::collect_allowed_commands(source, body.children, "figure", FIGURE_COMMANDS, "\\image と \\caption")?
-    {
-      match command {
-        FigureCommand::Image => {
+    for item in body_scan::collect_allowed_items(
+      source,
+      body.children,
+      "figure",
+      FIGURE_COMMANDS,
+      FIGURE_ENVIRONMENTS,
+      "\\image・\\caption・subfigure",
+    )? {
+      match item {
+        BodyItem::Command(FigureCommand::Image, cmd_view, Bound { args: [arg], opts }) => {
           if image.is_some() {
-            return Err(EvalError::DuplicateCommandInEnvironment {
-              env: "figure".to_string(),
-              name: "image".to_string(),
+            return Err(duplicate_command("figure", "image", &cmd_view));
+          }
+          if !subfigures.is_empty() {
+            return Err(EvalError::FigureImageWithSubfigures {
               span: cmd_view.span().into(),
             });
           }
           image = Some(extract_image(&cmd_view, arg, &opts, ctx)?);
         },
-        FigureCommand::Caption => {
+        BodyItem::Command(FigureCommand::Caption, cmd_view, Bound { args: [arg], .. }) => {
           if caption.is_some() {
-            return Err(EvalError::DuplicateCommandInEnvironment {
-              env: "figure".to_string(),
-              name: "caption".to_string(),
-              span: cmd_view.span().into(),
-            });
+            return Err(duplicate_command("figure", "caption", &cmd_view));
           }
-          if image.is_none() {
+          if image.is_none() && subfigures.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some(caption::evaluate_caption(&cmd_view, arg, ctx)?);
+          caption = Some((caption::evaluate_caption(&cmd_view, arg, ctx)?, cmd_view.span().into()));
+        },
+        BodyItem::Environment(sub_view, sub_opts) => {
+          if image.is_some() {
+            return Err(EvalError::FigureImageWithSubfigures {
+              span: sub_view.span().into(),
+            });
+          }
+          // 本体の後ろ（Bottom）に置いた `\caption` の後にまだ副図が続く
+          if let Some((_, caption_span)) = &caption
+            && caption_position == CaptionPosition::Bottom
+          {
+            return Err(EvalError::FigureCaptionBetweenSubfigures {
+              span: *caption_span,
+            });
+          }
+          let (subfigure, position) = subfigure(&sub_view, ctx, &sub_opts)?;
+          if let Some((position, caption_span)) = position {
+            match subcaption_position {
+              None => subcaption_position = Some(position),
+              Some(first) if first != position => {
+                return Err(EvalError::SubcaptionPositionMixed { span: caption_span });
+              },
+              Some(_) => {},
+            }
+          }
+          subfigures.push(subfigure);
+        },
+      }
+    }
+  }
+
+  let body = match (image, subfigures.is_empty()) {
+    (Some(image), true) => {
+      if per_row.is_some() {
+        return Err(EvalError::PerRowWithoutSubfigures {
+          span: view.span().into(),
+        });
+      }
+      FigureBody::Image(image)
+    },
+    (None, false) => {
+      let Ok(count) = u32::try_from(subfigures.len()) else {
+        unreachable!("副図の個数はソースの長さ（u32 の span で表される）を超えない");
+      };
+      FigureBody::Subfigures {
+        per_row: NonZeroU32::new(per_row.unwrap_or(count))
+          .expect("per_row は positive_int が 1 以上だけを通し、省略時の副図の個数も 1 以上"),
+        caption_position: subcaption_position.unwrap_or(CaptionPosition::Bottom),
+        items: subfigures,
+      }
+    },
+    (None, true) => {
+      return Err(EvalError::MissingEnvironmentArgument {
+        name: "figure".to_string(),
+        expected: "\\image コマンドか subfigure 環境".to_string(),
+        span: view.span().into(),
+      });
+    },
+    (Some(_), false) => unreachable!("\\image と subfigure の混在は本体の走査で拒否済み"),
+  };
+
+  return Ok(HirNode::new(
+    id,
+    HirNodeKind::Figure(HirFigure {
+      body,
+      caption: caption.map(|(inlines, _)| return inlines),
+      caption_position,
+      label,
+    }),
+  ));
+}
+
+/// `figure` の本体の直下の `subfigure` 環境を評価し、副図と、副キャプションがあればその位置と `\caption` の位置を返す
+///
+/// # Errors
+///
+/// 本体の許可外コンテンツ（入れ子の `subfigure` を含む）、`\image` の欠落、`\image` / `\caption` の重複
+fn subfigure(
+  view: &EnvironmentView<'_>,
+  ctx: &EvalContext<'_>,
+  opts: &OptArgs,
+) -> Result<(HirSubfigure, Option<(CaptionPosition, SourceSpan)>), EvalError> {
+  let id = ctx.alloc(view.span());
+  let mut image: Option<HirImage> = None;
+  let mut caption: Option<(Vec<HirInline>, CaptionPosition, SourceSpan)> = None;
+
+  if let Some(body) = view.body() {
+    for (command, cmd_view, Bound { args: [arg], opts }) in body_scan::collect_allowed_commands(
+      view.source(),
+      body.children,
+      "subfigure",
+      FIGURE_COMMANDS,
+      "\\image と \\caption",
+    )? {
+      match command {
+        FigureCommand::Image => {
+          if image.is_some() {
+            return Err(duplicate_command("subfigure", "image", &cmd_view));
+          }
+          image = Some(extract_image(&cmd_view, arg, &opts, ctx)?);
+        },
+        FigureCommand::Caption => {
+          if caption.is_some() {
+            return Err(duplicate_command("subfigure", "caption", &cmd_view));
+          }
+          let position = if image.is_none() {
+            CaptionPosition::Top
+          } else {
+            CaptionPosition::Bottom
+          };
+          caption = Some((caption::evaluate_caption(&cmd_view, arg, ctx)?, position, cmd_view.span().into()));
         },
       }
     }
@@ -112,21 +250,33 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
 
   let Some(image) = image else {
     return Err(EvalError::MissingEnvironmentArgument {
-      name: "figure".to_string(),
+      name: "subfigure".to_string(),
       expected: "\\image コマンド".to_string(),
       span: view.span().into(),
     });
   };
-
-  return Ok(HirNode::new(
-    id,
-    HirNodeKind::Figure(HirFigure {
-      body: FigureBody::Image(image),
-      caption,
-      caption_position,
-      label,
-    }),
+  let (inlines, position) = match caption {
+    Some((inlines, position, span)) => (Some(inlines), Some((position, span))),
+    None => (None, None),
+  };
+  return Ok((
+    HirSubfigure {
+      id,
+      image,
+      caption: inlines,
+      label: opts.get(LABEL),
+    },
+    position,
   ));
+}
+
+/// 環境 `env` の本体で 1 回しか書けないコマンド `name` の 2 回目 `view` の診断
+fn duplicate_command(env: &str, name: &str, view: &CommandView<'_>) -> EvalError {
+  return EvalError::DuplicateCommandInEnvironment {
+    env: env.to_string(),
+    name: name.to_string(),
+    span: view.span().into(),
+  };
 }
 
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false, page=N]{path}` から各引数を抽出する
@@ -194,7 +344,6 @@ fn extract_image(
 #[cfg(test)]
 mod tests {
   use bumpalo::Bump;
-  use miette::SourceSpan;
 
   use super::*;
   use crate::{
@@ -500,5 +649,241 @@ mod tests {
     let result = evaluate_children_to_hir(source, cst);
 
     assert!(matches!(result, Err(EvalError::InvalidOptArgValue { ref key, .. }) if key == "height"));
+  }
+
+  /// `source` を文書のトップレベルで評価する
+  #[expect(
+    clippy::unwrap_in_result,
+    reason = "構文エラーはテストの組み立て誤りで評価の結果ではないので、panic させてテストを落とす必要がある"
+  )]
+  fn evaluate(source: &str) -> Result<Vec<HirNode>, EvalError> {
+    let arena = Bump::new();
+    let cst = test_support::parse_cst(source, &arena).unwrap();
+    return evaluate_children_to_hir(source, cst);
+  }
+
+  /// 評価結果の先頭の図
+  fn first_figure(nodes: &[HirNode]) -> &HirFigure {
+    let HirNodeKind::Figure(figure) = &nodes[0].kind else {
+      panic!("Figure が期待されます: {:?}", nodes[0]);
+    };
+    return figure;
+  }
+
+  /// 副図の並びを持つ図の `per_row`・副キャプションの位置・副図列
+  fn subfigures_of(figure: &HirFigure) -> (NonZeroU32, CaptionPosition, &[HirSubfigure]) {
+    let FigureBody::Subfigures {
+      per_row,
+      caption_position,
+      items,
+    } = &figure.body
+    else {
+      panic!("副図の並びが期待されます: {figure:?}");
+    };
+    return (*per_row, *caption_position, items);
+  }
+
+  /// `source` の中で `needle` が最初に現れる位置から始まる長さ `len` の span
+  fn span_at(source: &str, needle: &str, len: usize) -> SourceSpan {
+    return SourceSpan::from((source.find(needle).expect("needle はソースにあるはず"), len));
+  }
+
+  #[test]
+  fn subfigures_are_collected_in_source_order() {
+    let source = r"\begin{figure}\begin{subfigure}[label=fig:a]\image{a.svg}\caption{A}\end{subfigure}\begin{subfigure}[label=fig:b]\image{b.svg}\caption{B}\end{subfigure}\caption{全体}\end{figure}";
+
+    let nodes = evaluate(source).unwrap();
+
+    let figure = first_figure(&nodes);
+    let (per_row, position, items) = subfigures_of(figure);
+    assert_eq!(items.len(), 2);
+    assert_eq!(items[0].label.as_deref(), Some("fig:a"));
+    assert_eq!(items[1].label.as_deref(), Some("fig:b"));
+    assert_eq!(items[0].image.path.to_string(), "a.svg");
+    assert_eq!(items[1].image.path.to_string(), "b.svg");
+    assert!(items[0].caption.is_some());
+    assert_eq!(per_row.get(), 2);
+    assert_eq!(position, CaptionPosition::Bottom);
+    assert_eq!(figure.caption_position, CaptionPosition::Bottom);
+    assert_eq!(figure.images().count(), 2);
+    assert_eq!(figure.captions().count(), 3);
+  }
+
+  #[test]
+  fn per_row_is_recorded() {
+    let source = r"\begin{figure}[per_row=1]\begin{subfigure}\image{a.svg}\end{subfigure}\begin{subfigure}\image{b.svg}\end{subfigure}\end{figure}";
+
+    let nodes = evaluate(source).unwrap();
+
+    assert_eq!(subfigures_of(first_figure(&nodes)).0.get(), 1);
+  }
+
+  #[test]
+  fn single_subfigure_is_accepted() {
+    let source = r"\begin{figure}\begin{subfigure}\image{a.svg}\end{subfigure}\end{figure}";
+
+    let nodes = evaluate(source).unwrap();
+
+    let (per_row, _, items) = subfigures_of(first_figure(&nodes));
+    assert_eq!(items.len(), 1);
+    assert_eq!(per_row.get(), 1);
+  }
+
+  #[test]
+  fn subcaption_before_image_yields_top() {
+    let source = r"\begin{figure}\caption{全体}\begin{subfigure}\caption{A}\image{a.svg}\end{subfigure}\begin{subfigure}\caption{B}\image{b.svg}\end{subfigure}\end{figure}";
+
+    let nodes = evaluate(source).unwrap();
+
+    let figure = first_figure(&nodes);
+    assert_eq!(subfigures_of(figure).1, CaptionPosition::Top);
+    assert_eq!(figure.caption_position, CaptionPosition::Top);
+  }
+
+  #[test]
+  fn subfigure_without_caption_does_not_decide_position() {
+    let source = r"\begin{figure}\begin{subfigure}\image{a.svg}\end{subfigure}\begin{subfigure}\caption{B}\image{b.svg}\end{subfigure}\end{figure}";
+
+    let nodes = evaluate(source).unwrap();
+
+    assert_eq!(subfigures_of(first_figure(&nodes)).1, CaptionPosition::Top);
+  }
+
+  #[test]
+  fn subfigure_outside_figure_is_rejected() {
+    for source in [
+      r"\begin{subfigure}\image{a.svg}\end{subfigure}",
+      r"\begin{quote}\begin{subfigure}\image{a.svg}\end{subfigure}\end{quote}",
+    ] {
+      let result = evaluate(source);
+
+      let Err(EvalError::SubfigureOutsideFigure { span }) = result else {
+        panic!("SubfigureOutsideFigure が期待されます: {source}: {result:?}");
+      };
+      let environment = r"\begin{subfigure}\image{a.svg}\end{subfigure}";
+      assert_eq!(span, span_at(source, environment, environment.len()), "{source}");
+    }
+  }
+
+  #[test]
+  fn nested_subfigure_is_rejected() {
+    let source = r"\begin{figure}\begin{subfigure}\image{a.svg}\begin{subfigure}\image{b.svg}\end{subfigure}\end{subfigure}\end{figure}";
+
+    let result = evaluate(source);
+
+    assert!(
+      matches!(&result, Err(EvalError::UnexpectedContentInEnvironment { env, .. }) if env == "subfigure"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn subfigure_without_image_is_rejected() {
+    let source = r"\begin{figure}\begin{subfigure}\caption{A}\end{subfigure}\end{figure}";
+
+    let result = evaluate(source);
+
+    assert!(
+      matches!(&result, Err(EvalError::MissingEnvironmentArgument { name, .. }) if name == "subfigure"),
+      "{result:?}"
+    );
+  }
+
+  #[test]
+  fn subfigure_with_two_images_or_captions_is_rejected() {
+    for (body, duplicated) in [
+      (r"\image{a.svg}\image{b.svg}", "image"),
+      (r"\image{a.svg}\caption{A}\caption{B}", "caption"),
+    ] {
+      let source = format!(r"\begin{{figure}}\begin{{subfigure}}{body}\end{{subfigure}}\end{{figure}}");
+
+      let result = evaluate(&source);
+
+      assert!(
+        matches!(&result, Err(EvalError::DuplicateCommandInEnvironment { env, name, .. })
+          if env == "subfigure" && name == duplicated),
+        "{body}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn image_and_subfigure_mixed_is_rejected() {
+    let subfigure = r"\begin{subfigure}\image{b.svg}\end{subfigure}";
+    for (source, later, later_len) in [
+      (format!(r"\begin{{figure}}\image{{a.svg}}{subfigure}\end{{figure}}"), subfigure, subfigure.len()),
+      (
+        format!(r"\begin{{figure}}{subfigure}\image{{a.svg}}\end{{figure}}"),
+        r"\image{a.svg}",
+        r"\image{a.svg}".len(),
+      ),
+    ] {
+      let result = evaluate(&source);
+
+      let Err(EvalError::FigureImageWithSubfigures { span }) = result else {
+        panic!("FigureImageWithSubfigures が期待されます: {source}: {result:?}");
+      };
+      assert_eq!(span, span_at(&source, later, later_len), "{source}");
+    }
+  }
+
+  #[test]
+  fn figure_caption_between_subfigures_is_rejected() {
+    let source = r"\begin{figure}\begin{subfigure}\image{a.svg}\end{subfigure}\caption{全体}\begin{subfigure}\image{b.svg}\end{subfigure}\end{figure}";
+
+    let result = evaluate(source);
+
+    let Err(EvalError::FigureCaptionBetweenSubfigures { span }) = result else {
+      panic!("FigureCaptionBetweenSubfigures が期待されます: {result:?}");
+    };
+    assert_eq!(span, span_at(source, r"\caption{全体}", r"\caption{全体}".len()));
+  }
+
+  #[test]
+  fn mixed_subcaption_positions_are_rejected() {
+    let source = r"\begin{figure}\begin{subfigure}\image{a.svg}\caption{A}\end{subfigure}\begin{subfigure}\caption{B}\image{b.svg}\end{subfigure}\end{figure}";
+
+    let result = evaluate(source);
+
+    let Err(EvalError::SubcaptionPositionMixed { span }) = result else {
+      panic!("SubcaptionPositionMixed が期待されます: {result:?}");
+    };
+    assert_eq!(span, span_at(source, r"\caption{B}", r"\caption{B}".len()));
+  }
+
+  #[test]
+  fn per_row_without_subfigures_is_rejected() {
+    let source = r"\begin{figure}[per_row=2]\image{a.svg}\end{figure}";
+
+    let result = evaluate(source);
+
+    let Err(EvalError::PerRowWithoutSubfigures { span }) = result else {
+      panic!("PerRowWithoutSubfigures が期待されます: {result:?}");
+    };
+    assert_eq!(span, SourceSpan::from((0, source.len())));
+  }
+
+  #[test]
+  fn per_row_zero_and_fraction_are_rejected() {
+    for value in ["0", "1.5"] {
+      let source =
+        format!(r"\begin{{figure}}[per_row={value}]\begin{{subfigure}}\image{{a.svg}}\end{{subfigure}}\end{{figure}}");
+
+      let result = evaluate(&source);
+
+      assert!(
+        matches!(&result, Err(EvalError::InvalidOptArgValue { key, .. }) if key == "per_row"),
+        "{value}: {result:?}"
+      );
+    }
+  }
+
+  #[test]
+  fn subfigure_rejects_unknown_key() {
+    let source = r"\begin{figure}\begin{subfigure}[width=1mm]\image{a.svg}\end{subfigure}\end{figure}";
+
+    let result = evaluate(source);
+
+    assert!(matches!(&result, Err(EvalError::UnknownOptArgKey { key, .. }) if key == "width"), "{result:?}");
   }
 }
