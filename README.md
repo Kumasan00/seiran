@@ -89,7 +89,7 @@ SVG（`.svg`）・PDF（`.pdf`）に対応します。PDF は 1 ページをラ�
 \end{figure}
 ```
 
-- `width` / `height` は描画寸法。片方だけなら縦横比から補い、両方省略なら利用幅いっぱいにします
+- `width` / `height` は描画寸法。片方だけなら縦横比から補い、両方省略なら利用幅いっぱい（副図では枠の幅いっぱい）にします
 - `page=N` は PDF 専用（1 始まり）。2 ページ以上の PDF では必須で、1 ページの PDF では省略できます
 - `dpi` / `downsample` はラスタ（PNG / JPEG）専用で、config.toml の `[image]` を 1 枚だけ上書きします
 - 形式に効かないオプションはエラーになります。PDF の注釈（リンク・フォーム等）は取り込まず warning を出します
@@ -100,6 +100,30 @@ SVG（`.svg`）・PDF（`.pdf`）に対応します。PDF は 1 ページをラ�
   - 選んだフォントに無い字は、同じ系統の枠（serif なら `serif` 4 種と `japanese_serif` 2 種。sans-serif・monospace も同様）の候補から宣言順に探します。見つかった候補が 1 つの `<text>` / `<tspan>` の字をすべて持つときは、その全体を候補のフォントで組みます（和欧混在の欧文も和文フォントになります）
   - どれにも一致しない `font-family` と、どの候補でも組めない字はエラーになります
 - SVG 内の画像（`<image>`）は data URI で埋め込んだものだけを描きます。外部のファイルや URL を参照する SVG は、相対パス・絶対パスを問わずエラーになるので、書き出し時に画像を埋め込んでください（Inkscape・Illustrator では画像の「埋め込み」を選びます）
+
+
+複数の画像を 1 つの図番号の下に並べるときは、`figure` の本体に `subfigure` 環境を書きます。副図は `(a)`, `(b)`, … と採番され、
+副図の `label` への `\ref` は `Figure 1.2a` の形になります。
+
+```text
+\begin{figure}[label=fig:compare, per_row=2]
+\begin{subfigure}[label=fig:compare-before]
+\image{figures/before.pdf}
+\caption{処理前}
+\end{subfigure}
+\begin{subfigure}[label=fig:compare-after]
+\image{figures/after.pdf}
+\caption{処理後}
+\end{subfigure}
+\caption{処理の前後の比較}
+\end{figure}
+```
+
+- `figure` の本体は `\image` 1 個か `subfigure` 1 個以上のどちらかで、混ぜられません。`subfigure` の本体は `\image` 1 個と任意の `\caption` 1 個です
+- `per_row=N` で 1 行に並べる個数を決めます（省略時はすべてを 1 行）。利用幅を N 等分した枠に左から並べ、端数の最終行は中央に寄せます
+- 副キャプションの上下は `\caption` と `\image` の順で決まり、1 つの図の中で揃えます。全体の `\caption` は副図の並びの前（上）か後ろ（下）に書きます
+- 並び全体は途中で改ページしません
+- 副番号の表記・参照の形は `[counters.subfigure]`、副キャプションの書式と間隔は `[figure.subfigure]` / `[figure.subfigure.caption]` で変えられます
 
 ### ログと診断
 
@@ -260,6 +284,18 @@ bottom_margin = "10pt"
 
 [footnote]                     # 脚注
 # marker_typeface = "serif"    # 本文中と脚注本体先頭のマークの書体（既定 "serif"。外側の装飾は継がない）
+
+[figure.subfigure]             # 副図（subfigure）の並び
+# column_gap = "12pt"          # 同じ行の副図どうしの間隔
+# row_gap = "12pt"             # 行どうしの間隔
+# inner_margin = "6pt"         # 画像と副キャプションの間隔
+
+[figure.subfigure.caption]     # 副キャプション（{number} は副図自身の番号 a, b, …）
+format = "（{number}）{title}"  # 既定は "({number}) {title}"
+
+[counters.subfigure]           # 副図の番号（既定は alpha_lower。参照は "{appendix}.{chapter}.{figure}{n}" で Figure 1.2a）
+display_name = "図"
+display_name_plural = "図"
 
 [quantity]                     # 数値 \num{...}・単位 \unit{...}・量 \qty{...}{...} の書式と書体（本文・数式とも）
 # typeface = "math"            # 書体（既定は数式フォントの立体。イタリック系は不可）

@@ -1,5 +1,5 @@
 //! 組版中間型そのもの — [`Block`] / [`HItem`] / [`Line`] / [`Page`] と、表エンジンが組んだ表の行断片
-//! [`TableBox`] / [`TableRowFragment`] / [`TableBoundary`]。
+//! [`TableBox`] / [`TableRowFragment`] / [`TableBoundary`]、副図の並び [`SubfiguresBox`]。
 //!
 //! 組版時に初めて成立する配置・アンカーの型（[`Align`] / [`FootnoteId`] / [`AnchorId`] /
 //! [`LinkTarget`]）も本 module が所有する。
