@@ -292,10 +292,10 @@ fn attribute_analyze_error(error: AnalyzeError, sources: &SourceSet) -> CompileF
 
 /// 意味解析の診断 1 件へ、帰属するソースの本文と、別ソースにある関連位置（そのソースの本文付き）を添える。
 ///
-/// 関連位置を持つかどうか・その文言は semantics が決め（`SemanticError::first_definition_elsewhere`）、
+/// 関連位置を持つかどうか・その文言は semantics が決め（`SemanticError::related_elsewhere`）、
 /// ここは確定 ID で本文を引いて添えるだけ。
 fn attach_semantic_error(sources: &SourceSet, error: SemanticError) -> SourceDiagnostic<SemanticError> {
-  let elsewhere = error.first_definition_elsewhere();
+  let elsewhere = error.related_elsewhere();
   let diagnostic = SourceDiagnostic::attach(sources, error.source_id(), error);
   return match elsewhere {
     Some(note) => diagnostic.with_related_in(sources, note.source_id(), note),

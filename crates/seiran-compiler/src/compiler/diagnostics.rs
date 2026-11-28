@@ -141,6 +141,20 @@ fn diagnostic_appendix_without_title() {
 }
 
 #[test]
+fn diagnostic_heading_after_appendix_across_sources() {
+  // 最初の付録（a）と付録の後ろの章（b）が別ソース。付録の位置は a の本文付きの関連診断で示す
+  let failure = compile_err(&[
+    "tests/text/diagnostics/heading_after_appendix_a.sei",
+    "tests/text/diagnostics/heading_after_appendix_b.sei",
+  ]);
+
+  assert_eq!(codes(&failure), vec!["semantics::heading_after_appendix".to_string()]);
+  let rendered = render_failure(failure);
+  assert!(rendered.contains("heading_after_appendix_a.sei"), "最初の付録のソースも示すはず: {rendered}");
+  assert_matches_golden("heading_after_appendix_across_sources", &rendered);
+}
+
+#[test]
 fn diagnostic_heading_after_appendix() {
   let failure = compile_err(&["tests/text/diagnostics/heading_after_appendix.sei"]);
 

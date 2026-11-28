@@ -1031,6 +1031,7 @@ mod tests {
       level,
       labels,
       source_id,
+      ..
     } = error
     else {
       panic!("HeadingAfterAppendix が期待されます: {error:?}");
@@ -1072,6 +1073,23 @@ mod tests {
     let (_, source_id, texts) = after_appendix(&error, &sources);
     assert_eq!(source_id, SourceId::new(1));
     assert_eq!(texts, vec![r"\chapter{B}".to_string()], "最初の付録は別ソースなのでラベルを付けない");
+  }
+
+  #[test]
+  fn heading_after_appendix_points_to_first_appendix_in_other_source() {
+    let sources = ["\\appendix{X}\n", "\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let note = error.related_elsewhere().expect("最初の付録は別ソースにあるはず");
+    assert_eq!(note.source_id(), SourceId::new(0));
+  }
+
+  #[test]
+  fn heading_after_appendix_in_same_source_has_no_related_note() {
+    let error = only_error(&["\\appendix{X}\n\n\\chapter{B}\n"]);
+
+    assert!(error.related_elsewhere().is_none(), "同じソースなら 2 つ目のラベルで示す");
   }
 
   #[test]
@@ -1357,10 +1375,7 @@ mod tests {
     assert!(!labels[1].primary(), "2 本目は最初の定義を指す副ラベルのはず: {labels:?}");
     assert_eq!(labels[1].offset(), 0, "最初の定義は 1 行目の \\chapter のはず: {labels:?}");
     assert!(labels[0].offset() > labels[1].offset(), "{labels:?}");
-    assert!(
-      failures.first().first_definition_elsewhere().is_none(),
-      "同じソースなら別ソースの関連診断は作らないはず"
-    );
+    assert!(failures.first().related_elsewhere().is_none(), "同じソースなら別ソースの関連診断は作らないはず");
   }
 
   #[test]
@@ -1379,7 +1394,7 @@ mod tests {
       panic!("DuplicateLabel を期待: {failures:?}");
     };
     assert_eq!(labels.len(), 1, "{labels:?}");
-    let note = error.first_definition_elsewhere().expect("最初の定義は別ソースにあるはず");
+    let note = error.related_elsewhere().expect("最初の定義は別ソースにあるはず");
     assert_eq!(note.source_id(), SourceId::new(0));
   }
 
@@ -1586,10 +1601,29 @@ mod numbering_tests {
     }
   }
 
+  /// 要素列を生成する戦略。最初の付録より後ろの章は付録に置き換える（付録の後ろの章は診断エラーなので、
+  /// 採番の期待値を比べる文書には含めない）
+  fn items() -> impl Strategy<Value = Vec<(Item, bool)>> {
+    return prop::collection::vec(item(), 0..=12).prop_map(|mut items| {
+      let mut in_appendix = false;
+      for (item, _) in &mut items {
+        match item {
+          Item::Target(Target::Counter(CounterName::Appendix)) => in_appendix = true,
+          Item::Target(target @ Target::Counter(CounterName::Chapter)) if in_appendix => {
+            *target = Target::Counter(CounterName::Appendix);
+          },
+          Item::Target(_) | Item::Ref(_) => {},
+        }
+      }
+      return items;
+    });
+  }
+
   /// 要素 1 つと、その要素の前でソースを切るか（先頭要素では無視）を生成する戦略
   fn item() -> impl Strategy<Value = (Item, bool)> {
     let target = prop_oneof![
       Just(Target::Counter(CounterName::Chapter)),
+      Just(Target::Counter(CounterName::Appendix)),
       Just(Target::Counter(CounterName::Section)),
       Just(Target::Counter(CounterName::Subsection)),
       Just(Target::Counter(CounterName::Figure)),
@@ -1624,6 +1658,7 @@ mod numbering_tests {
   fn target_source(target: Target, label: usize) -> String {
     return match target {
       Target::Counter(CounterName::Chapter) => format!("\\chapter[label=l{label}]{{A}}\n"),
+      Target::Counter(CounterName::Appendix) => format!("\\appendix[label=l{label}]{{D}}\n"),
       Target::Counter(CounterName::Section) => format!("\\section[label=l{label}]{{B}}\n"),
       Target::Counter(CounterName::Subsection) => format!("\\subsection[label=l{label}]{{C}}\n"),
       Target::Counter(CounterName::Figure) => {
@@ -1636,10 +1671,8 @@ mod numbering_tests {
         format!("\\begin{{equation}}[label=l{label}]\nx = 1\n\\end{{equation}}\n")
       },
       Target::Theorem => format!("\\begin{{theorem}}[label=l{label}]\n主張\n\\end{{theorem}}\n"),
-      Target::Counter(
-        CounterName::Part | CounterName::Appendix | CounterName::Paragraph | CounterName::Subparagraph,
-      ) => {
-        unreachable!("item() は章・節・小節・図・表・数式だけを生成する: {target:?}")
+      Target::Counter(CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph) => {
+        unreachable!("item() は章・付録・節・小節・図・表・数式だけを生成する: {target:?}")
       },
     };
   }
@@ -1780,7 +1813,7 @@ mod numbering_tests {
     /// 任意の要素列とリセット設定で、採番値と参照先が数え上げの期待値と一致する
     #[test]
     fn numbering_and_ref_targets_match_reset_spec(
-      items in prop::collection::vec(item(), 0..=12),
+      items in items(),
       scheme in prop::sample::select(ResetScheme::VARIANTS),
     ) {
       let style = scheme.style();
@@ -1858,7 +1891,7 @@ mod numbering_tests {
     /// 完結した要素の境界でソースを切っても、採番値と参照先は単一ソースと同じで、期待値とも一致する
     #[test]
     fn splitting_into_sources_keeps_numbers_and_ref_targets(
-      items in prop::collection::vec(item(), 0..=12),
+      items in items(),
       scheme in prop::sample::select(ResetScheme::VARIANTS),
     ) {
       let style = scheme.style();

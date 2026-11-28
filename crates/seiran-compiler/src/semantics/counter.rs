@@ -29,7 +29,7 @@ const _: () = {
 
 /// 固定 10 種のカウンタそれぞれの値（未登場のカウンタは 0）
 ///
-/// 値は `[u32; 9]` に [`CounterName`] の宣言順で並ぶので、全カウンタの値が揃っていることは型が保証する。
+/// 値は `[u32; SLOTS]` に [`CounterName`] の宣言順で並ぶので、全カウンタの値が揃っていることは型が保証する。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
 pub(crate) struct CounterValues {
   /// [`CounterName`] の宣言順に並んだカウンタごとの値

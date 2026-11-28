@@ -152,7 +152,7 @@ struct HeadingStylesTable {
   part: HeadingStyleOverride,
   /// `chapter` レベルの上書き
   chapter: HeadingStyleOverride,
-  /// `appendix` の上書き
+  /// `appendix` レベルの上書き
   appendix: HeadingStyleOverride,
   /// `section` レベルの上書き
   section: HeadingStyleOverride,
