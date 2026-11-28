@@ -8,13 +8,15 @@
 //! tracing を通さないので、フィルタに依らず残る。
 //!
 //! 端末へ書けないとき（読み手が先に閉じたパイプ等）は、その報告を捨てて処理を続ける。終了コードとログファイルへの
-//! 記録は、端末へ書けたかに依らない。
+//! 記録は、端末へ書けたかに依らない。診断を描けないとき（miette が `fmt::Error` を返す）は、本文と code だけの
+//! 簡略表示に置き換える（[`render_diagnostic`]）。
 
 mod log_file;
 mod trace;
 
 use std::{
   ffi::OsStr,
+  fmt::{self, Write as _},
   io::{self, IsTerminal, Write},
   path::Path,
   time::Duration,
@@ -83,7 +85,7 @@ impl Reporter {
   /// ログファイルへは `--quiet` でも省かない。
   fn warning(&self, diagnostic: &dyn Diagnostic) {
     if !self.quiet {
-      write_terminal(format_args!("{:?}", TerminalDiagnostic(&self.terminal, diagnostic)));
+      write_terminal(&render_diagnostic(&self.terminal, diagnostic));
     }
     if let Some(log) = &self.log {
       log.write_block(&render_diagnostic_plain(diagnostic));
@@ -99,7 +101,7 @@ impl Reporter {
     // `as_millis` は u128 を返すが、経過ミリ秒が `u64::MAX`（約 5 億年）を超えることはないので飽和で足りる
     let elapsed_ms = u64::try_from(elapsed.as_millis()).unwrap_or(u64::MAX);
     if !self.quiet {
-      write_terminal(format_args!("{}", summary_line(&compilation.pdf_path, page_count, elapsed_ms, self.ansi)));
+      write_terminal(&summary_line(&compilation.pdf_path, page_count, elapsed_ms, self.ansi));
     }
     if let Some(log) = &self.log {
       log.write_block(&summary_line(&compilation.pdf_path, page_count, elapsed_ms, false));
@@ -139,8 +141,9 @@ impl Reporter {
 /// 端末（stderr）へ 1 件の報告を改行付きで書く。
 ///
 /// 書けないとき（読み手が先に閉じたパイプ等）は報告を捨てる — 失敗を伝えられる出力先が無く、終了コードと
-/// ログファイルへの記録は端末と独立に決まる（`termination::Outcome::report` と同じ扱い）。
-fn write_terminal(text: std::fmt::Arguments<'_>) { let _ = writeln!(io::stderr().lock(), "{text}"); }
+/// ログファイルへの記録は端末と独立に決まる（`termination::Outcome::report` と同じ扱い）。`text` は描画済みの
+/// 文字列なので、書き込みが失敗しうるのは I/O だけ。
+fn write_terminal(text: &str) { let _ = writeln!(io::stderr().lock(), "{text}"); }
 
 /// ビルド成功サマリの 1 行を組み立てる。
 fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool) -> String {
@@ -153,28 +156,62 @@ fn summary_line(pdf_path: &Path, page_count: usize, elapsed_ms: u64, ansi: bool)
   return format!("{mark} {path} · {page_count} ページ · {elapsed_ms} ms");
 }
 
-/// 借用した診断を、miette の既定 handler で端末向けに描く表示用ラッパ。
-///
-/// `Report` は所有した診断からしか作れないので、`Warnings` が貸す `&dyn Diagnostic` を端末へ出すにはこの
-/// 形が要る。`Report` の `Debug` は構築時に既定 handler（`set_hook` していなければ `MietteHandler::new()`。
-/// seiran は `set_hook` を呼ばない）を捕まえて `handler.debug(診断, f)` を呼ぶだけなので、同じ handler で
-/// 同じ関数を呼べば、端末へ出るバイト列は `Report` 経由のときと一致する。
-struct TerminalDiagnostic<'a>(&'a MietteHandler, &'a dyn Diagnostic);
+/// 診断を描けなかったときの簡略表示の 1 行目。
+const FALLBACK_HEADER: &str = "診断を描けなかったため、本文と code だけを示します（seiran の不具合です）";
 
-impl std::fmt::Debug for TerminalDiagnostic<'_> {
-  fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result { return self.0.debug(self.1, f); }
+/// 借用した診断を `handler` で描く表示用ラッパ。
+///
+/// `Report` の `Debug` は構築時に既定 handler（`set_hook` していなければ `MietteHandler::new()`。seiran は
+/// `set_hook` を呼ばない）を捕まえて `handler.debug(診断, f)` を呼ぶだけなので、同じ handler で同じ関数を
+/// 呼べば、出るバイト列は `Report` 経由のときと一致する。`Report` は所有した診断からしか作れないので、
+/// `Warnings` が貸す `&dyn Diagnostic` を描くにはこの形が要る。
+struct Rendered<'a>(&'a dyn ReportHandler, &'a dyn Diagnostic);
+
+impl fmt::Debug for Rendered<'_> {
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result { return self.0.debug(self.1, f); }
+}
+
+/// ユーザー向け診断を `handler` で文字列へ描く。
+///
+/// 描画が失敗する（miette がラベルの span をソースから読めず `fmt::Error` を返す）のは、span を範囲内に保つ
+/// 上流の不変条件が破れたときだけ。そのときは途中まで描いた分を捨て、[`FALLBACK_HEADER`] に続けて診断木
+/// （自身 → `related` を前順）を 1 件 1 行の `  [code] 本文` で並べた簡略表示を返す。panic はせず、終了コードは
+/// 呼び出し側の規則のまま変わらない。
+pub(super) fn render_diagnostic(handler: &dyn ReportHandler, diagnostic: &dyn Diagnostic) -> String {
+  let mut text = String::new();
+  // `format!` は整形の失敗で panic するので、`fmt::Write` で `String` へ描いて結果を受け取る。
+  if write!(text, "{:?}", Rendered(handler, diagnostic)).is_err() {
+    return fallback_text(diagnostic);
+  }
+  return text;
+}
+
+/// [`render_diagnostic`] の簡略表示を組み立てる。
+fn fallback_text(diagnostic: &dyn Diagnostic) -> String {
+  let mut text = String::from(FALLBACK_HEADER);
+  push_fallback_lines(&mut text, diagnostic);
+  return text;
+}
+
+/// 簡略表示へ `diagnostic` とその関連診断を前順で 1 件 1 行ずつ足す。
+fn push_fallback_lines(text: &mut String, diagnostic: &dyn Diagnostic) {
+  // 書き込み先が `String` なので、失敗は診断自身の `Display` の失敗だけ。その行が欠けるだけで続けられる。
+  let _ = match diagnostic.code() {
+    Some(code) => write!(text, "\n  [{code}] {diagnostic}"),
+    None => write!(text, "\n  {diagnostic}"),
+  };
+  for related in diagnostic.related().into_iter().flatten() {
+    push_fallback_lines(text, related);
+  }
 }
 
 /// ユーザー向け診断（warning・致命的エラー）をログファイル向けに装飾なしで文字列化する。
 ///
-/// `related` を持つ診断は、端末と同じく関連診断まで続けて描く。
+/// `related` を持つ診断は、端末と同じく関連診断まで続けて描く。描けないときの扱いは [`render_diagnostic`]。
 fn render_diagnostic_plain(diagnostic: &dyn Diagnostic) -> String {
-  let mut rendered = String::new();
   // `new_themed` の既定はハイパーリンク有効で、url を持つ診断に OSC 8 のエスケープを出す。
   let handler = GraphicalReportHandler::new_themed(GraphicalTheme::unicode_nocolor()).with_links(false);
-  // 書き込み先が `String` なので失敗しない。
-  let _ = handler.render_report(&mut rendered, diagnostic);
-  return rendered;
+  return render_diagnostic(&handler, diagnostic);
 }
 
 /// stderr へ ANSI 装飾を出してよいか。
@@ -230,13 +267,14 @@ fn run_footer_text(ended_at: &str, succeeded: bool) -> String {
 mod tests {
   use std::{ffi::OsStr, path::Path};
 
-  use miette::{Diagnostic, MietteHandler};
+  use miette::{Diagnostic, MietteError, MietteHandler, MietteHandlerOpts, SourceCode, SourceSpan, SpanContents};
   use thiserror::Error;
   use time::{UtcOffset, format_description::well_known::Rfc3339};
   use tracing_subscriber::fmt::time::OffsetTime;
 
   use super::{
-    RunHeader, TerminalDiagnostic, ansi_enabled, now_text, render_diagnostic_plain, run_header_text, summary_line,
+    FALLBACK_HEADER, RunHeader, ansi_enabled, now_text, render_diagnostic, render_diagnostic_plain, run_header_text,
+    summary_line,
   };
   use crate::cli::Command;
 
@@ -250,6 +288,119 @@ mod tests {
     url("https://example.com/warning")
   )]
   struct TestWarning;
+
+  /// ソースの範囲外を指すラベルを持つ診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("範囲外のラベルを持つ診断です")]
+  #[diagnostic(code(cli::test_out_of_range))]
+  struct OutOfRangeLabel {
+    /// ラベルが指す先のソース
+    #[source_code]
+    text: String,
+    /// ソースの末尾より後ろを指すラベル
+    #[label("ここ")]
+    span: SourceSpan,
+  }
+
+  /// 範囲外の関連診断を持つ、それ自身は描ける診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("関連を持つ診断です")]
+  #[diagnostic(code(cli::test_with_related))]
+  struct WithRelated {
+    /// 描けない関連診断
+    #[related]
+    notes: Vec<OutOfRangeLabel>,
+  }
+
+  /// 前後の文脈付きの読み出しにだけ応じるソース。
+  ///
+  /// graphical handler は文脈付きで読めたラベルを、行と桁を出すために文脈なしで読み直す。そこで拒むと、
+  /// 見出しを書いた後で `fmt::Error` を返す。
+  #[derive(Debug)]
+  struct ContextOnlySource(String);
+
+  impl SourceCode for ContextOnlySource {
+    fn read_span<'a>(
+      &'a self,
+      span: &SourceSpan,
+      context_lines_before: usize,
+      context_lines_after: usize,
+    ) -> Result<Box<dyn SpanContents<'a> + 'a>, MietteError> {
+      if context_lines_before == 0 {
+        return Err(MietteError::OutOfBounds);
+      }
+      return self.0.read_span(span, context_lines_before, context_lines_after);
+    }
+  }
+
+  /// graphical handler が描画の途中で失敗する診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("読み直せないソースを持つ診断です")]
+  #[diagnostic(code(cli::test_context_only))]
+  struct ContextOnlyLabel {
+    /// 文脈なしの読み出しを拒むソース
+    #[source_code]
+    text: ContextOnlySource,
+    /// ソースの範囲内を指すラベル
+    #[label("ここ")]
+    span: SourceSpan,
+  }
+
+  /// 3 文字のソースの 10 文字目から 2 文字を指す診断を作る。
+  fn out_of_range() -> OutOfRangeLabel {
+    return OutOfRangeLabel {
+      text: String::from("abc"),
+      span: SourceSpan::from((10, 2)),
+    };
+  }
+
+  /// 文章による描画（`NO_GRAPHICS` を設定した端末で既定 handler が選ぶもの）。
+  fn narrated() -> MietteHandler { return MietteHandlerOpts::new().force_narrated(true).build(); }
+
+  #[test]
+  fn out_of_range_label_falls_back_with_the_narrated_handler() {
+    let text = render_diagnostic(&narrated(), &out_of_range());
+
+    assert!(text.starts_with(FALLBACK_HEADER), "途中まで描いた分を混ぜない: {text}");
+    assert!(text.contains("  [cli::test_out_of_range] 範囲外のラベルを持つ診断です"), "{text}");
+  }
+
+  #[test]
+  fn out_of_range_label_keeps_code_and_message_with_the_graphical_handler() {
+    let text = render_diagnostic(&MietteHandlerOpts::new().force_graphical(true).build(), &out_of_range());
+
+    assert!(text.contains("cli::test_out_of_range"), "{text}");
+    assert!(text.contains("範囲外のラベルを持つ診断です"), "{text}");
+  }
+
+  #[test]
+  fn fallback_lists_related_diagnostics_too() {
+    let diagnostic = WithRelated {
+      notes: vec![out_of_range()],
+    };
+
+    let text = render_diagnostic(&narrated(), &diagnostic);
+
+    assert_eq!(
+      text,
+      format!(
+        "{FALLBACK_HEADER}\n  [cli::test_with_related] 関連を持つ診断です\n  [cli::test_out_of_range] \
+         範囲外のラベルを持つ診断です"
+      )
+    );
+  }
+
+  #[test]
+  fn plain_rendering_discards_partial_output_on_failure() {
+    let diagnostic = ContextOnlyLabel {
+      text: ContextOnlySource(String::from("abc")),
+      span: SourceSpan::from((0, 1)),
+    };
+
+    let text = render_diagnostic_plain(&diagnostic);
+
+    assert_eq!(text, format!("{FALLBACK_HEADER}\n  [cli::test_context_only] 読み直せないソースを持つ診断です"));
+  }
 
   #[test]
   fn ansi_needs_both_terminal_and_unset_no_color() {
@@ -287,7 +438,7 @@ mod tests {
   fn terminal_rendering_of_a_borrowed_diagnostic_matches_the_report() {
     let expected = format!("{:?}", miette::Report::new(TestWarning));
 
-    let rendered = format!("{:?}", TerminalDiagnostic(&MietteHandler::new(), &TestWarning));
+    let rendered = render_diagnostic(&MietteHandler::new(), &TestWarning);
 
     assert_eq!(rendered, expected);
   }
