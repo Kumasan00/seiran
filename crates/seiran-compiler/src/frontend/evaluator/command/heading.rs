@@ -23,6 +23,7 @@ pub(super) const fn signature(level: HeadingLevel) -> Signature<1> {
   let expected = match level {
     HeadingLevel::Part => "部名",
     HeadingLevel::Chapter => "章名",
+    HeadingLevel::Appendix => "付録の題目",
     HeadingLevel::Section => "セクション名",
     HeadingLevel::Subsection => "サブセクション名",
     HeadingLevel::Paragraph => "段落名",
@@ -85,5 +86,39 @@ mod tests {
     };
     assert_eq!(heading.level, HeadingLevel::Section);
     assert_eq!(heading.label.as_deref(), Some("sec:foo"));
+  }
+
+  #[test]
+  fn appendix_heading_captures_label() {
+    let arena = Bump::new();
+    let source = r"\appendix[label=app:a]{証明}";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let bound = signature(HeadingLevel::Appendix).bind(&view).unwrap();
+    let result =
+      run_handler(|ctx| return heading(&view, bound.args[0], &bound.opts, ctx, HeadingLevel::Appendix)).unwrap();
+
+    let HirNodeKind::Heading(heading) = &result.kind else {
+      panic!("Heading が期待されます");
+    };
+    assert_eq!(heading.level, HeadingLevel::Appendix);
+    assert_eq!(heading.label.as_deref(), Some("app:a"));
+  }
+
+  #[test]
+  fn appendix_without_title_is_missing_argument() {
+    let arena = Bump::new();
+    let source = r"\appendix";
+    let node = test_support::command_call_node(source, &arena);
+    let view = CommandView::new(node, source);
+
+    let result = signature(HeadingLevel::Appendix).bind(&view);
+
+    assert!(
+      matches!(result, Err(EvalError::MissingCommandArgument { ref name, ref expected, .. })
+        if name == "appendix" && expected == "付録の題目"),
+      "{result:?}"
+    );
   }
 }

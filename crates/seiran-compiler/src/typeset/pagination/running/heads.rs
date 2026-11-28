@@ -51,7 +51,7 @@ pub(super) fn page_heads<'h>(body_pages: &[Page], headings: &'h [HeadingRecord])
 
 /// 見出し記録ごとに、その見出しの直後の（章, 節）を返す
 ///
-/// 新しい章は節を終え、部は章と節を終える。小節以下は変えない。書誌の見出し（`node` が `None`）以降は本文外で、
+/// 新しい章（付録を含む）は節を終え、部は章と節を終える。小節以下は変えない。書誌の見出し（`node` が `None`）以降は本文外で、
 /// 章・節とも無い。
 fn heads_after_each_heading(headings: &[HeadingRecord]) -> Vec<Heads<'_>> {
   let mut current: Heads<'_> = (None, None);
@@ -62,7 +62,7 @@ fn heads_after_each_heading(headings: &[HeadingRecord]) -> Vec<Heads<'_>> {
     } else {
       current = match record.level {
         HeadingLevel::Part => (None, None),
-        HeadingLevel::Chapter => (Some(record), None),
+        HeadingLevel::Chapter | HeadingLevel::Appendix => (Some(record), None),
         HeadingLevel::Section => (current.0, Some(record)),
         HeadingLevel::Subsection | HeadingLevel::Paragraph | HeadingLevel::Subparagraph => current,
       };
@@ -190,6 +190,26 @@ mod tests {
         (Some(2), None),
         (Some(2), Some(3)),
         (None, None),
+      ]
+    );
+  }
+
+  #[test]
+  fn appendix_takes_the_chapter_slot() {
+    let headings = vec![
+      record(0, HeadingLevel::Chapter),
+      record(1, HeadingLevel::Section),
+      record(2, HeadingLevel::Appendix),
+      record(3, HeadingLevel::Section),
+    ];
+
+    assert_eq!(
+      heads(&one_heading_per_page(4), &headings),
+      vec![
+        (Some(0), None),
+        (Some(0), Some(1)),
+        (Some(2), None),
+        (Some(2), Some(3))
       ]
     );
   }

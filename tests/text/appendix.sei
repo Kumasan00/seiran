@@ -1,0 +1,58 @@
+\chapter{序論}
+
+付録の採番の動作確認用フィクスチャ。本文の章のあとに付録を 2 つ置き、付録の下の節・表・式が付録番号を
+先頭に持つこと、付録が進むと配下の番号が戻ること、本文から付録への参照が付録番号で出ることを確かめる。
+証明は \ref{app:proofs}、補題の証明は \ref{sec:lemma}、付録の式は \ref{eq:appendix} を参照。
+
+\section{背景}
+
+\begin{table}[label=tab:body]
+\row{A & B}
+\caption{本文の表}
+\end{table}
+
+\begin{equation}
+a + b = c
+\end{equation}
+
+\chapter{本論}
+
+\section{手法}
+
+\begin{equation}
+x = y
+\end{equation}
+
+\appendix[label=app:proofs]{証明}
+
+\section[label=sec:lemma]{補題の証明}
+
+\begin{table}
+\row{C & D}
+\caption{付録の表}
+\end{table}
+
+\begin{equation}[label=eq:appendix]
+e^{i \pi} + 1 = 0
+\end{equation}
+
+\begin{theorem}
+付録の定理。
+\end{theorem}
+
+\section{定理の証明}
+
+本文。
+
+\appendix{実験の詳細}
+
+\section{設定}
+
+\begin{table}
+\row{E & F}
+\caption{実験の表}
+\end{table}
+
+\begin{equation}
+f(x) = 0
+\end{equation}

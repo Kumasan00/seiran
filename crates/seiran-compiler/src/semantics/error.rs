@@ -12,7 +12,7 @@ use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
 use crate::{
-  document::{NodeId, SourceLocation},
+  document::{HeadingLevel, NodeId, SourceLocation},
   failures::Failures,
   semantics::ReadCitationStyleError,
   source::{SourceId, Span},
@@ -137,7 +137,7 @@ pub(crate) enum SemanticError {
   /// `label=...` で同名ラベルが重複登録された場合
   ///
   /// 構築は [`SemanticError::duplicate_label`] だけ。最初の定義が別ソースにあるときは 1 診断が
-  /// `source_code` を 1 つしか持てないので、[`SemanticError::first_definition_elsewhere`] が返す
+  /// `source_code` を 1 つしか持てないので、[`SemanticError::related_elsewhere`] が返す
   /// 関連診断で示す。
   #[error("ラベルが重複しています: {label}")]
   #[diagnostic(code(semantics::duplicate_label), help("label=... の値はドキュメント全体で一意にしてください"))]
@@ -190,6 +190,29 @@ pub(crate) enum SemanticError {
     /// この参照が属するソース
     source_id: SourceId,
   },
+
+  /// 文書順で最初の `\appendix` より後ろに `\chapter` / `\part` がある場合
+  ///
+  /// 付録の下では章番号の位置に付録番号が入るので、付録の後ろの章は番号の先頭が章番号か付録番号かが一意でなくなる。
+  /// 構築は [`SemanticError::heading_after_appendix`] だけ。
+  #[error("付録の後ろに \\{level} は置けません")]
+  #[diagnostic(
+    code(semantics::heading_after_appendix),
+    help(
+      "付録（\\appendix）は本文の部・章をすべて書いた後ろに置いてください。付録の中の区分は \\section 以下で書きます"
+    )
+  )]
+  HeadingAfterAppendix {
+    /// 付録の後ろに置かれた見出しのレベル（`Part` か `Chapter`）
+    level: HeadingLevel,
+    /// 違反した見出し（主ラベル）と、同じソースにあれば最初の付録の位置
+    #[label(collection)]
+    labels: Vec<LabeledSpan>,
+    /// 違反した見出しが属するソース
+    source_id: SourceId,
+    /// 文書順で最初の `\appendix` の位置
+    first_appendix: SourceLocation,
+  },
 }
 
 impl SemanticError {
@@ -204,7 +227,8 @@ impl SemanticError {
       | SemanticError::UnresolvedRef { source_id, .. }
       | SemanticError::DuplicateLabel { source_id, .. }
       | SemanticError::MixedRefKinds { source_id, .. }
-      | SemanticError::InvalidRefRange { source_id, .. } => *source_id,
+      | SemanticError::InvalidRefRange { source_id, .. }
+      | SemanticError::HeadingAfterAppendix { source_id, .. } => *source_id,
     };
   }
 
@@ -225,21 +249,54 @@ impl SemanticError {
     };
   }
 
+  /// 最初の付録 `first_appendix` より後ろの見出し `at` を報告する診断を作る。
+  pub(super) fn heading_after_appendix(
+    level: HeadingLevel,
+    at: SourceLocation,
+    first_appendix: SourceLocation,
+  ) -> Self {
+    let mut labels = vec![LabeledSpan::new_primary_with_span(
+      Some("この見出しは最初の付録より後ろにあります".to_string()),
+      at.span,
+    )];
+    if first_appendix.source_id == at.source_id {
+      labels.push(LabeledSpan::new_with_span(Some("最初の付録はここです".to_string()), first_appendix.span));
+    }
+    return SemanticError::HeadingAfterAppendix {
+      level,
+      labels,
+      source_id: at.source_id,
+      first_appendix,
+    };
+  }
+
   /// この診断と同じ 1 つの問題を、主診断とは別のソースで示す関連診断を返す（無ければ `None`）。
   #[must_use]
-  pub(crate) fn first_definition_elsewhere(&self) -> Option<FirstLabelDefinition> {
+  pub(crate) fn related_elsewhere(&self) -> Option<RelatedElsewhere> {
     return match self {
       SemanticError::DuplicateLabel {
         label,
         source_id,
         first_definition,
         ..
-      } if first_definition.source_id != *source_id => Some(FirstLabelDefinition {
-        label: label.clone(),
+      } if first_definition.source_id != *source_id => Some(RelatedElsewhere {
+        title: format!("ラベル `{label}` の最初の定義"),
+        note: "最初の定義はここです",
         span: first_definition.span.into(),
         source_id: first_definition.source_id,
       }),
+      SemanticError::HeadingAfterAppendix {
+        source_id,
+        first_appendix,
+        ..
+      } if first_appendix.source_id != *source_id => Some(RelatedElsewhere {
+        title: "最初の付録".to_string(),
+        note: "最初の付録はここです",
+        span: first_appendix.span.into(),
+        source_id: first_appendix.source_id,
+      }),
       SemanticError::DuplicateLabel { .. }
+      | SemanticError::HeadingAfterAppendix { .. }
       | SemanticError::UnknownCitationKeys { .. }
       | SemanticError::UnresolvedRef { .. }
       | SemanticError::MixedRefKinds { .. }
@@ -248,25 +305,27 @@ impl SemanticError {
   }
 }
 
-/// 重複ラベルの最初の定義が主診断と別のソースにあるときの、その位置を示す関連診断
+/// 主診断と別のソースにある関連位置（重複ラベルの最初の定義・最初の付録）を示す関連診断
 ///
 /// 独立した修正箇所ではなく主診断と同じ 1 つの問題の別の位置なので、`code` は持たず severity は
 /// `Advice`。本文は持たない。
 #[derive(Debug, Error, Diagnostic)]
-#[error("ラベル `{label}` の最初の定義")]
+#[error("{title}")]
 #[diagnostic(severity(Advice))]
-pub(crate) struct FirstLabelDefinition {
-  /// 重複したラベル名
-  label: String,
-  /// 最初に定義したコマンド / 環境のソース位置
-  #[label("最初の定義はここです")]
+pub(crate) struct RelatedElsewhere {
+  /// 関連診断の見出し
+  title: String,
+  /// 関連位置に付けるラベルの文言
+  note: &'static str,
+  /// 関連位置（最初の定義・最初の付録のコマンド / 環境）
+  #[label("{note}")]
   span: miette::SourceSpan,
-  /// 最初の定義が属するソース
+  /// 関連位置が属するソース
   source_id: SourceId,
 }
 
-impl FirstLabelDefinition {
-  /// 最初の定義が属するソースを返す。
+impl RelatedElsewhere {
+  /// 関連位置が属するソースを返す。
   #[must_use]
   pub(crate) fn source_id(&self) -> SourceId { return self.source_id; }
 }

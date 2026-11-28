@@ -78,7 +78,7 @@ pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし
   #[garde(skip)]
   pub background_color: Option<Color>,
-  /// 見出し全 6 レベルのスタイル
+  /// 見出し全 7 種（6 段の深さと付録）のスタイル
   #[garde(dive)]
   pub heading: HeadingStyles,
   /// 本文段落のスタイル
@@ -111,7 +111,7 @@ pub(crate) struct Style {
   /// 数値・単位・量（`\num` 等）の書式と書体（`[quantity]`）
   #[garde(dive)]
   pub quantity: QuantityStyle,
-  /// カウンタ定義テーブル（`[counters.<name>]`、固定 9 種）
+  /// カウンタ定義テーブル（`[counters.<name>]`、固定 10 種）
   #[garde(dive)]
   pub counters: CounterStyles,
   /// 定理クラス定義テーブル（`[theorems.<class>]`、固定 10 種）

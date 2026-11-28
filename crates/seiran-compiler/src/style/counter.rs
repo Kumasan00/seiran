@@ -13,7 +13,7 @@ use crate::{
   style::{CounterTemplate, RefNumberTemplate, RefTemplate, number_style::NumberStyle},
 };
 
-/// 固定 9 種のカウンタ定義テーブル（`[counters.<name>]`）。
+/// 固定 10 種のカウンタ定義テーブル（`[counters.<name>]`）。
 ///
 /// TOML からは [`CounterStylesTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
 /// [`CounterStyles::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
@@ -26,6 +26,9 @@ pub(crate) struct CounterStyles {
   /// 章
   #[garde(dive)]
   pub chapter: CounterStyle,
+  /// 付録
+  #[garde(dive)]
+  pub appendix: CounterStyle,
   /// 節
   #[garde(dive)]
   pub section: CounterStyle,
@@ -84,10 +87,28 @@ impl Default for CounterStyles {
           CounterName::Table,
         ],
       ),
+      appendix: CounterStyle::new(
+        "Appendix",
+        "Appendices",
+        "{n}",
+        NumberStyle::AlphaUpper,
+        "{display_name} {number}",
+        "{number}",
+        &[
+          CounterName::Chapter,
+          CounterName::Section,
+          CounterName::Subsection,
+          CounterName::Paragraph,
+          CounterName::Subparagraph,
+          CounterName::Figure,
+          CounterName::Equation,
+          CounterName::Table,
+        ],
+      ),
       section: CounterStyle::new(
         "Section",
         "Sections",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -100,7 +121,7 @@ impl Default for CounterStyles {
       subsection: CounterStyle::new(
         "Subsection",
         "Subsections",
-        "{chapter}.{section}.{n}",
+        "{appendix}.{chapter}.{section}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -109,7 +130,7 @@ impl Default for CounterStyles {
       paragraph: CounterStyle::new(
         "Paragraph",
         "Paragraphs",
-        "{chapter}.{section}.{subsection}.{n}",
+        "{appendix}.{chapter}.{section}.{subsection}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -118,7 +139,7 @@ impl Default for CounterStyles {
       subparagraph: CounterStyle::new(
         "Subparagraph",
         "Subparagraphs",
-        "{chapter}.{section}.{subsection}.{paragraph}.{n}",
+        "{appendix}.{chapter}.{section}.{subsection}.{paragraph}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -127,7 +148,7 @@ impl Default for CounterStyles {
       table: CounterStyle::new(
         "Table",
         "Tables",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -136,7 +157,7 @@ impl Default for CounterStyles {
       figure: CounterStyle::new(
         "Figure",
         "Figures",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
@@ -145,7 +166,7 @@ impl Default for CounterStyles {
       equation: CounterStyle::new(
         "Equation",
         "Equations",
-        "{chapter}.{n}",
+        "{appendix}.{chapter}.{n}",
         NumberStyle::Arabic,
         "{number}",
         "({number})",
@@ -162,6 +183,7 @@ impl Index<CounterName> for CounterStyles {
     return match name {
       CounterName::Part => &self.part,
       CounterName::Chapter => &self.chapter,
+      CounterName::Appendix => &self.appendix,
       CounterName::Section => &self.section,
       CounterName::Subsection => &self.subsection,
       CounterName::Paragraph => &self.paragraph,
@@ -188,7 +210,8 @@ pub(crate) struct CounterStyle {
   pub display_name_plural: String,
   /// 番号構築テンプレート。`{n}` で自身、`{<counter_name>}` で採番時点のそのカウンタの値を埋め込む
   /// （`resets` の関係に無いカウンタも書ける）。値 0（未登場）のカウンタは直後の区切りごと省く
-  /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）
+  /// （`\chapter` の無い文書で `"{chapter}.{n}"` は `"1"`。規則は `CounterTemplate::expand`）。
+  /// `appendix` は既定で `chapter` をリセットするので、`"{appendix}.{chapter}.{n}"` は本文で `"1.1"`、付録で `"A.1"`
   ///
   /// 例: `"{n}"`（単独）、`"{chapter}.{n}"`（章番号と連結）、`"第{n}章"`（装飾付き）
   #[garde(dive)]
@@ -243,6 +266,8 @@ struct CounterStylesTable {
   part: CounterStyleOverride,
   /// `chapter` カウンタの上書き
   chapter: CounterStyleOverride,
+  /// `appendix` カウンタの上書き
+  appendix: CounterStyleOverride,
   /// `section` カウンタの上書き
   section: CounterStyleOverride,
   /// `subsection` カウンタの上書き
@@ -265,6 +290,7 @@ impl From<CounterStylesTable> for CounterStyles {
     return Self {
       part: table.part.apply(defaults.part),
       chapter: table.chapter.apply(defaults.chapter),
+      appendix: table.appendix.apply(defaults.appendix),
       section: table.section.apply(defaults.section),
       subsection: table.subsection.apply(defaults.subsection),
       paragraph: table.paragraph.apply(defaults.paragraph),
@@ -326,7 +352,7 @@ impl CounterStyleOverride {
   }
 }
 
-/// カウンタ名（固定 9 種）。
+/// カウンタ名（固定 10 種）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, IntoStaticStr, VariantArray)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -335,6 +361,8 @@ pub(crate) enum CounterName {
   Part,
   /// 章
   Chapter,
+  /// 付録
+  Appendix,
   /// 節
   Section,
   /// 小節
@@ -352,12 +380,13 @@ pub(crate) enum CounterName {
 }
 
 impl CounterName {
-  /// 見出しレベルの採番に使う見出しカウンタを返す（全見出しレベルが固定 9 種のうち同名の 1 つに対応する）
+  /// 見出しレベルの採番に使う見出しカウンタを返す（全見出しレベルが固定 10 種のうち同名の 1 つに対応する）
   #[must_use]
   pub(crate) fn for_heading(level: HeadingLevel) -> Self {
     return match level {
       HeadingLevel::Part => Self::Part,
       HeadingLevel::Chapter => Self::Chapter,
+      HeadingLevel::Appendix => Self::Appendix,
       HeadingLevel::Section => Self::Section,
       HeadingLevel::Subsection => Self::Subsection,
       HeadingLevel::Paragraph => Self::Paragraph,
@@ -369,7 +398,7 @@ impl CounterName {
 /// [`CounterName`] の `FromStr` が受理しないカウンタ名を渡されたときのエラー。
 #[derive(Debug, Error)]
 #[error(
-  "カウンタ名は part / chapter / section / subsection / paragraph / subparagraph / table / figure / equation のいずれかである必要があります"
+  "カウンタ名は part / chapter / appendix / section / subsection / paragraph / subparagraph / table / figure / equation のいずれかである必要があります"
 )]
 pub(crate) struct ParseCounterNameError;
 
@@ -413,6 +442,7 @@ mod tests {
     let expected = [
       (CounterName::Part, "Parts"),
       (CounterName::Chapter, "Chapters"),
+      (CounterName::Appendix, "Appendices"),
       (CounterName::Section, "Sections"),
       (CounterName::Subsection, "Subsections"),
       (CounterName::Paragraph, "Paragraphs"),
@@ -446,7 +476,7 @@ mod tests {
   #[test]
   fn default_counters_section_references_chapter() {
     let counters = CounterStyles::default();
-    assert_eq!(counters.section.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(counters.section.number_format.as_str(), "{appendix}.{chapter}.{n}");
     assert_eq!(counters.section.number_style, NumberStyle::Arabic);
     assert_eq!(counters.section.ref_format.as_str(), "{display_name} {number}");
   }
@@ -473,6 +503,39 @@ mod tests {
   }
 
   #[test]
+  fn default_appendix_counter() {
+    let counters = CounterStyles::default();
+
+    let appendix = &counters.appendix;
+    assert_eq!(appendix.display_name, "Appendix");
+    assert_eq!(appendix.number_format.as_str(), "{n}");
+    assert_eq!(appendix.number_style, NumberStyle::AlphaUpper);
+    assert_eq!(appendix.ref_format.as_str(), "{display_name} {number}");
+    assert_eq!(appendix.ref_number_format.as_str(), "{number}");
+    // 章が進んだときに戻るものに加えて章自身も戻す（付録の下では章番号が 0 になる）
+    assert!(appendix.resets.contains(&CounterName::Chapter));
+    for reset in &counters.chapter.resets {
+      assert!(appendix.resets.contains(reset), "{reset:?}");
+    }
+    assert_eq!(appendix.resets.len(), counters.chapter.resets.len() + 1);
+  }
+
+  #[test]
+  fn appendix_counter_override_keeps_other_defaults() {
+    let counters: CounterStyles = toml::from_str("[appendix]\ndisplay_name = \"付録\"\n").unwrap();
+
+    assert_eq!(counters.appendix.display_name, "付録");
+    assert_eq!(counters.appendix.number_style, NumberStyle::AlphaUpper);
+  }
+
+  #[test]
+  fn appendix_counter_rejects_unknown_key() {
+    let result: Result<CounterStyles, _> = toml::from_str("[appendix]\nkind = \"chapter\"\n");
+
+    assert!(result.is_err());
+  }
+
+  #[test]
   fn default_counters_part_uses_roman_upper() {
     let counters = CounterStyles::default();
     assert_eq!(counters.part.number_style, NumberStyle::RomanUpper);
@@ -488,7 +551,7 @@ display_name = \"図\"
     let counters: CounterStyles = toml::from_str(toml).unwrap();
 
     assert_eq!(counters.figure.display_name, "図");
-    assert_eq!(counters.figure.number_format.as_str(), "{chapter}.{n}");
+    assert_eq!(counters.figure.number_format.as_str(), "{appendix}.{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
     assert_eq!(counters.figure.ref_format.as_str(), "{display_name} {number}");
     assert_eq!(counters.figure.resets, []);
@@ -498,7 +561,7 @@ display_name = \"図\"
 
   #[test]
   fn every_entry_maps_to_its_own_counter() {
-    // 9 エントリ全部に別々の表示名を与え、`From<CounterStylesTable>` の対応付けを固定する
+    // 10 エントリ全部に別々の表示名を与え、`From<CounterStylesTable>` の対応付けを固定する
     let toml = CounterName::VARIANTS
       .iter()
       .map(|&name| {

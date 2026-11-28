@@ -11,7 +11,7 @@ use crate::{
   style::NumberTitleTemplate,
 };
 
-/// 見出しレベル全 6 つに対応するスタイル設定。
+/// 見出しレベル全 7 つ（6 段の深さと付録）に対応するスタイル設定。
 ///
 /// TOML からは [`HeadingStylesTable`]（各エントリが差分指定 [`HeadingStyleOverride`]）として読み、
 /// [`HeadingStyles::default`] のレベル別既定へ重ねて解決済みの値を作る。
@@ -24,6 +24,9 @@ pub(crate) struct HeadingStyles {
   /// `[heading.chapter]`
   #[garde(dive)]
   pub chapter: HeadingStyle,
+  /// `[heading.appendix]`
+  #[garde(dive)]
+  pub appendix: HeadingStyle,
   /// `[heading.section]`
   #[garde(dive)]
   pub section: HeadingStyle,
@@ -51,6 +54,13 @@ impl Default for HeadingStyles {
       },
       chapter: HeadingStyle {
         format: NumberTitleTemplate::parse("Chapter {number}: {title}"),
+        font_size: Length::pt(25.0),
+        bottom_margin: Length::pt(15.0),
+        page_break_before: true,
+        ..HeadingStyle::default()
+      },
+      appendix: HeadingStyle {
+        format: NumberTitleTemplate::parse("Appendix {number}: {title}"),
         font_size: Length::pt(25.0),
         bottom_margin: Length::pt(15.0),
         page_break_before: true,
@@ -85,6 +95,7 @@ impl Index<HeadingLevel> for HeadingStyles {
     return match level {
       HeadingLevel::Part => &self.part,
       HeadingLevel::Chapter => &self.chapter,
+      HeadingLevel::Appendix => &self.appendix,
       HeadingLevel::Section => &self.section,
       HeadingLevel::Subsection => &self.subsection,
       HeadingLevel::Paragraph => &self.paragraph,
@@ -141,6 +152,8 @@ struct HeadingStylesTable {
   part: HeadingStyleOverride,
   /// `chapter` レベルの上書き
   chapter: HeadingStyleOverride,
+  /// `appendix` レベルの上書き
+  appendix: HeadingStyleOverride,
   /// `section` レベルの上書き
   section: HeadingStyleOverride,
   /// `subsection` レベルの上書き
@@ -157,6 +170,7 @@ impl From<HeadingStylesTable> for HeadingStyles {
     return Self {
       part: table.part.apply(defaults.part),
       chapter: table.chapter.apply(defaults.chapter),
+      appendix: table.appendix.apply(defaults.appendix),
       section: table.section.apply(defaults.section),
       subsection: table.subsection.apply(defaults.subsection),
       paragraph: table.paragraph.apply(defaults.paragraph),
@@ -253,9 +267,10 @@ mod tests {
   #[test]
   fn default_styles_match_level_defaults() {
     // (level, format, font_size_pt, bottom_margin_pt, page_break_before, page_break_after)
-    let expected: [(HeadingLevel, &str, f32, f32, bool, bool); 6] = [
+    let expected: [(HeadingLevel, &str, f32, f32, bool, bool); 7] = [
       (HeadingLevel::Part, "Part {number}: {title}", 40.0, 20.0, true, true),
       (HeadingLevel::Chapter, "Chapter {number}: {title}", 25.0, 15.0, true, false),
+      (HeadingLevel::Appendix, "Appendix {number}: {title}", 25.0, 15.0, true, false),
       (HeadingLevel::Section, "{number} {title}", 20.0, 10.0, false, false),
       (HeadingLevel::Subsection, "{number} {title}", 16.0, 10.0, false, false),
       (HeadingLevel::Paragraph, "{number} {title}", 14.0, 5.0, false, false),
@@ -341,6 +356,7 @@ typeface = \"sans_serif_bold\"
     let levels = [
       HeadingLevel::Part,
       HeadingLevel::Chapter,
+      HeadingLevel::Appendix,
       HeadingLevel::Section,
       HeadingLevel::Subsection,
       HeadingLevel::Paragraph,

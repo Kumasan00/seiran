@@ -5,8 +5,8 @@
 
 use crate::{
   document::{
-    HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LinkDestination, NodeId,
-    SourceMap,
+    HeadingLevel, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind,
+    LinkDestination, NodeId, SourceMap,
   },
   semantics::{
     CitationId, CitationSiteFacts, CounterValue, LabelId, RefGroup, References, SemanticError, SemanticFailures,
@@ -37,9 +37,11 @@ pub(super) fn collect_facts(
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
   let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
-  // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
+  // 重複ラベルと付録の後ろの部・章は走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
   // 続けても後続のカウンタ値はずれない。
-  let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
+  let mut site_errors: Vec<(NodeId, SemanticError)> = Vec::new();
+  // 文書順で最初の `\appendix`。ソースをまたいで持ち越す
+  let mut first_appendix: Option<NodeId> = None;
   for nodes in hir.source_nodes() {
     let mut collector = FactCollector {
       source_map: hir.source_map(),
@@ -47,12 +49,13 @@ pub(super) fn collect_facts(
       registry: &mut registry,
       facts: &mut facts,
       unknown_citations: &mut unknown_citations,
-      duplicate_labels: &mut duplicate_labels,
+      site_errors: &mut site_errors,
+      first_appendix: &mut first_appendix,
     };
     collector.nodes(nodes);
   }
 
-  let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
+  let mut errors: Vec<(OrderKey, SemanticError)> = site_errors
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
@@ -391,8 +394,10 @@ struct FactCollector<'a, 'p> {
   facts: &'a mut SemanticFacts,
   /// 走査中に見つかった未定義引用キーの書き込み先
   unknown_citations: &'a mut Vec<UnknownCitationSite>,
-  /// 走査中に見つかった重複ラベルの書き込み先（診断と、文書順マージ用のノード）
-  duplicate_labels: &'a mut Vec<(NodeId, SemanticError)>,
+  /// 走査中に位置付きで積む診断（重複ラベル・付録の後ろの部と章）の書き込み先（診断と、文書順マージ用のノード）
+  site_errors: &'a mut Vec<(NodeId, SemanticError)>,
+  /// 文書順で最初の `\appendix` の見出しノード（まだ無ければ `None`）
+  first_appendix: &'a mut Option<NodeId>,
 }
 
 impl FactCollector<'_, '_> {
@@ -431,7 +436,24 @@ impl FactCollector<'_, '_> {
     };
     let duplicate = self.source_map.location(site);
     let error = SemanticError::duplicate_label(name, duplicate, self.source_map.location(first.site));
-    self.duplicate_labels.push((site, error));
+    self.site_errors.push((site, error));
+    return;
+  }
+
+  /// 最初の付録を記録し、その後ろの部・章を診断として積む
+  fn check_heading_order(&mut self, level: HeadingLevel, node: NodeId) {
+    match (level, *self.first_appendix) {
+      (HeadingLevel::Appendix, None) => *self.first_appendix = Some(node),
+      (HeadingLevel::Part | HeadingLevel::Chapter, Some(first)) => {
+        let error =
+          SemanticError::heading_after_appendix(level, self.source_map.location(node), self.source_map.location(first));
+        self.site_errors.push((node, error));
+      },
+      (HeadingLevel::Part | HeadingLevel::Chapter, None)
+      | (HeadingLevel::Appendix, Some(_))
+      | (HeadingLevel::Section | HeadingLevel::Subsection | HeadingLevel::Paragraph | HeadingLevel::Subparagraph, _) =>
+        {},
+    }
     return;
   }
 
@@ -441,6 +463,7 @@ impl FactCollector<'_, '_> {
       HirNodeKind::Heading(heading) => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
+        self.check_heading_order(heading.level, node.id);
         let counter = CounterName::for_heading(heading.level);
         self.number_and_declare(counter, node.id, heading.label.as_deref(), node.id);
         self.facts.headings.insert(node.id, heading.level);
@@ -584,7 +607,7 @@ mod tests {
 
   use super::collect_facts;
   use crate::{
-    document::HirDocument,
+    document::{HeadingLevel, HirDocument},
     frontend::test_support::parse_for_test,
     semantics::{
       self, CitationId, CounterValue, LabelId, RefGroup, References, SemanticDocument, SemanticError, SemanticFailures,
@@ -998,6 +1021,102 @@ mod tests {
     assert!(result.is_ok(), "{result:?}");
   }
 
+  /// 診断 `HeadingAfterAppendix` の（見出しレベル, 帰属ソース, 各ラベルが指すソースの字面）
+  fn after_appendix(error: &SemanticError, sources: &[&str]) -> (HeadingLevel, SourceId, Vec<String>) {
+    assert_eq!(
+      error.code().map(|code| return code.to_string()).as_deref(),
+      Some("semantics::heading_after_appendix")
+    );
+    let SemanticError::HeadingAfterAppendix {
+      level,
+      labels,
+      source_id,
+      ..
+    } = error
+    else {
+      panic!("HeadingAfterAppendix が期待されます: {error:?}");
+    };
+    let source = sources[source_id.index()];
+    let texts = labels
+      .iter()
+      .map(|label| return source[label.offset()..label.offset() + label.len()].to_string())
+      .collect();
+    return (*level, *source_id, texts);
+  }
+
+  #[test]
+  fn heading_after_appendix_rejects_chapter() {
+    let sources = ["\\chapter{A}\n\n\\appendix{X}\n\n\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let (level, _, texts) = after_appendix(&error, &sources);
+    assert_eq!(level, HeadingLevel::Chapter);
+    assert_eq!(texts, vec![r"\chapter{B}".to_string(), r"\appendix{X}".to_string()]);
+  }
+
+  #[test]
+  fn heading_after_appendix_rejects_part() {
+    let sources = ["\\appendix{X}\n\n\\part{P}\n"];
+
+    let error = only_error(&sources);
+
+    assert_eq!(after_appendix(&error, &sources).0, HeadingLevel::Part);
+  }
+
+  #[test]
+  fn heading_after_appendix_is_reported_across_sources() {
+    let sources = ["\\appendix{X}\n", "\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let (_, source_id, texts) = after_appendix(&error, &sources);
+    assert_eq!(source_id, SourceId::new(1));
+    assert_eq!(texts, vec![r"\chapter{B}".to_string()], "最初の付録は別ソースなのでラベルを付けない");
+  }
+
+  #[test]
+  fn heading_after_appendix_points_to_first_appendix_in_other_source() {
+    let sources = ["\\appendix{X}\n", "\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let note = error.related_elsewhere().expect("最初の付録は別ソースにあるはず");
+    assert_eq!(note.source_id(), SourceId::new(0));
+  }
+
+  #[test]
+  fn heading_after_appendix_in_same_source_has_no_related_note() {
+    let error = only_error(&["\\appendix{X}\n\n\\chapter{B}\n"]);
+
+    assert!(error.related_elsewhere().is_none(), "同じソースなら 2 つ目のラベルで示す");
+  }
+
+  #[test]
+  fn heading_after_appendix_reports_every_violation() {
+    let sources = ["\\appendix{X}\n\n\\chapter{A}\n\n\\chapter{B}\n"];
+
+    let failures = analyze_sources(&sources).expect_err("エラーになるはず");
+
+    let reported: Vec<String> =
+      failures.iter().map(|error| return after_appendix(error, &sources).2[0].clone()).collect();
+    assert_eq!(reported, vec![r"\chapter{A}".to_string(), r"\chapter{B}".to_string()]);
+  }
+
+  #[test]
+  fn sections_after_appendix_are_accepted() {
+    let result = analyze_sources(&["\\chapter{A}\n\n\\appendix{X}\n\n\\section{S}\n\n\\appendix{Y}\n"]);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn refs_rejects_chapter_and_appendix_mix() {
+    let (first, other, _) = mixed_kinds(&["\\chapter[label=c]{A}\n\n\\appendix[label=a]{X}\n\n\\refs{c, a}\n"]);
+
+    assert_eq!((first.as_str(), other.as_str()), ("c", "a"));
+  }
+
   #[test]
   fn unresolved_group_skips_validity_check() {
     let source =
@@ -1256,10 +1375,7 @@ mod tests {
     assert!(!labels[1].primary(), "2 本目は最初の定義を指す副ラベルのはず: {labels:?}");
     assert_eq!(labels[1].offset(), 0, "最初の定義は 1 行目の \\chapter のはず: {labels:?}");
     assert!(labels[0].offset() > labels[1].offset(), "{labels:?}");
-    assert!(
-      failures.first().first_definition_elsewhere().is_none(),
-      "同じソースなら別ソースの関連診断は作らないはず"
-    );
+    assert!(failures.first().related_elsewhere().is_none(), "同じソースなら別ソースの関連診断は作らないはず");
   }
 
   #[test]
@@ -1278,7 +1394,7 @@ mod tests {
       panic!("DuplicateLabel を期待: {failures:?}");
     };
     assert_eq!(labels.len(), 1, "{labels:?}");
-    let note = error.first_definition_elsewhere().expect("最初の定義は別ソースにあるはず");
+    let note = error.related_elsewhere().expect("最初の定義は別ソースにあるはず");
     assert_eq!(note.source_id(), SourceId::new(0));
   }
 
@@ -1485,10 +1601,29 @@ mod numbering_tests {
     }
   }
 
+  /// 要素列を生成する戦略。最初の付録より後ろの章は付録に置き換える（付録の後ろの章は診断エラーなので、
+  /// 採番の期待値を比べる文書には含めない）
+  fn items() -> impl Strategy<Value = Vec<(Item, bool)>> {
+    return prop::collection::vec(item(), 0..=12).prop_map(|mut items| {
+      let mut in_appendix = false;
+      for (item, _) in &mut items {
+        match item {
+          Item::Target(Target::Counter(CounterName::Appendix)) => in_appendix = true,
+          Item::Target(target @ Target::Counter(CounterName::Chapter)) if in_appendix => {
+            *target = Target::Counter(CounterName::Appendix);
+          },
+          Item::Target(_) | Item::Ref(_) => {},
+        }
+      }
+      return items;
+    });
+  }
+
   /// 要素 1 つと、その要素の前でソースを切るか（先頭要素では無視）を生成する戦略
   fn item() -> impl Strategy<Value = (Item, bool)> {
     let target = prop_oneof![
       Just(Target::Counter(CounterName::Chapter)),
+      Just(Target::Counter(CounterName::Appendix)),
       Just(Target::Counter(CounterName::Section)),
       Just(Target::Counter(CounterName::Subsection)),
       Just(Target::Counter(CounterName::Figure)),
@@ -1523,6 +1658,7 @@ mod numbering_tests {
   fn target_source(target: Target, label: usize) -> String {
     return match target {
       Target::Counter(CounterName::Chapter) => format!("\\chapter[label=l{label}]{{A}}\n"),
+      Target::Counter(CounterName::Appendix) => format!("\\appendix[label=l{label}]{{D}}\n"),
       Target::Counter(CounterName::Section) => format!("\\section[label=l{label}]{{B}}\n"),
       Target::Counter(CounterName::Subsection) => format!("\\subsection[label=l{label}]{{C}}\n"),
       Target::Counter(CounterName::Figure) => {
@@ -1536,7 +1672,7 @@ mod numbering_tests {
       },
       Target::Theorem => format!("\\begin{{theorem}}[label=l{label}]\n主張\n\\end{{theorem}}\n"),
       Target::Counter(CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph) => {
-        unreachable!("item() は章・節・小節・図・表・数式だけを生成する: {target:?}")
+        unreachable!("item() は章・付録・節・小節・図・表・数式だけを生成する: {target:?}")
       },
     };
   }
@@ -1621,7 +1757,7 @@ mod numbering_tests {
               seen,
               |other| return other == Target::Theorem,
               |other| {
-                return matches!(other, Target::Counter(by) if Some(by) == style.theorems.theorem.reset_by.counter_name());
+                return matches!(other, Target::Counter(by) if style.theorems.theorem.reset_by.counter_names().contains(&by));
               },
             ),
             counters,
@@ -1677,7 +1813,7 @@ mod numbering_tests {
     /// 任意の要素列とリセット設定で、採番値と参照先が数え上げの期待値と一致する
     #[test]
     fn numbering_and_ref_targets_match_reset_spec(
-      items in prop::collection::vec(item(), 0..=12),
+      items in items(),
       scheme in prop::sample::select(ResetScheme::VARIANTS),
     ) {
       let style = scheme.style();
@@ -1755,7 +1891,7 @@ mod numbering_tests {
     /// 完結した要素の境界でソースを切っても、採番値と参照先は単一ソースと同じで、期待値とも一致する
     #[test]
     fn splitting_into_sources_keeps_numbers_and_ref_targets(
-      items in prop::collection::vec(item(), 0..=12),
+      items in items(),
       scheme in prop::sample::select(ResetScheme::VARIANTS),
     ) {
       let style = scheme.style();

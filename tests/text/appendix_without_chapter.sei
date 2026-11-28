@@ -1,0 +1,27 @@
+\section{導入}
+
+章を使わない文書の付録の動作確認用フィクスチャ。本文の節は 1, 2、付録は A、付録の下の節は A.1 になる。
+
+\begin{table}
+\row{A & B}
+\caption{本文の表}
+\end{table}
+
+\section{本論}
+
+\begin{equation}
+a = b
+\end{equation}
+
+\appendix{補遺}
+
+\section{詳細}
+
+\begin{table}
+\row{C & D}
+\caption{付録の表}
+\end{table}
+
+\begin{equation}
+c = d
+\end{equation}
