@@ -58,7 +58,7 @@ LaTeX の主要機能を組み込みで提供しつつ、曖昧さを排除す�
 
 ```sh
 cargo run -- build [-c <config_path>]                      # 設定ファイルの sources から PDF を生成
-#   -v|-vv|-vvv（作業の進捗 / 工程結果と内部詳細 / 最大）・-q（端末抑止。-v と直交）・--log-file <path>（既定で工程を記録）は全サブコマンド共通。意味は README「使い方」
+#   -v|-vv|-vvv（作業の進捗 / 工程結果と内部詳細 / 最大）・-q（端末抑止。-v と直交）・--log-file <path>（既定で工程を記録）・--log-filter <directives>（ファイルの詳細度を指定）は全サブコマンド共通。意味は README「使い方」
 cargo +nightly fmt                                         # フォーマット（nightly 必須）
 CARGO_BUILD_WARNINGS=deny cargo clippy --all-targets --all-features -- -D warnings   # リント（CI / pre-commit と同じ形）
 cargo test --all-features                                  # テスト実行（doctest 込み。CI / pre-commit と同じ形）
