@@ -20,8 +20,8 @@ pub(crate) struct TocStyle {
   /// 目次のタイトル文字列
   #[garde(custom(non_empty_text))]
   pub title: String,
-  /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::COUNT`=subparagraph まで
-  #[garde(custom(in_range(1, HeadingLevel::COUNT)))]
+  /// 目次に含める見出しの最大深さ。1=part のみ、`HeadingLevel::DEPTHS`=subparagraph まで
+  #[garde(custom(in_range(1, HeadingLevel::DEPTHS)))]
   pub max_depth: usize,
   /// 目次エントリのフォントサイズ
   #[garde(custom(positive))]
@@ -134,7 +134,7 @@ mod tests {
   #[test]
   fn validate_accepts_max_depth_up_to_heading_level_count() {
     let style = TocStyle {
-      max_depth: HeadingLevel::COUNT,
+      max_depth: HeadingLevel::DEPTHS,
       ..TocStyle::default()
     };
     assert!(style.validate().is_ok());
@@ -143,7 +143,7 @@ mod tests {
   #[test]
   fn validate_rejects_too_large_max_depth() {
     let style = TocStyle {
-      max_depth: HeadingLevel::COUNT + 1,
+      max_depth: HeadingLevel::DEPTHS + 1,
       ..TocStyle::default()
     };
     assert!(style.validate().is_err());

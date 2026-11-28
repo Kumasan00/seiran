@@ -460,6 +460,7 @@ static COMMANDS: phf::Map<&'static str, CommandKind> = phf_map! {
 
   "part" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Part)),
   "chapter" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Chapter)),
+  "appendix" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Appendix)),
   "section" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Section)),
   "subsection" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Subsection)),
   "paragraph" => CommandKind::Unary(UnaryCommand::Heading(HeadingLevel::Paragraph)),
