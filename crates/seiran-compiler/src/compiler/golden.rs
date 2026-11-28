@@ -54,6 +54,8 @@
 //!   経由）・[`index_entries_follow_the_page_the_content_lands_on`]・
 //!   [`footnote_links_follow_the_page_the_line_lands_on`]・
 //!   [`long_footnote_splits_across_pages_without_overlapping_body`]・
+//!   脚注マークの書体 2 種 [`footnote_markers_use_serif_by_default`] / [`footnote_markers_follow_marker_typeface`]
+//!   （共通ヘルパ [`footnote_first_line_runs`] 経由）・
 //!   [`figure_images_resolve_to_expected_display_sizes`]・
 //!   [`figure_image_without_size_fits_two_column_width_not_text_width`]・
 //!   字下げの中のブロック要素 6 種 [`full_width_table_and_image_fill_the_indented_width`] /
@@ -1166,6 +1168,58 @@ fn per_page_numbering_counts_table_cell_footnotes() {
     let expected: Vec<u32> = (1..=u32::try_from(numbers.len()).expect("脚注数は u32 に収まる")).collect();
     assert_eq!(*numbers, expected, "各ページの脚注番号は 1 からの連番のはず: {per_page:?}");
   }
+}
+
+/// `project` を組版し、最初の脚注本体の先頭行のグリフ列を出現順に返す
+fn footnote_first_line_runs(project: &TestProject) -> Vec<LineRun> {
+  let laid_out = project.laid_out();
+  let line = laid_out
+    .pages
+    .iter()
+    .flat_map(|page| return page.footnotes.iter())
+    .flat_map(|footnote| return footnote.blocks.iter())
+    .find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return Some(line),
+      _ => return None,
+    })
+    .expect("脚注本体の行が 1 つはあるはず");
+  return line_runs(line);
+}
+
+#[test]
+fn footnote_markers_use_serif_by_default() {
+  let project = TestProject::builder().source_text("\\sans{a\\footnote{note}}\n").build();
+
+  let body_runs = first_line_parts_of(&project).0;
+  let footnote_runs = footnote_first_line_runs(&project);
+
+  let serif = FontFace::primary(FontType::Serif);
+  assert_eq!(run_with_text(&body_runs, "1").run.face, serif, "本文中のマークは外側の \\sans を継がない");
+  assert_eq!(run_with_text(&footnote_runs, "1").run.face, serif, "脚注本体先頭のマーク");
+}
+
+#[test]
+fn footnote_markers_follow_marker_typeface() {
+  let project = TestProject::builder()
+    .source_text("a\\footnote{note}\n")
+    .style_toml(|table| {
+      test_support::set(table, "footnote", "marker_typeface", "sans_serif");
+      test_support::set(table, "footnote", "marker_format", "注{number}");
+    })
+    .build();
+
+  let body_runs = first_line_parts_of(&project).0;
+  let footnote_runs = footnote_first_line_runs(&project);
+
+  for runs in [&body_runs, &footnote_runs] {
+    assert_eq!(run_with_text(runs, "1").run.face, FontFace::primary(FontType::SansSerif), "マークの数字");
+    assert_eq!(run_with_text(runs, "注").run.face, FontFace::primary(FontType::JapaneseSansSerif), "マークの和文字");
+  }
+  assert_eq!(
+    run_with_text(&footnote_runs, "note").run.face,
+    FontFace::primary(FontType::Serif),
+    "脚注本文へは漏れない"
+  );
 }
 
 /// `predicate` を満たすページの index 列を返すテストヘルパ

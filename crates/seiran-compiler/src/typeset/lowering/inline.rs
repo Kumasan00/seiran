@@ -242,7 +242,7 @@ fn footnote_marker_node(
 ) -> Result<InlineNode, LengthOverflow> {
   let marker_style = TextStyle {
     font_size: base_font_size.try_scale(f64::from(footnote_style.marker_size_factor))?,
-    typeface: Typeface::Serif,
+    typeface: footnote_style.marker_typeface,
     color: base_style.color,
     script_level: None,
     math_operator: None,
@@ -754,6 +754,49 @@ mod tests {
         _ => return None,
       })
       .collect();
+  }
+
+  /// 最初の脚注の本文中マーカーと脚注本体先頭マーカーの書体、脚注本文の先頭の字の書体を返す
+  fn footnote_typefaces(nodes: &[LayoutNode]) -> (Typeface, Typeface, Typeface) {
+    let raise_typeface = |node: &InlineNode| {
+      let InlineNode::Raise { style, .. } = node else {
+        panic!("Raise が期待されます: {node:?}");
+      };
+      return style.typeface;
+    };
+    let (_, link_children) = first_link(nodes);
+    let (_, _, body) = first_footnote(nodes);
+    let InlineNode::Text(_, body_style) = &body[1] else {
+      panic!("Text が期待されます: {body:?}");
+    };
+    return (raise_typeface(&link_children[0]), raise_typeface(&body[0]), body_style.typeface);
+  }
+
+  #[test]
+  fn lower_footnote_applies_marker_typeface_to_both_markers() {
+    let mut style = ReadStyle::default();
+    style.footnote.marker_typeface = Typeface::MonospaceBold;
+
+    let nodes = lower_source(&style, "\\footnote{note}\n");
+
+    assert_eq!(
+      footnote_typefaces(&nodes),
+      (Typeface::MonospaceBold, Typeface::MonospaceBold, style.text.typeface),
+      "両方のマークが marker_typeface で、脚注本文へは漏れない"
+    );
+  }
+
+  #[test]
+  fn lower_footnote_marker_typeface_ignores_outer_decoration() {
+    let style = ReadStyle::default();
+
+    let nodes = lower_source(&style, "\\sans{a\\footnote{note}}\n");
+
+    assert_eq!(
+      footnote_typefaces(&nodes),
+      (Typeface::Serif, Typeface::Serif, Typeface::SansSerif),
+      "マークは装飾を継がず、脚注本文は外側の書体を継ぐ"
+    );
   }
 
   #[test]

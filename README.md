@@ -245,6 +245,9 @@ font_size = "20pt"
 bottom_margin = "10pt"
 # alignment = "center"         # 未指定なら外側の段落の揃えを継ぐ（既定は [text].alignment）
 
+[footnote]                     # 脚注
+# marker_typeface = "serif"    # 本文中と脚注本体先頭のマークの書体（既定 "serif"。外側の装飾は継がない）
+
 [quantity]                     # 数値 \num{...}・単位 \unit{...}・量 \qty{...}{...} の書式と書体（本文・数式とも）
 # typeface = "math"            # 書体（既定は数式フォントの立体。イタリック系は不可）
 # decimal_marker = "period"    # 小数点: "period"（既定） / "comma"
