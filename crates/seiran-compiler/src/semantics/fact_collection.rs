@@ -5,8 +5,8 @@
 
 use crate::{
   document::{
-    HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind, LinkDestination, NodeId,
-    SourceMap,
+    HeadingLevel, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind,
+    LinkDestination, NodeId, SourceMap,
   },
   semantics::{
     CitationId, CitationSiteFacts, CounterValue, LabelId, RefGroup, References, SemanticError, SemanticFailures,
@@ -37,9 +37,11 @@ pub(super) fn collect_facts(
   let mut registry = CounterRegistry::from_policy(policy);
   let mut facts = SemanticFacts::default();
   let mut unknown_citations: Vec<UnknownCitationSite> = Vec::new();
-  // 重複ラベルは走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
+  // 重複ラベルと付録の後ろの部・章は走査を打ち切らずここへ積む。採番はラベル登録の前に済んでいるので、走査を
   // 続けても後続のカウンタ値はずれない。
-  let mut duplicate_labels: Vec<(NodeId, SemanticError)> = Vec::new();
+  let mut site_errors: Vec<(NodeId, SemanticError)> = Vec::new();
+  // 文書順で最初の `\appendix`。ソースをまたいで持ち越す
+  let mut first_appendix: Option<NodeId> = None;
   for nodes in hir.source_nodes() {
     let mut collector = FactCollector {
       source_map: hir.source_map(),
@@ -47,12 +49,13 @@ pub(super) fn collect_facts(
       registry: &mut registry,
       facts: &mut facts,
       unknown_citations: &mut unknown_citations,
-      duplicate_labels: &mut duplicate_labels,
+      site_errors: &mut site_errors,
+      first_appendix: &mut first_appendix,
     };
     collector.nodes(nodes);
   }
 
-  let mut errors: Vec<(OrderKey, SemanticError)> = duplicate_labels
+  let mut errors: Vec<(OrderKey, SemanticError)> = site_errors
     .into_iter()
     .chain(error::group_unknown_citations(&unknown_citations))
     .map(|(node, error)| return (order_key(node), error))
@@ -391,8 +394,10 @@ struct FactCollector<'a, 'p> {
   facts: &'a mut SemanticFacts,
   /// 走査中に見つかった未定義引用キーの書き込み先
   unknown_citations: &'a mut Vec<UnknownCitationSite>,
-  /// 走査中に見つかった重複ラベルの書き込み先（診断と、文書順マージ用のノード）
-  duplicate_labels: &'a mut Vec<(NodeId, SemanticError)>,
+  /// 走査中に位置付きで積む診断（重複ラベル・付録の後ろの部と章）の書き込み先（診断と、文書順マージ用のノード）
+  site_errors: &'a mut Vec<(NodeId, SemanticError)>,
+  /// 文書順で最初の `\appendix` の見出しノード（まだ無ければ `None`）
+  first_appendix: &'a mut Option<NodeId>,
 }
 
 impl FactCollector<'_, '_> {
@@ -431,7 +436,24 @@ impl FactCollector<'_, '_> {
     };
     let duplicate = self.source_map.location(site);
     let error = SemanticError::duplicate_label(name, duplicate, self.source_map.location(first.site));
-    self.duplicate_labels.push((site, error));
+    self.site_errors.push((site, error));
+    return;
+  }
+
+  /// 最初の付録を記録し、その後ろの部・章を診断として積む
+  fn check_heading_order(&mut self, level: HeadingLevel, node: NodeId) {
+    match (level, *self.first_appendix) {
+      (HeadingLevel::Appendix, None) => *self.first_appendix = Some(node),
+      (HeadingLevel::Part | HeadingLevel::Chapter, Some(first)) => {
+        let error =
+          SemanticError::heading_after_appendix(level, self.source_map.location(node), self.source_map.location(first));
+        self.site_errors.push((node, error));
+      },
+      (HeadingLevel::Part | HeadingLevel::Chapter, None)
+      | (HeadingLevel::Appendix, Some(_))
+      | (HeadingLevel::Section | HeadingLevel::Subsection | HeadingLevel::Paragraph | HeadingLevel::Subparagraph, _) =>
+        {},
+    }
     return;
   }
 
@@ -441,6 +463,7 @@ impl FactCollector<'_, '_> {
       HirNodeKind::Heading(heading) => {
         // frontend が作る見出しは常に採番対象（無採番の見出しは CSL 整形段が合成する書誌だけで、
         // それは HIR に存在しない）。
+        self.check_heading_order(heading.level, node.id);
         let counter = CounterName::for_heading(heading.level);
         self.number_and_declare(counter, node.id, heading.label.as_deref(), node.id);
         self.facts.headings.insert(node.id, heading.level);
@@ -584,7 +607,7 @@ mod tests {
 
   use super::collect_facts;
   use crate::{
-    document::HirDocument,
+    document::{HeadingLevel, HirDocument},
     frontend::test_support::parse_for_test,
     semantics::{
       self, CitationId, CounterValue, LabelId, RefGroup, References, SemanticDocument, SemanticError, SemanticFailures,
@@ -996,6 +1019,84 @@ mod tests {
     let result = analyze_sources(&[&first, &second]);
 
     assert!(result.is_ok(), "{result:?}");
+  }
+
+  /// 診断 `HeadingAfterAppendix` の（見出しレベル, 帰属ソース, 各ラベルが指すソースの字面）
+  fn after_appendix(error: &SemanticError, sources: &[&str]) -> (HeadingLevel, SourceId, Vec<String>) {
+    assert_eq!(
+      error.code().map(|code| return code.to_string()).as_deref(),
+      Some("semantics::heading_after_appendix")
+    );
+    let SemanticError::HeadingAfterAppendix {
+      level,
+      labels,
+      source_id,
+    } = error
+    else {
+      panic!("HeadingAfterAppendix が期待されます: {error:?}");
+    };
+    let source = sources[source_id.index()];
+    let texts = labels
+      .iter()
+      .map(|label| return source[label.offset()..label.offset() + label.len()].to_string())
+      .collect();
+    return (*level, *source_id, texts);
+  }
+
+  #[test]
+  fn heading_after_appendix_rejects_chapter() {
+    let sources = ["\\chapter{A}\n\n\\appendix{X}\n\n\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let (level, _, texts) = after_appendix(&error, &sources);
+    assert_eq!(level, HeadingLevel::Chapter);
+    assert_eq!(texts, vec![r"\chapter{B}".to_string(), r"\appendix{X}".to_string()]);
+  }
+
+  #[test]
+  fn heading_after_appendix_rejects_part() {
+    let sources = ["\\appendix{X}\n\n\\part{P}\n"];
+
+    let error = only_error(&sources);
+
+    assert_eq!(after_appendix(&error, &sources).0, HeadingLevel::Part);
+  }
+
+  #[test]
+  fn heading_after_appendix_is_reported_across_sources() {
+    let sources = ["\\appendix{X}\n", "\\chapter{B}\n"];
+
+    let error = only_error(&sources);
+
+    let (_, source_id, texts) = after_appendix(&error, &sources);
+    assert_eq!(source_id, SourceId::new(1));
+    assert_eq!(texts, vec![r"\chapter{B}".to_string()], "最初の付録は別ソースなのでラベルを付けない");
+  }
+
+  #[test]
+  fn heading_after_appendix_reports_every_violation() {
+    let sources = ["\\appendix{X}\n\n\\chapter{A}\n\n\\chapter{B}\n"];
+
+    let failures = analyze_sources(&sources).expect_err("エラーになるはず");
+
+    let reported: Vec<String> =
+      failures.iter().map(|error| return after_appendix(error, &sources).2[0].clone()).collect();
+    assert_eq!(reported, vec![r"\chapter{A}".to_string(), r"\chapter{B}".to_string()]);
+  }
+
+  #[test]
+  fn sections_after_appendix_are_accepted() {
+    let result = analyze_sources(&["\\chapter{A}\n\n\\appendix{X}\n\n\\section{S}\n\n\\appendix{Y}\n"]);
+
+    assert!(result.is_ok(), "{result:?}");
+  }
+
+  #[test]
+  fn refs_rejects_chapter_and_appendix_mix() {
+    let (first, other, _) = mixed_kinds(&["\\chapter[label=c]{A}\n\n\\appendix[label=a]{X}\n\n\\refs{c, a}\n"]);
+
+    assert_eq!((first.as_str(), other.as_str()), ("c", "a"));
   }
 
   #[test]

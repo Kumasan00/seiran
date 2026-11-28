@@ -132,6 +132,23 @@ fn diagnostic_unknown_command() {
 }
 
 #[test]
+fn diagnostic_appendix_without_title() {
+  // LaTeX の宣言形の `\appendix` は必須引数の不足になる
+  let failure = compile_err(&["tests/text/diagnostics/appendix_without_title.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::missing_command_argument".to_string()]);
+  assert_matches_golden("appendix_without_title", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_heading_after_appendix() {
+  let failure = compile_err(&["tests/text/diagnostics/heading_after_appendix.sei"]);
+
+  assert_eq!(codes(&failure), vec!["semantics::heading_after_appendix".to_string()]);
+  assert_matches_golden("heading_after_appendix", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_extra_command_argument() {
   // P2: 必須引数の個数は固定なので、余分な必須引数はコマンド名つきで拒否する
   let failure = compile_err(&["tests/text/diagnostics/extra_command_argument.sei"]);

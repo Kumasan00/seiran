@@ -12,7 +12,7 @@ use miette::{Diagnostic, LabeledSpan};
 use thiserror::Error;
 
 use crate::{
-  document::{NodeId, SourceLocation},
+  document::{HeadingLevel, NodeId, SourceLocation},
   failures::Failures,
   semantics::ReadCitationStyleError,
   source::{SourceId, Span},
@@ -190,6 +190,27 @@ pub(crate) enum SemanticError {
     /// この参照が属するソース
     source_id: SourceId,
   },
+
+  /// 文書順で最初の `\appendix` より後ろに `\chapter` / `\part` がある場合
+  ///
+  /// 付録の下では章番号の位置に付録番号が入るので、付録の後ろの章は番号の先頭が章番号か付録番号かが一意でなくなる。
+  /// 構築は [`SemanticError::heading_after_appendix`] だけ。
+  #[error("付録の後ろに \\{level} は置けません")]
+  #[diagnostic(
+    code(semantics::heading_after_appendix),
+    help(
+      "付録（\\appendix）は本文の部・章をすべて書いた後ろに置いてください。付録の中の区分は \\section 以下で書きます"
+    )
+  )]
+  HeadingAfterAppendix {
+    /// 付録の後ろに置かれた見出しのレベル（`Part` か `Chapter`）
+    level: HeadingLevel,
+    /// 違反した見出し（主ラベル）と、同じソースにあれば最初の付録の位置
+    #[label(collection)]
+    labels: Vec<LabeledSpan>,
+    /// 違反した見出しが属するソース
+    source_id: SourceId,
+  },
 }
 
 impl SemanticError {
@@ -204,7 +225,8 @@ impl SemanticError {
       | SemanticError::UnresolvedRef { source_id, .. }
       | SemanticError::DuplicateLabel { source_id, .. }
       | SemanticError::MixedRefKinds { source_id, .. }
-      | SemanticError::InvalidRefRange { source_id, .. } => *source_id,
+      | SemanticError::InvalidRefRange { source_id, .. }
+      | SemanticError::HeadingAfterAppendix { source_id, .. } => *source_id,
     };
   }
 
@@ -222,6 +244,26 @@ impl SemanticError {
       labels,
       source_id: duplicate.source_id,
       first_definition: first,
+    };
+  }
+
+  /// 最初の付録 `first_appendix` より後ろの見出し `at` を報告する診断を作る。
+  pub(super) fn heading_after_appendix(
+    level: HeadingLevel,
+    at: SourceLocation,
+    first_appendix: SourceLocation,
+  ) -> Self {
+    let mut labels = vec![LabeledSpan::new_primary_with_span(
+      Some("この見出しは最初の付録より後ろにあります".to_string()),
+      at.span,
+    )];
+    if first_appendix.source_id == at.source_id {
+      labels.push(LabeledSpan::new_with_span(Some("最初の付録はここです".to_string()), first_appendix.span));
+    }
+    return SemanticError::HeadingAfterAppendix {
+      level,
+      labels,
+      source_id: at.source_id,
     };
   }
 
@@ -243,7 +285,8 @@ impl SemanticError {
       | SemanticError::UnknownCitationKeys { .. }
       | SemanticError::UnresolvedRef { .. }
       | SemanticError::MixedRefKinds { .. }
-      | SemanticError::InvalidRefRange { .. } => None,
+      | SemanticError::InvalidRefRange { .. }
+      | SemanticError::HeadingAfterAppendix { .. } => None,
     };
   }
 }
