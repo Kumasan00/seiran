@@ -8,7 +8,9 @@ use crate::{
   document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
   frontend::{
     self, ParseError,
-    evaluator::{InlinePolicy, column_value_violation, math_typeface_violation, typeface_violation, value_cells},
+    evaluator::{
+      InlinePolicy, color_violation, column_value_violation, math_typeface_violation, typeface_violation, value_cells,
+    },
   },
   project::PathResolver,
   source::{SourceId, Span},
@@ -156,7 +158,11 @@ fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePol
         );
         walk_inlines(children, here, policy, out);
       },
-      HirInlineKind::Colored { children, .. } | HirInlineKind::Footnote { body: children, .. } => {
+      HirInlineKind::Colored { children, .. } => {
+        assert!(color_violation(children).is_none(), "`\\color` の中身には色が届く要素があるはず: {:?}", inline.id);
+        walk_inlines(children, here, policy, out);
+      },
+      HirInlineKind::Footnote { body: children, .. } => {
         walk_inlines(children, here, policy, out);
       },
       HirInlineKind::Link { children, .. } => walk_inlines(children, here, InlinePolicy::RejectIndexAndLinks, out),
@@ -369,6 +375,7 @@ mod tests {
 
   use super::{parse_checked, visit_source, walk_inlines, walk_math};
   use crate::{
+    color::Color,
     document::{
       HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, LinkDestination,
       MathVariant, NodeId, Typeface,
@@ -504,6 +511,22 @@ mod tests {
             },
           ),
         ],
+      },
+    )];
+
+    walk_inlines(&inlines, None, InlinePolicy::Allow, &mut Vec::new());
+  }
+
+  #[test]
+  #[should_panic(expected = "`\\color` の中身には色が届く要素があるはず")]
+  fn colored_without_a_reached_element_breaks_the_invariant() {
+    // 評価器を通らない HIR で、中身の無い `\color` を作る
+    let id = |local| return NodeId::for_test(SourceId::new(0), local);
+    let inlines = [HirInline::new(
+      id(0),
+      HirInlineKind::Colored {
+        color: Color::new(255, 0, 0),
+        children: Vec::new(),
       },
     )];
 

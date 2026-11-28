@@ -16,6 +16,8 @@ mod signature;
 mod string_arg;
 mod typeface_reach;
 
+#[cfg(any(test, feature = "fuzzing"))]
+pub(super) use color_reach::color_violation;
 pub(super) use context::EvalContext;
 #[cfg(any(test, feature = "fuzzing"))]
 pub(super) use environment::{column_value_violation, value_cells};
