@@ -62,11 +62,13 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
         }
       },
       HirNodeKind::Figure(figure) => {
-        out.push(Visited {
-          id: figure.image_site,
-          parent: here,
-        });
-        if let Some(caption) = &figure.caption {
+        for image in figure.images() {
+          out.push(Visited {
+            id: image.site,
+            parent: here,
+          });
+        }
+        for caption in figure.captions() {
           walk_inlines(caption, here, InlinePolicy::Allow, out);
         }
       },
@@ -770,7 +772,7 @@ mod tests {
           }
         },
         HirNodeKind::Figure(figure) => {
-          if let Some(caption) = &figure.caption {
+          for caption in figure.captions() {
             assert_unresolved_inlines(caption);
           }
         },

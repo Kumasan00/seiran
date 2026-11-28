@@ -1,7 +1,7 @@
 //! 図環境（`document::HirNodeKind::Figure`）の lowering
 
 use crate::{
-  document::{HirFigure, ImageFormat, NodeId},
+  document::{FigureBody, HirFigure, HirImage, ImageFormat, NodeId},
   typeset::{
     error::ElementOverflow,
     image,
@@ -21,16 +21,6 @@ pub(super) fn lower_figure(
   state: &mut LoweringState<'_>,
 ) -> Result<Vec<LayoutNode>, ElementOverflow> {
   let style = &ctx.style.figure;
-
-  // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
-  let target_dpi = match figure.format {
-    ImageFormat::Png | ImageFormat::Jpeg => figure
-      .downsample
-      .unwrap_or(ctx.image_downsample)
-      .then(|| return figure.dpi.unwrap_or(ctx.image_max_dpi)),
-    ImageFormat::Svg | ImageFormat::Pdf => None,
-  };
-
   let margins = FloatMargins {
     top: style.top_margin,
     bottom: style.bottom_margin,
@@ -43,15 +33,30 @@ pub(super) fn lower_figure(
   };
   return lower_numbered_float(ctx, id, caption, &margins, state, |_state| {
     // 画像ノードの構築は状態に触らない（`\image` の中にインラインは入らない）。
-    return Ok(LayoutNode::Image {
-      origin: figure.image_site,
-      path: figure.image_path.clone(),
-      page_index: image::pdf_page_index(figure.format, figure.page),
-      width: figure.width,
-      height: figure.height,
-      target_dpi,
-    });
+    return match &figure.body {
+      FigureBody::Image(image) => Ok(image_node(ctx, image)),
+    };
   });
+}
+
+/// `\image` 1 個を画像ノードにする
+fn image_node(ctx: &LoweringContext<'_>, image: &HirImage) -> LayoutNode {
+  // ダウンサンプリングはラスタだけに効く（ベクタ形式への `dpi` / `downsample` は frontend が拒否済み）
+  let target_dpi = match image.format {
+    ImageFormat::Png | ImageFormat::Jpeg => image
+      .downsample
+      .unwrap_or(ctx.image_downsample)
+      .then(|| return image.dpi.unwrap_or(ctx.image_max_dpi)),
+    ImageFormat::Svg | ImageFormat::Pdf => None,
+  };
+  return LayoutNode::Image {
+    origin: image.site,
+    path: image.path.clone(),
+    page_index: image::pdf_page_index(image.format, image.page),
+    width: image.width,
+    height: image.height,
+    target_dpi,
+  };
 }
 
 #[cfg(test)]

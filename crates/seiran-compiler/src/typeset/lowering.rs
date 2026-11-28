@@ -1104,7 +1104,7 @@ mod tests {
     let HirNodeKind::Figure(figure) = &figure.kind else {
       panic!("図が期待されます: {figure:?}");
     };
-    assert_eq!(image_origin(&nodes), Some(figure.image_site));
+    assert_eq!(image_origin(&nodes), figure.images().next().map(|image| return image.site));
   }
 
   #[test]

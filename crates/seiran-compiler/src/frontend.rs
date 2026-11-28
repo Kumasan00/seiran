@@ -1854,7 +1854,7 @@ mod tests {
     let HirNodeKind::Figure(figure) = &hir.nodes[0].kind else {
       panic!("Figure ノードのはず: {:?}", hir.nodes[0].kind);
     };
-    assert_eq!(figure.image_path, ProjectPath::new("/project/fig/a.png"));
+    assert_eq!(figure.images().next().expect("画像が 1 枚あるはず").path, ProjectPath::new("/project/fig/a.png"));
   }
 
   #[test]
@@ -1867,7 +1867,7 @@ mod tests {
     let HirNodeKind::Figure(figure) = &hir.nodes[0].kind else {
       panic!("Figure ノードのはず");
     };
-    assert_eq!(figure.image_path, ProjectPath::new("/elsewhere/a.png"));
+    assert_eq!(figure.images().next().expect("画像が 1 枚あるはず").path, ProjectPath::new("/elsewhere/a.png"));
   }
 
   #[test]

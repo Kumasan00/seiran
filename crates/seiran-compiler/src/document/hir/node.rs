@@ -1,5 +1,7 @@
 //! HIR のブロックノード [`HirNode`] と付随構造。
 
+use std::iter;
+
 use crate::{
   document::{
     CaptionPosition, ColumnAlign, ColumnWidth, HeadingLevel, ImageFormat, MathBlockKind, QuoteKind, RowSeparator,
@@ -113,10 +115,42 @@ pub(crate) struct HirMathBlock {
 /// 図環境（`\begin{figure}...\end{figure}`）の内容
 #[derive(Debug, PartialEq)]
 pub(crate) struct HirFigure {
+  /// 図の本体
+  pub(crate) body: FigureBody,
+  /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
+  pub(crate) caption: Option<Vec<HirInline>>,
+  /// キャプションを図本体の上下どちらに配置するか
+  pub(crate) caption_position: CaptionPosition,
+  /// `\ref{fig:foo}` 解決用のラベル名
+  pub(crate) label: Option<String>,
+}
+
+impl HirFigure {
+  /// 図に描く画像（ソースの順）
+  pub(crate) fn images(&self) -> impl Iterator<Item = &HirImage> {
+    return match &self.body {
+      FigureBody::Image(image) => iter::once(image),
+    };
+  }
+
+  /// 図の中のキャプション（本体側を先に、図全体の `\caption` を最後に）
+  pub(crate) fn captions(&self) -> impl Iterator<Item = &[HirInline]> { return self.caption.as_deref().into_iter(); }
+}
+
+/// 図の本体
+#[derive(Debug, PartialEq)]
+pub(crate) enum FigureBody {
+  /// `\image` 1 個
+  Image(HirImage),
+}
+
+/// `\image` 1 個の内容
+#[derive(Debug, PartialEq)]
+pub(crate) struct HirImage {
   /// `\image` コマンドの ID（位置はコマンド全体）
-  pub(crate) image_site: NodeId,
+  pub(crate) site: NodeId,
   /// 画像ファイルへのパス（`\image{...}` の必須引数）
-  pub(crate) image_path: ProjectPath,
+  pub(crate) path: ProjectPath,
   /// パスの拡張子が宣言する画像形式（形式に効かないオプションは評価時に拒否済み）
   pub(crate) format: ImageFormat,
   /// 画像の幅（`None` は本文幅と縦横比から決まる）
@@ -129,12 +163,6 @@ pub(crate) struct HirFigure {
   pub(crate) downsample: Option<bool>,
   /// `\image[page=N]` で選んだ PDF のページ（ソースに書かれた 1 始まりの値。省略は `None`）
   pub(crate) page: Option<u32>,
-  /// キャプションのインライン要素（`\caption{...}` の中身）。未指定なら `None`
-  pub(crate) caption: Option<Vec<HirInline>>,
-  /// キャプションを図本体の上下どちらに配置するか
-  pub(crate) caption_position: CaptionPosition,
-  /// `\ref{fig:foo}` 解決用のラベル名
-  pub(crate) label: Option<String>,
 }
 
 /// 表環境（`\begin{table}...\end{table}`）の内容

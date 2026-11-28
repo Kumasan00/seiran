@@ -121,7 +121,7 @@ impl Checker<'_> {
         }
       },
       HirNodeKind::Figure(figure) => {
-        if let Some(caption) = &figure.caption {
+        for caption in figure.captions() {
           self.inlines(caption);
         }
       },

@@ -3,7 +3,7 @@
 //! `\image` と `\caption` を [`HirNodeKind::Figure`] に変換する。
 
 use crate::{
-  document::{CaptionPosition, HirFigure, HirInline, HirNode, HirNodeKind, ImageFormat},
+  document::{CaptionPosition, FigureBody, HirFigure, HirImage, HirInline, HirNode, HirNodeKind, ImageFormat},
   frontend::{
     evaluator::{
       EvalContext, EvalError,
@@ -73,14 +73,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
 
   let id = ctx.alloc(view.span());
   let source = view.source();
-  let mut image_path: Option<String> = None;
-  let mut image_format: Option<ImageFormat> = None;
-  let mut image_site = None;
-  let mut width: Option<Length> = None;
-  let mut height: Option<Length> = None;
-  let mut dpi: Option<u32> = None;
-  let mut downsample: Option<bool> = None;
-  let mut page: Option<u32> = None;
+  let mut image: Option<HirImage> = None;
   let mut caption: Option<Vec<HirInline>> = None;
   // `\caption` が `\image` よりソース上で先に現れた場合のみ Top、それ以外は Bottom（既定）
   let mut caption_position = CaptionPosition::Bottom;
@@ -91,22 +84,14 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
     {
       match command {
         FigureCommand::Image => {
-          if image_path.is_some() {
+          if image.is_some() {
             return Err(EvalError::DuplicateCommandInEnvironment {
               env: "figure".to_string(),
               name: "image".to_string(),
               span: cmd_view.span().into(),
             });
           }
-          let extracted = extract_image(&cmd_view, arg, &opts)?;
-          image_site = Some(ctx.alloc(cmd_view.span()));
-          image_path = Some(extracted.path);
-          image_format = Some(extracted.format);
-          width = extracted.width;
-          height = extracted.height;
-          dpi = extracted.dpi;
-          downsample = extracted.downsample;
-          page = extracted.page;
+          image = Some(extract_image(&cmd_view, arg, &opts, ctx)?);
         },
         FigureCommand::Caption => {
           if caption.is_some() {
@@ -116,7 +101,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
               span: cmd_view.span().into(),
             });
           }
-          if image_path.is_none() {
+          if image.is_none() {
             caption_position = CaptionPosition::Top;
           }
           caption = Some(caption::evaluate_caption(&cmd_view, arg, ctx)?);
@@ -125,7 +110,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
     }
   }
 
-  let (Some(image_path), Some(image_format), Some(image_site)) = (image_path, image_format, image_site) else {
+  let Some(image) = image else {
     return Err(EvalError::MissingEnvironmentArgument {
       name: "figure".to_string(),
       expected: "\\image コマンド".to_string(),
@@ -136,14 +121,7 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
   return Ok(HirNode::new(
     id,
     HirNodeKind::Figure(HirFigure {
-      image_site,
-      image_path: ctx.resolve_path(&image_path),
-      format: image_format,
-      width,
-      height,
-      dpi,
-      downsample,
-      page,
+      body: FigureBody::Image(image),
       caption,
       caption_position,
       label,
@@ -151,26 +129,13 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
   ));
 }
 
-/// `\image` から抽出される情報の集約構造体
-struct ImageArgs {
-  /// 画像ファイルへのパス
-  path: String,
-  /// 拡張子が宣言する画像形式
-  format: ImageFormat,
-  /// 描画幅
-  width: Option<Length>,
-  /// 描画高さ
-  height: Option<Length>,
-  /// per-image DPI 上限
-  dpi: Option<u32>,
-  /// per-image ダウンサンプリング ON/OFF
-  downsample: Option<bool>,
-  /// PDF のページ（1 始まり）
-  page: Option<u32>,
-}
-
 /// `\image[width=Xmm, height=Ymm, dpi=N, downsample=true|false, page=N]{path}` から各引数を抽出する
-fn extract_image(view: &CommandView<'_>, path_arg: &CstNode<'_>, opts: &OptArgs) -> Result<ImageArgs, EvalError> {
+fn extract_image(
+  view: &CommandView<'_>,
+  path_arg: &CstNode<'_>,
+  opts: &OptArgs,
+  ctx: &EvalContext<'_>,
+) -> Result<HirImage, EvalError> {
   let width = opts.get(WIDTH);
   let height = opts.get(HEIGHT);
   let dpi = opts.get(DPI);
@@ -214,8 +179,9 @@ fn extract_image(view: &CommandView<'_>, path_arg: &CstNode<'_>, opts: &OptArgs)
     }
   }
 
-  return Ok(ImageArgs {
-    path,
+  return Ok(HirImage {
+    site: ctx.alloc(view.span()),
+    path: ctx.resolve_path(&path),
     format,
     width,
     height,
@@ -240,6 +206,11 @@ mod tests {
     source::{SourceId, Span},
   };
 
+  /// 単独の画像を 1 枚持つ図の画像
+  fn only_image(figure: &HirFigure) -> &HirImage {
+    return figure.images().next().expect("画像が 1 枚あるはず");
+  }
+
   #[test]
   fn image_site_spans_the_image_command() {
     let source = r"\begin{figure}\image[width=80mm]{a.png}\end{figure}";
@@ -252,7 +223,7 @@ mod tests {
     let command = r"\image[width=80mm]{a.png}";
     let start = u32::try_from(source.find(command).unwrap()).unwrap();
     let end = start + u32::try_from(command.len()).unwrap();
-    assert_eq!(hir.spans.span_of(figure.image_site), Span::new(start, end));
+    assert_eq!(hir.spans.span_of(only_image(figure).site), Span::new(start, end));
   }
 
   #[test]
@@ -267,11 +238,11 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(figure.image_path.to_string(), "./images/seiran.jpg");
-    assert!((figure.width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
-    assert!((figure.height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
-    assert!(figure.dpi.is_none());
-    assert!(figure.downsample.is_none());
+    assert_eq!(only_image(figure).path.to_string(), "./images/seiran.jpg");
+    assert!((only_image(figure).width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!((only_image(figure).height.expect("height 指定あり").to_mm() - 60.0).abs() < 1e-4);
+    assert!(only_image(figure).dpi.is_none());
+    assert!(only_image(figure).downsample.is_none());
     let caption = figure.caption.as_ref().expect("caption あり");
     assert_eq!(caption.len(), 1);
     assert!(matches!(&caption[0].kind, HirInlineKind::Text(t) if t == "タイトル"));
@@ -331,9 +302,9 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(figure.image_path.to_string(), "a.png");
-    assert!(figure.width.is_none());
-    assert!(figure.height.is_none());
+    assert_eq!(only_image(figure).path.to_string(), "a.png");
+    assert!(only_image(figure).width.is_none());
+    assert!(only_image(figure).height.is_none());
   }
 
   #[test]
@@ -347,8 +318,8 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert!((figure.width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
-    assert!(figure.height.is_none());
+    assert!((only_image(figure).width.expect("width 指定あり").to_mm() - 80.0).abs() < 1e-4);
+    assert!(only_image(figure).height.is_none());
   }
 
   #[test]
@@ -373,8 +344,8 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(figure.dpi, Some(600));
-    assert_eq!(figure.downsample, Some(false));
+    assert_eq!(only_image(figure).dpi, Some(600));
+    assert_eq!(only_image(figure).downsample, Some(false));
   }
 
   #[test]
@@ -388,7 +359,7 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(figure.format, ImageFormat::Svg);
+    assert_eq!(only_image(figure).format, ImageFormat::Svg);
   }
 
   #[test]
@@ -438,8 +409,8 @@ mod tests {
     let HirNodeKind::Figure(figure) = &result[0].kind else {
       panic!("Figure が期待されます: {:?}", result[0]);
     };
-    assert_eq!(figure.format, ImageFormat::Pdf);
-    assert_eq!(figure.page, Some(2));
+    assert_eq!(only_image(figure).format, ImageFormat::Pdf);
+    assert_eq!(only_image(figure).page, Some(2));
   }
 
   #[test]
