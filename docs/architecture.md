@@ -113,7 +113,7 @@ module・出口・構築子は明示したものだけが対象である。
 - seam: compiler は `std::fs` を直接呼ばず、設定・スタイル・文献・CSL・ソース・フォント・画像のすべてを
   この seam 経由で取得する。実装は `FilesystemProjectSource`（実ビルド）と `MemoryProjectSource`
   （決定的テスト）の 2 つで、実装が 2 つあることが seam の存在理由（実装が 1 つしかない箇所には trait を
-  作らない）
+  作らない）。SVG の中の外部参照もこの seam を迂回させない — `publication::SvgParser` が読まずに拒否する
 - `config` は `pub(crate) mod` で公開し、入口が `project::config::load` と読めることで `style::load` と
   取り違えようがなくする
 - `SourceSet` は `SourceId` の唯一の発行元で、`SourceId::index()` は `config.sources` の宣言順に一致する。
@@ -457,7 +457,8 @@ CST を走査して HIR へ評価変換する。長さの字面は `Length` の 
   krilla を compiler へ持ち込まないための線引き）。組版時の自然寸法と描画時の解釈が一致することは、
   workspace で `image` / `usvg` の版を 1 つに pin することで担保する（PDF の `hayro-syntax` は、krilla の PDF
   埋め込みが使う hayro-write と版が揃っておらず、この担保の外にある）。SVG はパース設定（フォントと文字の照合規則）も一致させる必要があり、こちらは
-  `publication::SvgParser` 1 つを両者が使うことで担保する。自然寸法は読込時に「有限かつ正」を
+  `publication::SvgParser` 1 つを両者が使うことで担保する。SVG 内の data URI でない画像の参照（外部参照）は
+  解決せず診断で拒否するので、図の資源は `\image` のファイル 1 つで閉じ、依存一覧にもそれだけが載る。自然寸法は読込時に「有限かつ正」を
   検証した型で持つ。表示寸法の確定（省略された辺の推論）は boxing の中で行い、失敗するのは推論した辺が
   長さの値域を超えるとき（`LengthOverflow`）だけ
 - `typeset` は `publication`（backend 非依存の確定表現）に**依存してよい**（旧原則「`typeset` は描画表現を
@@ -879,7 +880,9 @@ golden 資産は `Publication` 側のダンプが生成し、`dump_pages` の消
 - **SVG のパース設定 `SvgParser`**（子 module `svg`）は、facade に載る型のうち唯一 usvg の型（`usvg::Tree` /
   `usvg::Error`）を外へ出す。`PublicationResources` の外にある純データではなく、`svg_parser()` で全実体の
   フォントから都度作る。SVG 内の文字の照合規則（`font-family` の照合・generic の枠への読み替え・同じ系統の枠での
-  代替）の保証点はここ 1 つで、compiler の検査（`typeset::image::svg`）と描画側の読み直しが同じ値を使う
+  代替）の保証点はここ 1 つで、compiler の検査（`typeset::image::svg`）と描画側の読み直しが同じ値を使う。
+  外部参照を読まないこともここが保証する（記録だけを残して compile が拒否し、描画側の読み直しもファイル
+  システムに触れない）
   — 規則を 2 crate に書くと、組版時と描画時の解釈が食い違いうる。fontdb には全実体のフェースだけを載せ、OS の
   フォントは読まない
 

@@ -1,4 +1,4 @@
-//! SVG の検査 — 設定済みフォントでパースし、自然寸法と文字が組めることを確かめる
+//! SVG の検査 — 設定済みフォントでパースし、自然寸法と、外部参照が無く文字が組めることを確かめる
 //!
 //! パースは [`SvgParser`]（描画側と同じ設定）で行う。文字の問題は 2 種類で、どちらも PDF から文字が消える
 //! ので成功扱いにしない: `font-family` がどの設定済みフォントにも一致しない（usvg はその文字を組まずに捨てるので、
@@ -18,17 +18,28 @@ use crate::{
 ///
 /// # Errors
 ///
-/// パースに失敗した場合は [`TypesetError::ParseSvg`] 1 件。文字に問題があれば、未解決の `font-family`（リストごとに
-/// 1 件、出現順）→ 組めない字（SVG 1 枚につき 1 件）の順に返す。文字に問題が無く寸法が有限かつ正でなければ
-/// [`TypesetError::InvalidImageNaturalSize`] 1 件。
+/// パースに失敗した場合は [`TypesetError::ParseSvg`] 1 件。外部参照か文字に問題があれば、外部参照（参照の字面ごとに
+/// 1 件、出現順）→ 未解決の `font-family`（リストごとに 1 件、出現順）→ 組めない字（SVG 1 枚につき 1 件）の順に返す。
+/// どちらにも問題が無く寸法が有限かつ正でなければ [`TypesetError::InvalidImageNaturalSize`] 1 件。
 pub(super) fn inspect(path: &str, bytes: &[u8], parser: &SvgParser) -> Result<NaturalSize, Vec<TypesetError>> {
-  let (tree, unresolved) = parser.parse_reporting(bytes).map_err(|source| {
+  let parsed = parser.parse_reporting(bytes).map_err(|source| {
     return vec![TypesetError::ParseSvg {
       path: path.to_string(),
       source,
     }];
   })?;
-  let mut errors: Vec<TypesetError> = Vec::new();
+  let mut errors: Vec<TypesetError> = parsed
+    .external_references
+    .into_iter()
+    .map(|href| {
+      return TypesetError::SvgExternalReference {
+        path: path.to_string(),
+        href,
+      };
+    })
+    .collect();
+  let tree = parsed.tree;
+  let unresolved = parsed.unresolved_families;
   if !unresolved.is_empty() {
     let available = parser.family_names().join("、");
     errors.extend(unresolved.into_iter().map(|families| {
@@ -87,7 +98,10 @@ fn collect_missing(group: &Group, out: &mut Vec<char>) {
 #[cfg(test)]
 mod tests {
   use super::inspect;
-  use crate::{publication::test_support, typeset::image::natural_size::NaturalSize};
+  use crate::{
+    publication::test_support,
+    typeset::{error::TypesetError, image::natural_size::NaturalSize},
+  };
 
   #[test]
   fn inspect_returns_svg_dimensions_from_bytes() {
@@ -98,5 +112,29 @@ mod tests {
     let size = inspect("icon.svg", svg, &parser).expect("有効な SVG は検査を通るはず");
 
     assert_eq!(Some(size), NaturalSize::new(80.0, 60.0));
+  }
+
+  #[test]
+  fn inspect_rejects_every_non_data_reference() {
+    let parser = test_support::resources(Vec::new()).svg_parser();
+    let hrefs = ["nested-image.png", "/abs/x.png", "#frag", "https://x/y.png"];
+    let images: String = hrefs
+      .iter()
+      .map(|href| return format!(r#"<image href="{href}" width="10" height="10"/>"#))
+      .collect();
+    let svg = format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="40" height="10">{images}</svg>"#);
+
+    let errors = inspect("a.svg", svg.as_bytes(), &parser).expect_err("外部参照を持つ SVG は拒否するはず");
+
+    let rejected: Vec<(&str, &str)> = errors
+      .iter()
+      .map(|error| {
+        let TypesetError::SvgExternalReference { path, href } = error else {
+          panic!("外部参照の診断だけを期待: {error:?}");
+        };
+        return (path.as_str(), href.as_str());
+      })
+      .collect();
+    assert_eq!(rejected, hrefs.map(|href| return ("a.svg", href)));
   }
 }

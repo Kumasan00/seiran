@@ -130,7 +130,7 @@ seiran-compiler    言語処理・意味解決・組版のライブラリ（lib 
                    （Publication / DependencyManifest / Warnings / pdf_path）
                    + 失敗型 CompileFailure + 入力 seam（ProjectSource とその 2 実装 / ProjectPath /
                    ProjectSourceError）+ leaf 値型（Length / Color とその FromStr エラー型 / FontType / FontFace / VariationAxis / ImageFormat と Publication 系）
-                   + SVG のパース設定 SvgParser（usvg の型を返す唯一の入口。SVG 内の文字の照合規則の保証点）
+                   + SVG のパース設定 SvgParser（usvg の型を返す唯一の入口。SVG 内の文字の照合規則と、外部ファイルを読まないことの保証点）
   ↑ seiran-pdf     描画。compiler facade の Publication を消費して PDF バイト列を作る backend
                    （krilla / krilla-svg / 画像デコードはここに閉じる）
   ↑ seiran         CLI（package 名・binary 名とも seiran。seiran-compiler と seiran-pdf の両方に依存）。`build` は compile → render → atomic write → 表示の 4 手順のみ（ほかにフォント調査の 3 サブコマンド。`read-fonts` を直接使い compiler に依存しない）

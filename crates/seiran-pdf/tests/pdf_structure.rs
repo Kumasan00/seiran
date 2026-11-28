@@ -543,3 +543,17 @@ fn embedded_pdf_page_shared_by_figures_is_one_form_xobject() {
   assert_eq!(draw_count, 2, "2 つの図はそれぞれ Form XObject を描くはず");
   assert_eq!(form_xobject_count(&document), 1, "同じ PDF の同じページは Form XObject 1 個にまとまるはず");
 }
+
+#[test]
+fn svg_embedded_image_is_drawn_as_an_image() {
+  // data URI で埋め込んだ PNG は外部参照ではないので、SVG の中の画像として描かれる
+  let svg = workspace_root().join("tests/image/svg_embedded_image.svg");
+  let body = format!(
+    "\\begin{{figure}}\n\\image[width=50mm]{{{}}}\n\\end{{figure}}\n",
+    svg.to_str().expect("fixture のパスは UTF-8 のはず")
+  );
+
+  let bytes = build_pdf_bytes_from_body(&body, "left-to-right");
+
+  assert_eq!(compute_pdf_structure_facts(&bytes).image_xobject_count, 1, "埋め込んだ PNG が画像として載るはず");
+}

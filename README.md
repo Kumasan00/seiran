@@ -95,7 +95,8 @@ SVG（`.svg`）・PDF（`.pdf`）に対応します。PDF は 1 ページをラ�
   - `font-family` は左から順に照合し、最初に一致したものを使います。照合先はフォントファイルのファミリ名（ASCII の大文字小文字は区別しない）か、`serif` / `sans-serif` / `monospace`（それぞれ `serif` / `sans_serif` / `monospace` の先頭候補）です。省略時は `serif` と同じです
   - 太さ・斜体は SVG の `font-weight` / `font-style` で同じファミリの中から選びます。可変フォントでは 400 以外の `font-weight` が `wght` 軸に効きます。標準（400・省略時）はフォントの既定の太さで組むので、既定が 400 でない可変フォント（Noto Serif JP は 200 など）では `font-weight="400"` ではなく `font-variation-settings="'wght' 400"` を書いてください。config.toml の `variation_axes` は SVG の文字には効きません
   - 選んだフォントに無い字は、同じ系統の枠（serif なら `serif` 4 種と `japanese_serif` 2 種。sans-serif・monospace も同様）の候補から宣言順に探します。見つかった候補が 1 つの `<text>` / `<tspan>` の字をすべて持つときは、その全体を候補のフォントで組みます（和欧混在の欧文も和文フォントになります）
-  - どれにも一致しない `font-family` と、どの候補でも組めない字はエラーになります。SVG の中から外部の画像を参照する機能は対象外です
+  - どれにも一致しない `font-family` と、どの候補でも組めない字はエラーになります
+- SVG 内の画像（`<image>`）は data URI で埋め込んだものだけを描きます。外部のファイルや URL を参照する SVG は、相対パス・絶対パスを問わずエラーになるので、書き出し時に画像を埋め込んでください（Inkscape・Illustrator では画像の「埋め込み」を選びます）
 
 ### ログと診断
 

@@ -139,6 +139,21 @@ pub(crate) enum TypesetError {
     source: usvg::Error,
   },
 
+  /// SVG が data URI でない画像（外部のファイル・URL・`#id` など）を参照しています。
+  #[error("SVG 内の画像は data URI で埋め込む必要があります: {path}（参照: {href}）")]
+  #[diagnostic(
+    code(typeset::image::svg_external_reference),
+    help(
+      "画像を data URI で埋め込んで書き出し直してください。Inkscape・Illustrator では書き出し時に画像の「埋め込み」を選びます。参照が SVG ファイルの中に見当たらないときは、data URI で埋め込んだ SVG の中にあります。"
+    )
+  )]
+  SvgExternalReference {
+    /// 画像ファイルのパス。
+    path: String,
+    /// 書かれた参照の字面。
+    href: String,
+  },
+
   /// SVG の `font-family` が設定済みフォントのどれにも一致しませんでした。
   #[error("SVG の文字に使うフォントが見つかりません: {path}（font-family: {families}）")]
   #[diagnostic(
@@ -301,6 +316,7 @@ impl TypesetError {
       | TypesetError::ReadImage { .. }
       | TypesetError::DecodeImage { .. }
       | TypesetError::ParseSvg { .. }
+      | TypesetError::SvgExternalReference { .. }
       | TypesetError::SvgFontNotFound { .. }
       | TypesetError::SvgMissingGlyph { .. }
       | TypesetError::ParsePdf { .. }

@@ -1,0 +1,27 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+typeset::image::svg_external_reference
+
+  × SVG 内の画像は data URI で埋め込む必要があります: ./tests/image/svg_external_reference.svg（参
+  │ 照: nested-image.png）
+  help: 画像を data URI で埋め込んで書き出し直してください。Inkscape・Illustrator では書き出し時に
+        画像の「埋め込み」を選びます。参照が SVG ファイルの中に見当たらないときは、data URI で埋め
+        込んだ SVG の中にあります。
+
+Error: typeset::image::svg_external_reference
+
+  × SVG 内の画像は data URI で埋め込む必要があります: ./tests/image/svg_external_reference.svg（参
+  │ 照: /project/fig/absolute.png）
+  help: 画像を data URI で埋め込んで書き出し直してください。Inkscape・Illustrator では書き出し時に
+        画像の「埋め込み」を選びます。参照が SVG ファイルの中に見当たらないときは、data URI で埋め
+        込んだ SVG の中にあります。
+
+Error: typeset::image::svg_external_reference
+
+  × SVG 内の画像は data URI で埋め込む必要があります: ./tests/image/svg_external_reference.svg（参
+  │ 照: c.png）
+  help: 画像を data URI で埋め込んで書き出し直してください。Inkscape・Illustrator では書き出し時に
+        画像の「埋め込み」を選びます。参照が SVG ファイルの中に見当たらないときは、data URI で埋め
+        込んだ SVG の中にあります。
