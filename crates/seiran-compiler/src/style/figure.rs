@@ -25,6 +25,9 @@ pub(crate) struct FigureStyle {
   /// 図本体とキャプションの間隔
   #[garde(custom(non_negative))]
   pub inner_margin: Length,
+  /// 副図（`subfigure`）の並びと副キャプション
+  #[garde(dive)]
+  pub subfigure: SubfigureStyle,
 }
 
 impl Default for FigureStyle {
@@ -37,6 +40,40 @@ impl Default for FigureStyle {
       top_margin: Length::pt(12.0),
       bottom_margin: Length::pt(12.0),
       inner_margin: Length::pt(6.0),
+      subfigure: SubfigureStyle::default(),
+    };
+  }
+}
+
+/// 副図（`subfigure`）の並びと副キャプションのスタイル設定（`[figure.subfigure]`）
+#[derive(Debug, Clone, Deserialize, Validate)]
+#[garde(allow_unvalidated)]
+#[serde(deny_unknown_fields, default)]
+pub(crate) struct SubfigureStyle {
+  /// 副キャプション。`{number}` には副図カウンタ自身の値（`[counters.subfigure].number_style` で表記）が入る
+  #[garde(dive)]
+  pub caption: CaptionStyle,
+  /// 同じ行の副図どうしの横の間隔
+  #[garde(custom(non_negative))]
+  pub column_gap: Length,
+  /// 副図の行どうしの縦の間隔
+  #[garde(custom(non_negative))]
+  pub row_gap: Length,
+  /// 副図の画像と副キャプションの間隔
+  #[garde(custom(non_negative))]
+  pub inner_margin: Length,
+}
+
+impl Default for SubfigureStyle {
+  fn default() -> Self {
+    return Self {
+      caption: CaptionStyle {
+        format: NumberTitleTemplate::parse("({number}) {title}"),
+        ..CaptionStyle::default()
+      },
+      column_gap: Length::pt(12.0),
+      row_gap: Length::pt(12.0),
+      inner_margin: Length::pt(6.0),
     };
   }
 }
@@ -47,6 +84,23 @@ mod tests {
 
   use super::FigureStyle;
   use crate::{length::Length, style::NumberTitleTemplate};
+
+  #[test]
+  fn subfigure_style_defaults() {
+    let style = FigureStyle::default();
+
+    assert_eq!(style.subfigure.caption.format.as_str(), "({number}) {title}");
+    assert_eq!(style.subfigure.column_gap, Length::pt(12.0));
+    assert_eq!(style.subfigure.row_gap, Length::pt(12.0));
+    assert_eq!(style.subfigure.inner_margin, Length::pt(6.0));
+  }
+
+  #[test]
+  fn subfigure_style_rejects_unknown_key_and_negative_gap() {
+    assert!(toml::from_str::<FigureStyle>("[subfigure]\nwidth = \"1pt\"\n").is_err());
+    let style: FigureStyle = toml::from_str("[subfigure]\ncolumn_gap = \"-1pt\"\n").unwrap();
+    assert!(style.validate().is_err());
+  }
 
   #[test]
   fn validate_rejects_empty_caption_format() {

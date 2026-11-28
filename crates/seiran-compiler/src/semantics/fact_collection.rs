@@ -1671,7 +1671,9 @@ mod numbering_tests {
         format!("\\begin{{equation}}[label=l{label}]\nx = 1\n\\end{{equation}}\n")
       },
       Target::Theorem => format!("\\begin{{theorem}}[label=l{label}]\n主張\n\\end{{theorem}}\n"),
-      Target::Counter(CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph) => {
+      Target::Counter(
+        CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph | CounterName::Subfigure,
+      ) => {
         unreachable!("item() は章・付録・節・小節・図・表・数式だけを生成する: {target:?}")
       },
     };
