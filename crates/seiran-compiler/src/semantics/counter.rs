@@ -27,7 +27,7 @@ const _: () = {
   }
 };
 
-/// 固定 10 種のカウンタそれぞれの値（未登場のカウンタは 0）
+/// 固定 11 種のカウンタそれぞれの値（未登場のカウンタは 0）
 ///
 /// 値は `[u32; SLOTS]` に [`CounterName`] の宣言順で並ぶので、全カウンタの値が揃っていることは型が保証する。
 #[derive(Debug, Clone, Copy, Default, PartialEq, Eq)]
@@ -50,7 +50,7 @@ impl IndexMut<CounterName> for CounterValues {
 /// 採番された 1 項目の値（構造のみ）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 pub(crate) enum CounterValue {
-  /// 固定 10 種のカウンタのいずれかで採番された項目（見出し・図・表・数式）
+  /// 固定 11 種のカウンタのいずれかで採番された項目（見出し・図・表・数式）
   Counter {
     /// 採番したカウンタ。自身の値は `counters[name]`
     name: CounterName,

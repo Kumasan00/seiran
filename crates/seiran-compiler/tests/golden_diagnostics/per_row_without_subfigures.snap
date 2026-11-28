@@ -1,0 +1,15 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::per_row_without_subfigures
+
+  × per_row は副図（subfigure）を並べる figure にだけ指定できます
+   ╭─[tests/text/diagnostics/per_row_without_subfigures.sei:2:1]
+ 1 │     // 副図の無い figure への per_row
+ 2 │ ╭─▶ \begin{figure}[per_row=2]
+ 3 │ │   \image{a.svg}
+ 4 │ ├─▶ \end{figure}
+   · ╰──── この figure に subfigure はありません
+   ╰────
+  help: per_row を外すか、画像を subfigure で包んでください

@@ -1,0 +1,16 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::unexpected_content_in_environment
+
+  × 環境 subfigure 内に直接コンテンツを書くことはできません
+   ╭─[tests/text/diagnostics/nested_subfigure.sei:5:1]
+ 4 │     \image{a.svg}
+ 5 │ ╭─▶ \begin{subfigure}
+ 6 │ │   \image{b.svg}
+ 7 │ ├─▶ \end{subfigure}
+   · ╰──── このコンテンツはここでは使用できません
+ 8 │     \end{subfigure}
+   ╰────
+  help: 環境 subfigure の本体に書けるのは \image と \caption のみです

@@ -35,14 +35,16 @@ fn walk_nodes(nodes: &[HirNode], source_map: &SourceMap, requests: &mut BTreeMap
   for node in nodes {
     match &node.kind {
       HirNodeKind::Figure(figure) => {
-        let request = requests.entry(figure.image_path.clone()).or_insert_with(|| {
-          return ImageRequest {
-            path: figure.image_path.clone(),
-            format: figure.format,
-            pages: BTreeMap::new(),
-          };
-        });
-        request.pages.entry(figure.page).or_default().push(source_map.location(figure.image_site));
+        for image in figure.images() {
+          let request = requests.entry(image.path.clone()).or_insert_with(|| {
+            return ImageRequest {
+              path: image.path.clone(),
+              format: image.format,
+              pages: BTreeMap::new(),
+            };
+          });
+          request.pages.entry(image.page).or_default().push(source_map.location(image.site));
+        }
       },
       HirNodeKind::Theorem(theorem) => {
         walk_nodes(&theorem.body, source_map, requests);

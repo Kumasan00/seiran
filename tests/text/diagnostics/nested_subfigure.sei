@@ -1,0 +1,9 @@
+// subfigure の入れ子
+\begin{figure}
+\begin{subfigure}
+\image{a.svg}
+\begin{subfigure}
+\image{b.svg}
+\end{subfigure}
+\end{subfigure}
+\end{figure}

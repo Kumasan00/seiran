@@ -13,7 +13,7 @@ use crate::{
   style::{CounterTemplate, RefNumberTemplate, RefTemplate, number_style::NumberStyle},
 };
 
-/// 固定 10 種のカウンタ定義テーブル（`[counters.<name>]`）。
+/// 固定 11 種のカウンタ定義テーブル（`[counters.<name>]`）。
 ///
 /// TOML からは [`CounterStylesTable`]（各エントリが差分指定 [`CounterStyleOverride`]）として読み、
 /// [`CounterStyles::default`] のカウンタ別既定へ重ねて解決済みの値を作る。
@@ -47,6 +47,9 @@ pub(crate) struct CounterStyles {
   /// 図
   #[garde(dive)]
   pub figure: CounterStyle,
+  /// 副図（`figure` の中の `subfigure`）
+  #[garde(dive)]
+  pub subfigure: CounterStyle,
   /// 数式
   #[garde(dive)]
   pub equation: CounterStyle,
@@ -161,6 +164,15 @@ impl Default for CounterStyles {
         NumberStyle::Arabic,
         "{display_name} {number}",
         "{number}",
+        &[CounterName::Subfigure],
+      ),
+      subfigure: CounterStyle::new(
+        "Figure",
+        "Figures",
+        "{appendix}.{chapter}.{figure}{n}",
+        NumberStyle::AlphaLower,
+        "{display_name} {number}",
+        "{number}",
         &[],
       ),
       equation: CounterStyle::new(
@@ -190,6 +202,7 @@ impl Index<CounterName> for CounterStyles {
       CounterName::Subparagraph => &self.subparagraph,
       CounterName::Table => &self.table,
       CounterName::Figure => &self.figure,
+      CounterName::Subfigure => &self.subfigure,
       CounterName::Equation => &self.equation,
     };
   }
@@ -280,6 +293,8 @@ struct CounterStylesTable {
   table: CounterStyleOverride,
   /// `figure` カウンタの上書き
   figure: CounterStyleOverride,
+  /// `subfigure` カウンタの上書き
+  subfigure: CounterStyleOverride,
   /// `equation` カウンタの上書き
   equation: CounterStyleOverride,
 }
@@ -297,6 +312,7 @@ impl From<CounterStylesTable> for CounterStyles {
       subparagraph: table.subparagraph.apply(defaults.subparagraph),
       table: table.table.apply(defaults.table),
       figure: table.figure.apply(defaults.figure),
+      subfigure: table.subfigure.apply(defaults.subfigure),
       equation: table.equation.apply(defaults.equation),
     };
   }
@@ -352,7 +368,7 @@ impl CounterStyleOverride {
   }
 }
 
-/// カウンタ名（固定 10 種）。
+/// カウンタ名（固定 11 種）。
 #[derive(Debug, Clone, Copy, PartialEq, Eq, Hash, Deserialize, IntoStaticStr, VariantArray)]
 #[serde(rename_all = "snake_case")]
 #[strum(serialize_all = "snake_case")]
@@ -375,12 +391,14 @@ pub(crate) enum CounterName {
   Table,
   /// 図
   Figure,
+  /// 副図
+  Subfigure,
   /// 数式
   Equation,
 }
 
 impl CounterName {
-  /// 見出しレベルの採番に使う見出しカウンタを返す（全見出しレベルが固定 10 種のうち同名の 1 つに対応する）
+  /// 見出しレベルの採番に使う見出しカウンタを返す（全見出しレベルが固定 11 種のうち同名の 1 つに対応する）
   #[must_use]
   pub(crate) fn for_heading(level: HeadingLevel) -> Self {
     return match level {
@@ -424,6 +442,26 @@ mod tests {
 
   use super::{CounterName, CounterStyle, CounterStyles, NumberStyle};
   use crate::document::HeadingLevel;
+
+  #[test]
+  fn subfigure_counter_defaults_to_alpha_lower_with_figure_prefix() {
+    let styles = CounterStyles::default();
+
+    let subfigure = &styles[CounterName::Subfigure];
+    assert_eq!(subfigure.number_format.as_str(), "{appendix}.{chapter}.{figure}{n}");
+    assert_eq!(subfigure.number_style, NumberStyle::AlphaLower);
+    assert_eq!(subfigure.display_name, "Figure");
+    assert_eq!(subfigure.display_name_plural, "Figures");
+    assert_eq!(styles[CounterName::Figure].resets, vec![CounterName::Subfigure]);
+  }
+
+  #[test]
+  fn subfigure_counter_accepts_partial_override() {
+    let styles: CounterStyles = toml::from_str("[subfigure]\nnumber_style = \"roman_lower\"\n").unwrap();
+
+    assert_eq!(styles[CounterName::Subfigure].number_style, NumberStyle::RomanLower);
+    assert_eq!(styles[CounterName::Subfigure].number_format.as_str(), "{appendix}.{chapter}.{figure}{n}");
+  }
 
   #[test]
   fn validate_rejects_empty_display_name() {
@@ -554,7 +592,7 @@ display_name = \"図\"
     assert_eq!(counters.figure.number_format.as_str(), "{appendix}.{chapter}.{n}");
     assert_eq!(counters.figure.number_style, NumberStyle::Arabic);
     assert_eq!(counters.figure.ref_format.as_str(), "{display_name} {number}");
-    assert_eq!(counters.figure.resets, []);
+    assert_eq!(counters.figure.resets, [CounterName::Subfigure]);
     assert_eq!(counters.table.display_name, "Table");
     assert_eq!(counters.chapter.resets.len(), 7);
   }

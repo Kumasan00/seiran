@@ -5,7 +5,7 @@
 
 use crate::{
   document::{
-    HeadingLevel, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind,
+    FigureBody, HeadingLevel, HirDocument, HirInline, HirInlineKind, HirListItem, HirMathRow, HirNode, HirNodeKind,
     LinkDestination, NodeId, SourceMap,
   },
   semantics::{
@@ -126,7 +126,13 @@ impl FactCompletenessChecker<'_> {
       HirNodeKind::Figure(figure) => {
         self.require_counter(node.id, "Figure");
         self.require_declared_label(node.id, figure.label.as_deref(), "Figure");
-        if let Some(inlines) = &figure.caption {
+        if let FigureBody::Subfigures { items, .. } = &figure.body {
+          for subfigure in items {
+            self.require_counter(subfigure.id, "Subfigure");
+            self.require_declared_label(subfigure.id, subfigure.label.as_deref(), "Subfigure");
+          }
+        }
+        for inlines in figure.captions() {
           self.inlines(inlines);
         }
       },
@@ -484,6 +490,15 @@ impl FactCollector<'_, '_> {
       },
       HirNodeKind::Figure(figure) => {
         self.number_and_declare(CounterName::Figure, node.id, figure.label.as_deref(), node.id);
+        // 本体（副図の採番と副キャプション）を図全体の `\caption` より先に走査する（lowering が本体を先に組む順序）
+        if let FigureBody::Subfigures { items, .. } = &figure.body {
+          for subfigure in items {
+            self.number_and_declare(CounterName::Subfigure, subfigure.id, subfigure.label.as_deref(), subfigure.id);
+            if let Some(inlines) = &subfigure.caption {
+              self.inlines(inlines);
+            }
+          }
+        }
         if let Some(inlines) = &figure.caption {
           self.inlines(inlines);
         }
@@ -1671,7 +1686,9 @@ mod numbering_tests {
         format!("\\begin{{equation}}[label=l{label}]\nx = 1\n\\end{{equation}}\n")
       },
       Target::Theorem => format!("\\begin{{theorem}}[label=l{label}]\n主張\n\\end{{theorem}}\n"),
-      Target::Counter(CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph) => {
+      Target::Counter(
+        CounterName::Part | CounterName::Paragraph | CounterName::Subparagraph | CounterName::Subfigure,
+      ) => {
         unreachable!("item() は章・付録・節・小節・図・表・数式だけを生成する: {target:?}")
       },
     };

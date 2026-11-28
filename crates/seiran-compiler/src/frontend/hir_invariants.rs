@@ -5,7 +5,9 @@
 use std::{collections::HashSet, path::Path};
 
 use crate::{
-  document::{HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId},
+  document::{
+    FigureBody, HirDocument, HirInline, HirInlineKind, HirMath, HirMathKind, HirNode, HirNodeKind, HirSource, NodeId,
+  },
   frontend::{
     self, ParseError,
     evaluator::{
@@ -62,10 +64,29 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
         }
       },
       HirNodeKind::Figure(figure) => {
-        out.push(Visited {
-          id: figure.image_site,
-          parent: here,
-        });
+        match &figure.body {
+          FigureBody::Image(image) => {
+            out.push(Visited {
+              id: image.site,
+              parent: here,
+            });
+          },
+          FigureBody::Subfigures { items, .. } => {
+            for subfigure in items {
+              out.push(Visited {
+                id: subfigure.id,
+                parent: here,
+              });
+              out.push(Visited {
+                id: subfigure.image.site,
+                parent: Some(subfigure.id),
+              });
+              if let Some(caption) = &subfigure.caption {
+                walk_inlines(caption, Some(subfigure.id), InlinePolicy::Allow, out);
+              }
+            }
+          },
+        }
         if let Some(caption) = &figure.caption {
           walk_inlines(caption, here, InlinePolicy::Allow, out);
         }
@@ -423,6 +444,16 @@ mod tests {
   }
 
   #[test]
+  fn subfigures_satisfy_hir_invariants() {
+    let source = r"\begin{figure}[per_row=2]\begin{subfigure}[label=a]\image{a.svg}\caption{A\footnote{n}}\end{subfigure}\begin{subfigure}\image{b.svg}\end{subfigure}\caption{全体}\end{figure}";
+
+    let hir = parse_checked(source).unwrap_or_else(|e| panic!("{source:?} は評価に成功するはず: {e:?}"));
+
+    // 図・副図 2 個・画像 2 枚・副キャプションの字と脚注・全体のキャプションの字
+    assert!(visit_source(&hir).len() >= 8);
+  }
+
+  #[test]
   fn ref_groups_satisfy_hir_invariants() {
     let source = r"\refs{ b, a\,x ,c} と \refrange{ e\_1 }{e2}";
 
@@ -770,7 +801,7 @@ mod tests {
           }
         },
         HirNodeKind::Figure(figure) => {
-          if let Some(caption) = &figure.caption {
+          for caption in figure.captions() {
             assert_unresolved_inlines(caption);
           }
         },

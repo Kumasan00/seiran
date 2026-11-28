@@ -132,7 +132,7 @@ pub(super) fn lower_table(
     position: table.caption_position,
   };
   return lower_numbered_float(ctx, id, caption, &margins, state, |state| {
-    return Ok(LayoutNode::Table(TableLayout {
+    return Ok(vec![LayoutNode::Table(TableLayout {
       origin: id,
       columns: table
         .columns
@@ -156,7 +156,7 @@ pub(super) fn lower_table(
       partial_rule_thickness: style.partial_rule_thickness,
       partial_rule_trim: style.partial_rule_trim,
       rule_color: style.rule_color.map(Color::rgb),
-    }));
+    })]);
   });
 }
 

@@ -231,7 +231,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **番号 3 系統**: 表示数式の **tag**（式の横に出すもの。`[math.block].tag_format` / `number_side`）、
   **number**（`counters.equation.number_format`）、**ref**（`counters.equation.ref_format` / `ref_number_format`）は別物。ref は 2 層で、番号 1 個の見せ方 `ref_number_format` を
   外側の `ref_format` の `{number}` が番号 1 個（`\ref`）・一覧（`\refs`）・範囲（`\refrange`）として包む（全カウンタ共通の形）
-- **キャプション**: figure / table は共通の `CaptionStyle` を持つ。`typeface` は番号リテラルと本体の両方に
+- **キャプション**: figure / table / 副図は共通の `CaptionStyle` を持ち、`[figure.caption]` / `[table.caption]` /
+  `[figure.subfigure.caption]` は書いたフィールドだけを種類ごとの既定に重ねる（書式の既定が種類ごとに違うため）。`typeface` は番号リテラルと本体の両方に
   効き、`[text].typeface` からの導出はしない。配置は図・表ともソース上の `\caption` の出現位置で決まり、
   スタイル側では指定しない
 - **見出し・定理（2 レイヤーマージ）**: Rust 側のレベル別 / クラス別既定 → `[heading.<level>]` / `[theorems.<class>]`
@@ -255,11 +256,16 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **表**: ヘッダ行の書体 `head_typeface` は指定された `Typeface` をそのまま使う（本文書体からの導出も
   太字化もしない）。本文セルの書体は段落と同じく**文脈の本文書体**に従い、表側では指定しない
 - **カウンタ（2 レイヤーマージ）**: Rust 側のカウンタ別既定 → `[counters.<name>]` の順に重畳（見出し・定理と
-  同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 10 種のみで、未知のカウンタ名は
+  同じ形。`resets` を書くと既定のリセット列を丸ごと置き換える）。`<name>` は固定 11 種のみで、未知のカウンタ名は
   `deny_unknown_fields` で拒否。`resets` は値の算出に効く構造データで、読むのは `semantics`（採番時の
   リセット）だけ — `typeset::lowering` はカウンタ値に載った名前を引くので `resets` を読まない。番号書式が
   参照できるカウンタは `resets` / `reset_by` の関係に依らない。値 0（未登場）のカウンタは番号書式の中で直後の区切りごと省く
   （`\chapter` の無い文書で `{chapter}.{n}` は `1`。規則の全文は `CounterTemplate::expand` の doc）
+- **副図の番号**: `[counters.subfigure].number_format`（既定 `{appendix}.{chapter}.{figure}{n}`）は他のカウンタと同じく
+  参照用の全体番号で、副キャプションの `{number}` だけは副図カウンタ自身の値を `number_style` で表記したもの（`a`）。表示側
+  （`typeset::lowering`）はカウンタ値に載った自身の値を引くだけで、副キャプション用の番号書式は持たない。
+  副番号が図ごとに 1 から数え直されるのは `[counters.figure]` の既定の `resets` が `subfigure` を含むからで、`resets` を
+  書くと既定の列を丸ごと置き換えるので、図ごとに数え直すなら `subfigure` も書く
 - **付録の採番**: `appendix` は既定の `resets` に `chapter` を含み、章の深さの見出し（`HeadingLevel::depth` が章と同じ）。
   付録の下では章番号が 0 になるので、既定の番号書式 `{appendix}.{chapter}.{n}` は同じ 0 省略の規則だけで本文 `1.1`・付録 `A.1` を
   書き分ける（`{chapter}` を位置で読み替えない）。定理の `reset_by = "chapter"` は章と付録のどちらが進んでもリセットする
@@ -656,7 +662,7 @@ solver がこの状態を所有し、確定ページ列から割り当て直し�
   生成物（書誌）には `NodeId` を振らない（「すべての `NodeId` は同梱の `HirDocument` が発行したもの」を保つ）
 - **`\ref` / `\refs` / `\refrange` / `\cite` は 2 段階プレースホルダを使わない**: 参照先も引用表示も `SemanticDocument` の query で
   その場で解決してノードへ変換する（プレースホルダを発行して 2 パス目で書き換える走査へ戻さない）
-- **脚注のカウンタは特殊**: 10 種固定のカウンタとは独立した専用の出現 index（0 起点の同一性）で、ラベルに
+- **脚注のカウンタは特殊**: 11 種固定のカウンタとは独立した専用の出現 index（0 起点の同一性）で、ラベルに
   紐づかないため `semantics` の管轄外。表示番号の既定は `index + 1` だが、上書きマップ（出現 index 引き）が
   あればそれを引く — ページ単位リセットはこのマップ経由
 - **複数ソース**: 全ソースのノード列を 1 回でまとめて lower し、その直後に書誌を lower する（書誌は常に本文の
@@ -799,6 +805,15 @@ style は届かない。
   索引語を持たない）
 - 表セル内の索引 marker・脚注 marker は幅 0 で描画箱を持たず、断片の索引語・脚注として出現順（左のセルから、セル内は
   前から）に移す。索引語は行の着地ページへ帰属し、脚注本体は `break_pages` が行の着地段の脚注エリアへ置く
+
+#### 副図の並び（`boxing::subfigures`）
+
+`LayoutNode::Subfigures` を `Block::Subfigures` にする `boxing` の子 module。枠の幅（利用幅を間隔を挟んで `per_row` 等分）・
+画像の描画寸法（両辺省略は枠の幅いっぱい）・副キャプションの行分割（枠の幅、中央揃え）・行内の揃え（副キャプションが下なら
+画像の下端と副キャプションの最初のベースライン、上なら最初のベースラインと画像の上端）をここで確定し、`SubfiguresBox` は
+利用幅の左端と並びの上端を原点にした局所座標の画像と行だけを持つ。`break_pages` は並びを分割しない 1 単位として、副キャプションの
+脚注を含めて分割しない表と同じ判定で送り、着地点で既存の `PlacedBlock::Image` / `PlacedBlock::Line` へ分解する — `emit` と
+`seiran-pdf` は副図を知らない。画像の横のはみ出しは枠の幅を基準に測る
 
 #### `breaking`
 

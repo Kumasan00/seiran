@@ -805,6 +805,60 @@ fn diagnostic_ineffective_typeface() {
 }
 
 #[test]
+fn diagnostic_subfigure_outside_figure() {
+  // subfigure は figure の本体の直下にだけ書ける
+  let failure = compile_err(&["tests/text/diagnostics/subfigure_outside_figure.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::subfigure_outside_figure".to_string()]);
+  assert_matches_golden("subfigure_outside_figure", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_figure_image_with_subfigures() {
+  // figure の本体は \image 1 個か subfigure の並びのどちらか
+  let failure = compile_err(&["tests/text/diagnostics/figure_image_with_subfigures.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::figure_image_with_subfigures".to_string()]);
+  assert_matches_golden("figure_image_with_subfigures", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_figure_caption_between_subfigures() {
+  // 図全体の \caption の位置は副図の並びの前か後ろだけ
+  let failure = compile_err(&["tests/text/diagnostics/figure_caption_between_subfigures.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::figure_caption_between_subfigures".to_string()]);
+  assert_matches_golden("figure_caption_between_subfigures", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_subcaption_position_mixed() {
+  // 副キャプションの上下が揃わないと行の揃えが決まらない
+  let failure = compile_err(&["tests/text/diagnostics/subcaption_position_mixed.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::subcaption_position_mixed".to_string()]);
+  assert_matches_golden("subcaption_position_mixed", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_per_row_without_subfigures() {
+  // 副図の無い figure の per_row はどの内容に対しても出力を変えない
+  let failure = compile_err(&["tests/text/diagnostics/per_row_without_subfigures.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::per_row_without_subfigures".to_string()]);
+  assert_matches_golden("per_row_without_subfigures", &render_failure(failure));
+}
+
+#[test]
+fn diagnostic_nested_subfigure() {
+  // subfigure の本体に書けるのは \image と \caption だけ
+  let failure = compile_err(&["tests/text/diagnostics/nested_subfigure.sei"]);
+
+  assert_eq!(codes(&failure), vec!["frontend::eval::unexpected_content_in_environment".to_string()]);
+  assert_matches_golden("nested_subfigure", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_ineffective_color() {
   // 色が届く字の無い `\color` は、外した書き方と同じ出力への第 2 の書き方なので拒否する
   let failure = compile_err(&[

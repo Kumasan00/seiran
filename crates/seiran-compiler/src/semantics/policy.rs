@@ -35,7 +35,7 @@ pub(super) struct TheoremPolicy {
 /// 意味解析が読む設定だけを持つ投影
 #[derive(Debug, PartialEq, Eq)]
 pub(crate) struct SemanticPolicy {
-  /// カウンタ名 → 値側設定（固定 10 種すべてを `from_style` が埋める）
+  /// カウンタ名 → 値側設定（固定 11 種すべてを `from_style` が埋める）
   counters: HashMap<CounterName, CounterPolicy>,
   /// 定理クラス → 値側設定（全クラスを `from_style` が埋める）
   theorems: HashMap<TheoremClass, TheoremPolicy>,

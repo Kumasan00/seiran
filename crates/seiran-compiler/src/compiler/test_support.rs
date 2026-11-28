@@ -73,6 +73,21 @@ pub(super) const FIGURE_IMAGE_ASSETS: &[&str] = &[
   "./tests/image/vector2.pdf",
 ];
 
+/// `subfigure.sei` が参照する画像 fixture（縮小の費用が無いベクタだけ。`\image{...}` の字面と同じ、ワークスペース相対）。
+const SUBFIGURE_IMAGE_ASSETS: &[&str] = &[
+  "./tests/image/testimage6.svg",
+  "./tests/image/vector1.pdf",
+  "./tests/image/vector2.pdf",
+];
+
+/// golden の fixture `name` が参照する画像 fixture
+fn fixture_assets(name: &str) -> &'static [&'static str] {
+  return match name {
+    "subfigure" => SUBFIGURE_IMAGE_ASSETS,
+    _ => &[],
+  };
+}
+
 /// 設定ファイル（config.toml / style.toml）の生テーブルへの上書き。
 type TomlOverride = Box<dyn Fn(&mut toml::value::Table)>;
 
@@ -274,6 +289,7 @@ impl TestProjectBuilder {
     let fixture = name.clone();
     return self
       .sources(&[&format!("tests/text/{name}.sei")])
+      .assets(fixture_assets(&name))
       .config_toml(move |table| apply_fixture_config_overrides(&fixture, table))
       .style_toml(move |table| apply_fixture_style_overrides(&name, table));
   }

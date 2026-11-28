@@ -5,10 +5,23 @@
 use crate::frontend::{
   evaluator::{
     EvalError,
+    opt_args::OptArgs,
     signature::{Bound, Signature},
   },
-  syntax::{CstElement, SyntaxKind, token::TokenKind, view::CommandView},
+  syntax::{
+    CstElement, SyntaxKind,
+    token::TokenKind,
+    view::{CommandView, EnvironmentView},
+  },
 };
+
+/// 環境本体の直下で許可した要素 1 つ（署名で検査済み）
+pub(super) enum BodyItem<'a, K, const N: usize> {
+  /// 許可したコマンドと、その種別と検査済みの引数
+  Command(K, CommandView<'a>, Bound<'a, N>),
+  /// 許可した入れ子の環境と、検査済みの任意引数
+  Environment(EnvironmentView<'a>, OptArgs),
+}
 
 /// 環境本体（あるいは引数）の直下にある `CommandCall` を許可リストで検証しながら収集する
 ///
@@ -34,7 +47,35 @@ pub(super) fn collect_allowed_commands<'a, K: Copy, const N: usize>(
   allowed: &[(&'static str, K, Signature<N>)],
   expected: &str,
 ) -> Result<Vec<(K, CommandView<'a>, Bound<'a, N>)>, EvalError> {
-  let mut views = Vec::new();
+  return Ok(
+    collect_allowed_items(source, children, env_name, allowed, &[], expected)?
+      .into_iter()
+      .map(|item| {
+        return match item {
+          BodyItem::Command(kind, view, bound) => (kind, view, bound),
+          BodyItem::Environment(..) => unreachable!("許可した入れ子の環境が空なので、環境は要素として集まらない"),
+        };
+      })
+      .collect(),
+  );
+}
+
+/// [`collect_allowed_commands`] に加えて、`allowed_environments` に名前のある入れ子の環境も署名で検査して集める
+///
+/// 要素はソースの順に返す。
+///
+/// # Errors
+///
+/// [`collect_allowed_commands`] と同じ。許可外の入れ子環境は [`EvalError::UnexpectedContentInEnvironment`]。
+pub(super) fn collect_allowed_items<'a, K: Copy, const N: usize>(
+  source: &'a str,
+  children: &'a [CstElement<'a>],
+  env_name: &str,
+  allowed_commands: &[(&'static str, K, Signature<N>)],
+  allowed_environments: &[(&'static str, Signature<0>)],
+  expected: &str,
+) -> Result<Vec<BodyItem<'a, K, N>>, EvalError> {
+  let mut items = Vec::new();
   for child in children {
     match child {
       CstElement::Token(token) => match token.kind {
@@ -55,7 +96,8 @@ pub(super) fn collect_allowed_commands<'a, K: Copy, const N: usize>(
       CstElement::Node(node) => {
         if node.kind == SyntaxKind::CommandCall {
           let view = CommandView::new(node, source);
-          let Some((_, kind, signature)) = allowed.iter().find(|(name, ..)| return *name == view.name()) else {
+          let Some((_, kind, signature)) = allowed_commands.iter().find(|(name, ..)| return *name == view.name())
+          else {
             return Err(EvalError::UnexpectedCommandInEnvironment {
               env: env_name.to_string(),
               name: view.name().to_string(),
@@ -64,18 +106,26 @@ pub(super) fn collect_allowed_commands<'a, K: Copy, const N: usize>(
             });
           };
           let bound = signature.bind(&view)?;
-          views.push((*kind, view, bound));
-        } else {
-          return Err(EvalError::UnexpectedContentInEnvironment {
-            env: env_name.to_string(),
-            expected: expected.to_string(),
-            span: node.span.into(),
-          });
+          items.push(BodyItem::Command(*kind, view, bound));
+          continue;
         }
+        if node.kind == SyntaxKind::Environment {
+          let view = EnvironmentView::new(node, source);
+          if let Some((_, signature)) = allowed_environments.iter().find(|(name, _)| return *name == view.name()) {
+            let opts = signature.bind_environment(&view)?;
+            items.push(BodyItem::Environment(view, opts));
+            continue;
+          }
+        }
+        return Err(EvalError::UnexpectedContentInEnvironment {
+          env: env_name.to_string(),
+          expected: expected.to_string(),
+          span: node.span.into(),
+        });
       },
     }
   }
-  return Ok(views);
+  return Ok(items);
 }
 
 #[cfg(test)]

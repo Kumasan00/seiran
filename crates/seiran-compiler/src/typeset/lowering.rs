@@ -30,8 +30,9 @@ use std::mem;
 
 pub(super) use heading::{running_text_style, toc_entry_style};
 pub(super) use layout_node::{
-  DelimiterGlyphs, Fence, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
-  ParagraphLayout, QuantityPiece, TableCellContent, TableColumn, TableLayout, TableRowLayout, TextStyle,
+  DelimiterGlyphs, Fence, ImageLayout, InlineNode, LayoutNode, MathBlockLayout, MathFormula, MathNode, MathOperator,
+  ParagraphLayout, QuantityPiece, SubfigureCell, SubfiguresLayout, TableCellContent, TableColumn, TableLayout,
+  TableRowLayout, TextStyle,
 };
 pub(super) use math::{
   CASES_DELIMITERS, delimiter_glyphs, math_text_clusters, matrix_delimiter_glyphs, translate_math_char,
@@ -1088,7 +1089,7 @@ mod tests {
   /// 最初の画像ノードの起源を返す（`VBox` の中へも降りる）
   fn image_origin(nodes: &[LayoutNode]) -> Option<NodeId> {
     return nodes.iter().find_map(|node| match node {
-      LayoutNode::Image { origin, .. } => return Some(*origin),
+      LayoutNode::Image(ImageLayout { origin, .. }) => return Some(*origin),
       LayoutNode::VBox { children, .. } => return image_origin(children),
       _ => return None,
     });
@@ -1104,7 +1105,7 @@ mod tests {
     let HirNodeKind::Figure(figure) = &figure.kind else {
       panic!("図が期待されます: {figure:?}");
     };
-    assert_eq!(image_origin(&nodes), Some(figure.image_site));
+    assert_eq!(image_origin(&nodes), figure.images().next().map(|image| return image.site));
   }
 
   #[test]

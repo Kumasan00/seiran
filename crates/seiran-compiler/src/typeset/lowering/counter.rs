@@ -33,6 +33,19 @@ pub(super) fn format_counter_value(style: &Style, value: &CounterValue) -> Strin
   };
 }
 
+/// 固定のカウンタで採番した [`CounterValue`] の自身の値だけを、そのカウンタの `number_style` で表記する
+///
+/// 副キャプションの番号（`"a"`）がこれ。`number_format` の上位カウンタは含めない。
+#[must_use]
+pub(super) fn format_own_number(style: &Style, value: &CounterValue) -> String {
+  return match *value {
+    CounterValue::Counter { name, counters } => style.counters[name].number_style.render(counters[name]),
+    CounterValue::Theorem { class, .. } => {
+      unreachable!("自身の値だけを表記するのは副図だけで、副図は固定のカウンタ subfigure で採番される: {class:?}")
+    },
+  };
+}
+
 /// [`CounterValue`] を `\ref` の表示文字列にする（表示番号に `ref_format` を適用したもの）
 ///
 /// `ref_format` の `{number}` には `ref_number_format` を通した番号が入る（定理は番号をそのまま入れる）。

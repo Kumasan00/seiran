@@ -1,13 +1,16 @@
 //! 表（table）環境のスタイル設定型。
 
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::{
   color::Color,
   document::Typeface,
   length::{Length, non_negative},
-  style::{NumberTitleTemplate, caption::CaptionStyle},
+  style::{
+    NumberTitleTemplate,
+    caption::{self, CaptionStyle},
+  },
 };
 
 /// 表のスタイル設定
@@ -17,6 +20,7 @@ use crate::{
 pub(crate) struct TableStyle {
   /// キャプション本体（書式テンプレート・フォントサイズ・書体）
   #[garde(dive)]
+  #[serde(deserialize_with = "table_caption")]
   pub caption: CaptionStyle,
   /// 表ブロックの上余白
   #[garde(custom(non_negative))]
@@ -77,12 +81,25 @@ impl Default for TableStyle {
   }
 }
 
+/// `[table.caption]` を表の既定のキャプションに重ねて読む
+fn table_caption<'de, D: Deserializer<'de>>(deserializer: D) -> Result<CaptionStyle, D::Error> {
+  return caption::deserialize_over(deserializer, TableStyle::default().caption);
+}
+
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
   use super::TableStyle;
   use crate::{document::Typeface, length::Length};
+
+  #[test]
+  fn partial_caption_table_keeps_the_kind_default_format() {
+    let style: TableStyle = toml::from_str("[caption]\nfont_size = \"9pt\"\n").unwrap();
+
+    assert_eq!(style.caption.format.as_str(), "Table {number}: {title}");
+    assert_eq!(style.caption.font_size, Length::pt(9.0));
+  }
 
   #[test]
   fn rule_defaults_follow_booktabs() {

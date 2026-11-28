@@ -43,6 +43,8 @@ enum EnvironmentKind {
   Flush(TextAlignment),
   /// 図環境（`figure`）
   Figure,
+  /// 副図環境（`subfigure`。`figure` の本体の直下だけに書け、`figure` の評価が読む）
+  Subfigure,
   /// 表環境（`table`）
   Table,
   /// コード環境（`code`。本体は生読み）
@@ -68,9 +70,13 @@ impl EnvironmentKind {
   /// 本体の読み取り方を種別から導出する
   fn body_mode(self) -> BodyMode {
     return match self {
-      Self::List { .. } | Self::Theorem(_) | Self::Quote(_) | Self::Flush(_) | Self::Figure | Self::Table => {
-        BodyMode::Text
-      },
+      Self::List { .. }
+      | Self::Theorem(_)
+      | Self::Quote(_)
+      | Self::Flush(_)
+      | Self::Figure
+      | Self::Subfigure
+      | Self::Table => BodyMode::Text,
       Self::Code => BodyMode::Verbatim,
       Self::Equation | Self::MathGrid { .. } | Self::Cases | Self::Matrix => BodyMode::Math,
     };
@@ -82,6 +88,7 @@ impl EnvironmentKind {
       Self::List { ordered } => list::signature(ordered),
       Self::Theorem(class) => theorem::signature(class),
       Self::Figure => figure::SIGNATURE,
+      Self::Subfigure => figure::SUBFIGURE_SIGNATURE,
       Self::Table => table::SIGNATURE,
       Self::Equation => math::EQUATION,
       Self::MathGrid { numbering, .. } => math::grid_signature(numbering),
@@ -102,6 +109,10 @@ impl EnvironmentKind {
       Self::Quote(kind) => Ok(quote::quote(view, ctx, kind)),
       Self::Flush(alignment) => Ok(flush::flush(view, ctx, alignment)),
       Self::Figure => figure::figure(view, ctx, opts),
+      // `figure` の本体の直下の `subfigure` は `figure` の評価が読むので、ここへ来るのはそれ以外の場所
+      Self::Subfigure => Err(EvalError::SubfigureOutsideFigure {
+        span: view.span().into(),
+      }),
       Self::Table => table::table(view, ctx, opts),
       Self::Code => Ok(code::code(view, ctx)),
       Self::Equation => math::equation(view, ctx, opts),
@@ -132,6 +143,7 @@ impl EnvironmentKind {
       | Self::Quote(_)
       | Self::Flush(_)
       | Self::Figure
+      | Self::Subfigure
       | Self::Table
       | Self::Code
       | Self::Equation
@@ -156,6 +168,7 @@ static ENVIRONMENTS: phf::Map<&'static str, EnvironmentKind> = phf_map! {
   "matrix"    => EnvironmentKind::Matrix,
 
   "figure"    => EnvironmentKind::Figure,
+  "subfigure" => EnvironmentKind::Subfigure,
   "table"     => EnvironmentKind::Table,
 
   "theorem"     => EnvironmentKind::Theorem(TheoremClass::Theorem),

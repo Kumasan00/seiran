@@ -25,7 +25,8 @@
 //! 積み場所で、run をまたぐ境界（和文 run の端の約物と、数式・欧文・別スタイル・コード・別の和文 run との間）の
 //! 約物アキと、run 境界の和欧文間アキを解決する。この module 本体は縦リストの走査
 //! （`LayoutNode` → `Block`・`Atom` 化）と、和欧文間アキ・約物境界のアキの規則（`Glue` の値として返す）と
-//! 伸縮率の定数を持つ。
+//! 伸縮率の定数を持つ。`subfigures`（副図の並び — 枠の幅・画像の寸法・副キャプションの行分割・行内の揃えを並びの
+//! 局所座標で確定する）は `BlockBuilder` の `impl` を続ける。
 
 mod break_lines;
 mod break_opportunities;
@@ -36,6 +37,7 @@ mod math;
 mod quantity;
 mod script;
 mod shaping;
+mod subfigures;
 mod table;
 mod text_run;
 mod yakumono;
@@ -62,7 +64,7 @@ use crate::{
     font::FontSystem,
     glyph_issues::{Generated, GlyphIssues, GlyphOrigin},
     image::{ImageResources, resolve_image_size},
-    lowering::{InlineNode, LayoutNode, ParagraphLayout, TextStyle},
+    lowering::{ImageLayout, InlineNode, LayoutNode, ParagraphLayout, TextStyle},
   },
 };
 
@@ -138,7 +140,14 @@ pub(super) fn build_blocks(
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
-  let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
+  let image_count: usize = blocks
+    .iter()
+    .map(|block| match block {
+      Block::Image { .. } => return 1,
+      Block::Subfigures { grid, .. } => return grid.images.len(),
+      _ => return 0,
+    })
+    .sum();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
   galley.extend(blocks);
   return Ok(());
@@ -202,19 +211,12 @@ impl BlockBuilder<'_> {
         LayoutNode::Vkern { length } => {
           blocks.push(Block::fixed_space(length));
         },
-        LayoutNode::Image {
-          origin,
-          path,
-          page_index,
-          width,
-          height,
-          target_dpi,
-        } => {
+        LayoutNode::Image(image) => {
           // 字下げが段の幅を使い切ると利用幅は 0 で、そこから広げると 0×0 の画像になって消える。段の幅（検証済みで正）を
           // 基準にして描画矩形を正に保ち、字下げからのはみ出しとして記録させる
           let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
             return ElementOverflow {
-              origin: Some(origin),
+              origin: Some(image.origin),
             };
           })?;
           let basis = if available > Length::ZERO {
@@ -222,12 +224,14 @@ impl BlockBuilder<'_> {
           } else {
             self.column_width
           };
-          let (width, height) =
-            resolve_image_size(self.images, &path, page_index, width, height, basis).map_err(|LengthOverflow| {
-              return ElementOverflow {
-                origin: Some(origin),
-              };
-            })?;
+          let (width, height) = self.resolve_image(&image, basis)?;
+          let ImageLayout {
+            origin,
+            path,
+            page_index,
+            target_dpi,
+            ..
+          } = image;
           blocks.push(Block::Image {
             origin,
             path,
@@ -239,6 +243,9 @@ impl BlockBuilder<'_> {
             right_indent,
             align: Align::from(alignment),
           });
+        },
+        LayoutNode::Subfigures(grid) => {
+          blocks.push(self.build_subfigures(grid, indent, right_indent)?);
         },
         LayoutNode::Table(table) => {
           let available = boxes::usable_width(self.column_width, indent, right_indent).map_err(|LengthOverflow| {
@@ -274,6 +281,21 @@ impl BlockBuilder<'_> {
       }
     }
     return Ok(());
+  }
+
+  /// 画像 `image` の描画寸法を、省略した辺を基準幅 `basis` と縦横比から埋めて確定する
+  ///
+  /// # Errors
+  ///
+  /// 推論した辺が長さの値域を超えたら、`\image` を起点に [`ElementOverflow`] で返す。
+  fn resolve_image(&self, image: &ImageLayout, basis: Length) -> Result<(Length, Length), ElementOverflow> {
+    return resolve_image_size(self.images, &image.path, image.page_index, image.width, image.height, basis).map_err(
+      |LengthOverflow| {
+        return ElementOverflow {
+          origin: Some(image.origin),
+        };
+      },
+    );
   }
 
   /// 段落を計測する。計測後の水平リストが空なら本文ブロックを作らない

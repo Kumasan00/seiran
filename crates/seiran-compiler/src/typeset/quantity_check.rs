@@ -70,7 +70,11 @@ fn collect_nodes(nodes: &[HirNode], quantity: &QuantityStyle, out: &mut Vec<Node
           collect_math(cell, quantity, out);
         }
       },
-      HirNodeKind::Figure(figure) => collect_inlines(figure.caption.as_deref().unwrap_or_default(), quantity, out),
+      HirNodeKind::Figure(figure) => {
+        for caption in figure.captions() {
+          collect_inlines(caption, quantity, out);
+        }
+      },
       HirNodeKind::Table(table) => {
         for cell in table.head.iter().chain(&table.rows).flat_map(|row| return &row.cells) {
           collect_inlines(&cell.content, quantity, out);

@@ -1,0 +1,7 @@
+// figure の本体に \image と subfigure を混在させる
+\begin{figure}
+\image{a.svg}
+\begin{subfigure}
+\image{b.svg}
+\end{subfigure}
+\end{figure}
