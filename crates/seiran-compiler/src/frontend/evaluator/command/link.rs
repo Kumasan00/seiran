@@ -370,6 +370,8 @@ mod tests {
       r"\href{u}{$\text{}$}",
       r"\href{u}{$\text{ }$}",
       r"\href{u}{$\thinspace$}",
+      r"\href{u}{${}^{}$}",
+      r"\href{u}{$\frac{}{}$}",
     ];
 
     for source in cases {
@@ -389,6 +391,7 @@ mod tests {
       r"\href{u}{$x$}",
       r"\href{u}{\alpha}",
       r"\href{u}{\num{1}}",
+      r"\href{u}{$\sqrt{}$}",
     ];
 
     for source in cases {
@@ -469,7 +472,11 @@ mod tests {
 
   #[test]
   fn hyperref_rejects_blank_display() {
-    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\\}"] {
+    for source in [
+      r"\hyperref{x}{}",
+      r"\hyperref{x}{\\}",
+      r"\hyperref{x}{$\begin{matrix}\end{matrix}$}",
+    ] {
       let result = test_support::evaluate_document(source);
 
       assert!(
