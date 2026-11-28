@@ -126,7 +126,8 @@ fn walk_nodes(nodes: &[HirNode], parent: Option<NodeId>, out: &mut Vec<Visited>)
 /// # Panics
 ///
 /// `policy` が禁じるリンクを作る要素・索引マーカーがあるとき、複数参照のラベルが 2 個未満・空・重複を含むとき、
-/// 範囲参照の両端が同じラベルのとき、または書体コマンドの中身に書体が届く要素が無いとき。
+/// 範囲参照の両端が同じラベルのとき、書体コマンドの中身に書体が届く要素が無いとき、または `\color` の中身に色が届く要素が
+/// 無いとき。
 fn walk_inlines(inlines: &[HirInline], parent: Option<NodeId>, policy: InlinePolicy, out: &mut Vec<Visited>) {
   let (index_allowed, links_allowed) = match policy {
     InlinePolicy::Allow => (true, true),

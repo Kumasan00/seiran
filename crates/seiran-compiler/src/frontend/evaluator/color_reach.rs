@@ -49,7 +49,7 @@ fn reaches(children: &[HirInline], nested: &mut bool) -> bool {
   return reached;
 }
 
-/// 数式の要素列が字・記号・構造を 1 つでも含むか（色の届き方とリンクの表示の空判定が共有する）
+/// 数式の要素列が字・記号・構造を 1 つでも含むか
 ///
 /// ソースの空白・明示アキ・空のグループ・空白だけの数式内の文章は字を持たないので含まない扱い。
 pub(in crate::frontend::evaluator) fn math_has_content(nodes: &[HirMath]) -> bool {
@@ -97,6 +97,10 @@ mod tests {
       (r"\color[color=#ff0000]{\href{u}{\color[color=#0000ff]{x}}}", NESTED),
       (r"\color[color=#ff0000]{ \color[color=#0000ff]{x}\index{y}}", NESTED),
       ("\\section{\\color[color=#ff0000]{}}", EMPTY),
+      (
+        r"\begin{table}[columns=decimal]\row{\color[color=#cc0000]{\color[color=#00cc00]{\num{1}}}}\end{table}",
+        NESTED,
+      ),
     ] {
       let result = test_support::evaluate_document(source);
 
