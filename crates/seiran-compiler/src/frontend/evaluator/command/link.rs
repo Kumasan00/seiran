@@ -370,6 +370,10 @@ mod tests {
       r"\href{u}{$\text{}$}",
       r"\href{u}{$\text{ }$}",
       r"\href{u}{$\thinspace$}",
+      r"\href{u}{${}^{}$}",
+      r"\href{u}{$^{}_{}$}",
+      r"\href{u}{$\begin{matrix}\end{matrix}$}",
+      r"\href{u}{$\begin{matrix} & \\ & \end{matrix}$}",
     ];
 
     for source in cases {
@@ -389,6 +393,18 @@ mod tests {
       r"\href{u}{$x$}",
       r"\href{u}{\alpha}",
       r"\href{u}{\num{1}}",
+      r"\href{u}{${}^{2}$}",
+      r"\href{u}{$x^{}$}",
+      r"\href{u}{$\begin{matrix}x\end{matrix}$}",
+      // 見える記号を持つ構造は中身が空でも描く
+      r"\href{u}{$\sqrt{}$}",
+      r"\href{u}{$\frac{}{}$}",
+      r"\href{u}{$\binom{}{}$}",
+      r"\href{u}{$\paren{}$}",
+      r"\href{u}{$\hat{}$}",
+      r"\href{u}{$\overline{}$}",
+      r"\href{u}{$\begin{matrix}[delimiter=paren]\end{matrix}$}",
+      r"\href{u}{$\begin{cases}\end{cases}$}",
     ];
 
     for source in cases {
@@ -469,7 +485,12 @@ mod tests {
 
   #[test]
   fn hyperref_rejects_blank_display() {
-    for source in [r"\hyperref{x}{}", r"\hyperref{x}{\\}"] {
+    for source in [
+      r"\hyperref{x}{}",
+      r"\hyperref{x}{\\}",
+      r"\hyperref{x}{${}^{}$}",
+      r"\hyperref{x}{$\begin{matrix}\end{matrix}$}",
+    ] {
       let result = test_support::evaluate_document(source);
 
       assert!(
