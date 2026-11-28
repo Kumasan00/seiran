@@ -1,0 +1,23 @@
+---
+source: crates/seiran-compiler/src/compiler/diagnostics.rs
+expression: rendered
+---
+frontend::eval::ineffective_color
+
+  × \color の色が届く字が引数にありません
+   ╭─[tests/text/diagnostics/ineffective_color_a.sei:1:11]
+ 1 │ 本文の \color[color=#ff0000]{ } です。
+   ·        ────────────┬───────────
+   ·                    ╰── 引数に字がありません
+   ╰────
+  help: \color を外してください。内側の \color は外側の色を上書きします
+
+Error: frontend::eval::ineffective_color
+
+  × \color の色が届く字が引数にありません
+   ╭─[tests/text/diagnostics/ineffective_color_b.sei:1:11]
+ 1 │ 本文の \color[color=#ff0000]{\bold{\color[color=#0000ff]{青}}} です。
+   ·        ───────────────────────────┬───────────────────────────
+   ·                                   ╰── 内側の \color が色を上書きするので、この色は届きません
+   ╰────
+  help: \color を外してください。内側の \color は外側の色を上書きします
