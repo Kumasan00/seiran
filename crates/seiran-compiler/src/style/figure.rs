@@ -1,11 +1,14 @@
 //! 図（figure）環境のスタイル設定型。
 
 use garde::Validate;
-use serde::Deserialize;
+use serde::{Deserialize, Deserializer};
 
 use crate::{
   length::{Length, non_negative},
-  style::{NumberTitleTemplate, caption::CaptionStyle},
+  style::{
+    NumberTitleTemplate,
+    caption::{self, CaptionStyle},
+  },
 };
 
 /// 図環境のスタイル設定
@@ -15,6 +18,7 @@ use crate::{
 pub(crate) struct FigureStyle {
   /// キャプション本体（書式テンプレート・フォントサイズ・書体）
   #[garde(dive)]
+  #[serde(deserialize_with = "figure_caption")]
   pub caption: CaptionStyle,
   /// 図ブロックの上余白
   #[garde(custom(non_negative))]
@@ -52,6 +56,7 @@ impl Default for FigureStyle {
 pub(crate) struct SubfigureStyle {
   /// 副キャプション。`{number}` には副図カウンタ自身の値（`[counters.subfigure].number_style` で表記）が入る
   #[garde(dive)]
+  #[serde(deserialize_with = "subfigure_caption")]
   pub caption: CaptionStyle,
   /// 同じ行の副図どうしの横の間隔
   #[garde(custom(non_negative))]
@@ -78,12 +83,38 @@ impl Default for SubfigureStyle {
   }
 }
 
+/// `[figure.caption]` を図の既定のキャプションに重ねて読む
+fn figure_caption<'de, D: Deserializer<'de>>(deserializer: D) -> Result<CaptionStyle, D::Error> {
+  return caption::deserialize_over(deserializer, FigureStyle::default().caption);
+}
+
+/// `[figure.subfigure.caption]` を副キャプションの既定に重ねて読む
+fn subfigure_caption<'de, D: Deserializer<'de>>(deserializer: D) -> Result<CaptionStyle, D::Error> {
+  return caption::deserialize_over(deserializer, SubfigureStyle::default().caption);
+}
+
 #[cfg(test)]
 mod tests {
   use garde::Validate;
 
   use super::FigureStyle;
-  use crate::{length::Length, style::NumberTitleTemplate};
+  use crate::{document::Typeface, length::Length, style::NumberTitleTemplate};
+
+  #[test]
+  fn partial_caption_tables_keep_the_kind_default_format() {
+    let style: FigureStyle =
+      toml::from_str("[caption]\nfont_size = \"9pt\"\n\n[subfigure.caption]\ntypeface = \"sans_serif\"\n").unwrap();
+
+    assert_eq!(style.caption.format.as_str(), "Figure {number}: {title}");
+    assert_eq!(style.caption.font_size, Length::pt(9.0));
+    assert_eq!(style.subfigure.caption.format.as_str(), "({number}) {title}");
+    assert_eq!(style.subfigure.caption.typeface, Typeface::SansSerif);
+  }
+
+  #[test]
+  fn caption_table_rejects_unknown_key() {
+    assert!(toml::from_str::<FigureStyle>("[subfigure.caption]\nsize = \"9pt\"\n").is_err());
+  }
 
   #[test]
   fn subfigure_style_defaults() {

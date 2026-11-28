@@ -1063,6 +1063,9 @@ fn defers_unbreakable_table(
 }
 
 /// 副図の並び `grid` を 1 単位としてカーソルから置き、画像と副キャプションの行へ分解する
+///
+/// 送るかは分割しない表と同じ判定（副キャプションの全行の脚注を含める）で、送った先の脚注エリアが繰越で埋まっていて
+/// 並びの脚注が入らなければ表の行と同じくさらに送る。
 fn place_subfigures(
   composer: &mut PageComposer,
   mut grid: SubfiguresBox,
@@ -1074,9 +1077,6 @@ fn place_subfigures(
       origin: Some(origin),
     };
   };
-  if defers_subfigures(composer.cursor, &grid, &composer.geom)? {
-    composer.advance_region()?;
-  }
   // 副キャプションの脚注は並び全体を脚注付きの 1 行とみなして、表の行（`place_table_row`）と同じ順で予約・分割・繰越する
   let charges = FootnoteCharges::of(&composer.geom);
   let demands: Vec<FootnoteDemand> = grid
@@ -1092,7 +1092,20 @@ fn place_subfigures(
     .flat_map(|line| return std::mem::take(&mut line.line.footnotes))
     .map(unplaced)
     .collect();
-  let (area, splits) = match fit_table_row(composer.cursor, grid.height, &demands, &composer.geom).map_err(at)? {
+  let mut fit = fit_table_row(composer.cursor, grid.height, &demands, &composer.geom).map_err(at)?;
+  if defers_unbreakable_table(composer.cursor, grid.height, &demands, &composer.geom).map_err(at)? {
+    // 新しいリージョンの脚注エリアが繰越で埋まっていて並びの脚注が入らないときは、さらに送る（繰越は送るたびに
+    // 1 行以上減るので有限回で尽きる）
+    loop {
+      composer.advance_region()?;
+      let carried = composer.cursor.footnote_reserved > Length::ZERO;
+      fit = fit_table_row(composer.cursor, grid.height, &demands, &composer.geom).map_err(at)?;
+      if !(carried && matches!(fit, LineFootnoteFit::Rejected)) {
+        break;
+      }
+    }
+  }
+  let (area, splits) = match fit {
     LineFootnoteFit::Full(area) => (area, demands.iter().map(FootnoteDemand::line_count).collect()),
     LineFootnoteFit::Split(area, splits) => (area, splits),
     // 予約の無いリージョンでも収まらない病的ケース。送っても改善しないので、はみ出したまま置く
@@ -5661,5 +5674,28 @@ mod tests {
     assert!(footnote_numbered(&pages[0], 1).is_none());
     assert!(footnote_numbered(&pages[1], 1).is_some());
     assert_eq!(page_baselines(&pages[1]), [pt(13.0)]);
+  }
+
+  #[test]
+  fn subfigures_are_not_stacked_onto_a_region_filled_by_carry() {
+    // 1 行目の 8 行脚注がページ 0 で分割され、残りが後続ページの脚注エリアを埋める。副キャプションに脚注を持つ並びは、
+    // 繰越で埋まったリージョンに脚注を入れられないので、表の行と同じく入るリージョンまで送る
+    let footnoted = Line {
+      footnotes: vec![footnote_item(2, vec![body_line()], pt(12.0))],
+      ..body_line()
+    };
+    let blocks = vec![
+      single_line_paragraph(vec![footnote_of_lines(1, 8)]),
+      subfigures_block(Vec::new(), vec![grid_line(footnoted, 3.0)], 5.0, 45.0, 0.0),
+    ];
+
+    let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());
+
+    assert!(
+      !overflows.iter().any(|overflow| matches!(overflow.kind, OverflowKind::FootnoteLine { .. })),
+      "{overflows:?}"
+    );
+    let grid_page = pages.iter().position(|page| return page_baselines(page).contains(&pt(13.0))).expect("並びの行");
+    assert!(footnote_numbered(&pages[grid_page], 2).is_some(), "{pages:?}");
   }
 }

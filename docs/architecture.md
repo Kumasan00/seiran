@@ -231,7 +231,8 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
 - **番号 3 系統**: 表示数式の **tag**（式の横に出すもの。`[math.block].tag_format` / `number_side`）、
   **number**（`counters.equation.number_format`）、**ref**（`counters.equation.ref_format` / `ref_number_format`）は別物。ref は 2 層で、番号 1 個の見せ方 `ref_number_format` を
   外側の `ref_format` の `{number}` が番号 1 個（`\ref`）・一覧（`\refs`）・範囲（`\refrange`）として包む（全カウンタ共通の形）
-- **キャプション**: figure / table は共通の `CaptionStyle` を持つ。`typeface` は番号リテラルと本体の両方に
+- **キャプション**: figure / table / 副図は共通の `CaptionStyle` を持ち、`[figure.caption]` / `[table.caption]` /
+  `[figure.subfigure.caption]` は書いたフィールドだけを種類ごとの既定に重ねる（書式の既定が種類ごとに違うため）。`typeface` は番号リテラルと本体の両方に
   効き、`[text].typeface` からの導出はしない。配置は図・表ともソース上の `\caption` の出現位置で決まり、
   スタイル側では指定しない
 - **見出し・定理（2 レイヤーマージ）**: Rust 側のレベル別 / クラス別既定 → `[heading.<level>]` / `[theorems.<class>]`
