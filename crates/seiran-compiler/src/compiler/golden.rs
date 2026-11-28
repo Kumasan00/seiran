@@ -1183,11 +1183,7 @@ fn footnote_first_line_runs(project: &TestProject) -> Vec<LineRun> {
       _ => return None,
     })
     .expect("脚注本体の行が 1 つはあるはず");
-  let mut runs = Vec::new();
-  for placed in &line.boxes {
-    collect_line_runs(&placed.hbox.content, placed.hbox.width, placed.dx, placed.dy, &mut runs);
-  }
-  return runs;
+  return line_runs(line);
 }
 
 #[test]
