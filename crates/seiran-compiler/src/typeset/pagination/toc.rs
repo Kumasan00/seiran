@@ -390,6 +390,26 @@ mod tests {
   }
 
   #[test]
+  fn collect_toc_entries_keeps_appendix_at_chapter_depth() {
+    let headings = vec![
+      heading_record(0, HeadingLevel::Chapter, "1", "Ch"),
+      heading_record(1, HeadingLevel::Section, "1.1", "Sec"),
+      heading_record(2, HeadingLevel::Appendix, "A", "App"),
+      heading_record(3, HeadingLevel::Section, "A.1", "AppSec"),
+    ];
+    let page_values = body_page_values_with_headings(4);
+    let toc = TocStyle {
+      max_depth: 2,
+      ..TocStyle::default()
+    };
+
+    let entries = collect_toc_entries(&headings, &page_values, &toc);
+
+    let keys: Vec<HeadingKey> = entries.iter().map(|entry| return entry.link_key).collect();
+    assert_eq!(keys, vec![HeadingKey::new(0), HeadingKey::new(2)], "付録は章と同じ深さで残る");
+  }
+
+  #[test]
   fn collect_toc_entries_filters_by_max_depth_and_renders_page_label() {
     // Chapter(深さ1)/Section(深さ2)/Subsection(深さ3)。max_depth=3 は深さ<3 を残す
     let headings = vec![

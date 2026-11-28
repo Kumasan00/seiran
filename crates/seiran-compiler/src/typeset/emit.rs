@@ -740,6 +740,20 @@ mod tests {
   }
 
   #[test]
+  fn appendix_outline_entry_has_chapter_depth() {
+    let mut config = test_config();
+    config.pdf.show_bookmarks = true;
+    let key = HeadingKey::new(0);
+    let page = page_builder().heading_anchor(key, Length::pt(0.0), Length::pt(10.0)).build();
+    let outline_entries = vec![(HeadingLevel::Appendix, "付録".to_string())];
+
+    let publication = build(&config, vec![page], outline_entries);
+
+    let outline = publication.outline().expect("エントリがあるので Some のはず");
+    assert_eq!(outline[0].depth, HeadingLevel::Chapter.depth());
+  }
+
+  #[test]
   fn build_omits_outline_when_bookmarks_disabled() {
     let config = test_config();
     let key = HeadingKey::new(0);
