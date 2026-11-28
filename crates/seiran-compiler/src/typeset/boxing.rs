@@ -140,7 +140,14 @@ pub(super) fn build_blocks(
   };
   let mut blocks: Vec<Block> = Vec::new();
   builder.walk_vertical(layout_nodes, &mut blocks, Length::ZERO, Length::ZERO, inputs.alignment)?;
-  let image_count = blocks.iter().filter(|block| matches!(block, Block::Image { .. })).count();
+  let image_count: usize = blocks
+    .iter()
+    .map(|block| match block {
+      Block::Image { .. } => return 1,
+      Block::Subfigures { grid, .. } => return grid.images.len(),
+      _ => return 0,
+    })
+    .sum();
   debug!(block_count = blocks.len(), image_count, "ブロックを構築");
   galley.extend(blocks);
   return Ok(());

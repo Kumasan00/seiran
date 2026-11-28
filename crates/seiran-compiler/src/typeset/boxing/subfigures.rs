@@ -1,7 +1,7 @@
 //! 副図の並び（`LayoutNode::Subfigures`）の計測 — 枠の幅・画像の寸法・副キャプションの行分割と、行内の揃えを
 //! 並びの局所座標で確定して `Block::Subfigures` にする
 
-use std::{iter, num::NonZeroU32};
+use std::{iter, mem, num::NonZeroU32};
 
 use crate::{
   document::{CaptionPosition, TextAlignment},
@@ -34,25 +34,6 @@ struct CaptionExtent {
   height: Length,
 }
 
-/// 並びの寸法の決まり方
-#[derive(Debug, Clone, Copy)]
-struct GridGeometry {
-  /// 利用幅
-  usable: Length,
-  /// 配置に使う枠の幅（正）
-  frame: Length,
-  /// 1 行に並べる個数
-  per_row: NonZeroU32,
-  /// 同じ行の副図どうしの横の間隔
-  column_gap: Length,
-  /// 行どうしの縦の間隔
-  row_gap: Length,
-  /// 画像と副キャプションの間隔
-  inner_margin: Length,
-  /// 副キャプションの位置
-  caption_position: CaptionPosition,
-}
-
 /// 副図 1 個の並びの局所座標（x は利用幅の左端から、y は並びの上端から）
 #[derive(Debug, Clone, Copy, PartialEq, Eq)]
 struct CellPlacement {
@@ -70,11 +51,12 @@ impl BlockBuilder<'_> {
   /// 副図の並び `grid` を、左右の字下げ `indent` / `right_indent` の内側の利用幅に組む
   pub(super) fn build_subfigures(
     &mut self,
-    grid: SubfiguresLayout,
+    mut grid: SubfiguresLayout,
     indent: Length,
     right_indent: Length,
   ) -> Result<Block, ElementOverflow> {
     let origin = grid.origin;
+    let cells = mem::take(&mut grid.cells);
     let at = |LengthOverflow| {
       return ElementOverflow {
         origin: Some(origin),
@@ -85,9 +67,9 @@ impl BlockBuilder<'_> {
     // 副キャプションは段の左端から枠の幅だけを使って組み、あとで枠の位置までずらす（枠は段の幅以下）
     let caption_right_indent = self.column_width.try_sub(frame).map_err(at)?;
 
-    let mut sizes = Vec::with_capacity(grid.cells.len());
-    let mut measured = Vec::with_capacity(grid.cells.len());
-    for SubfigureCell { image, caption } in grid.cells {
+    let mut sizes = Vec::with_capacity(cells.len());
+    let mut measured = Vec::with_capacity(cells.len());
+    for SubfigureCell { image, caption } in cells {
       let (width, height) = self.resolve_image(&image, frame)?;
       let caption = match caption {
         Some(paragraph) => {
@@ -111,22 +93,13 @@ impl BlockBuilder<'_> {
         height,
         caption: extent,
       });
-      measured.push((image, width, height, caption));
+      measured.push((image, caption));
     }
 
-    let geometry = GridGeometry {
-      usable,
-      frame,
-      per_row: grid.per_row,
-      column_gap: grid.column_gap,
-      row_gap: grid.row_gap,
-      inner_margin: grid.inner_margin,
-      caption_position: grid.caption_position,
-    };
-    let (placements, height) = arrange(&geometry, &sizes).map_err(at)?;
+    let (placements, height) = arrange(&grid, usable, frame, &sizes).map_err(at)?;
     let mut images = Vec::with_capacity(measured.len());
     let mut lines = Vec::new();
-    for ((image, width, height, caption), placement) in measured.into_iter().zip(placements) {
+    for (((image, caption), size), placement) in measured.into_iter().zip(&sizes).zip(placements) {
       images.push(SubfigureImage {
         origin: image.origin,
         path: image.path,
@@ -134,16 +107,16 @@ impl BlockBuilder<'_> {
         target_dpi: image.target_dpi,
         x: placement.image_x,
         y: placement.image_y,
-        width,
-        height,
+        width: size.width,
+        height: size.height,
       });
       if let Some((caption_origin, caption_lines, leading)) = caption {
         let mut baseline = placement.caption_baseline;
-        for mut line in caption_lines {
-          line.shift_x(placement.frame_x).map_err(at)?;
+        for line in caption_lines {
           lines.push(SubfigureLine {
             origin: caption_origin,
             line,
+            frame_x: placement.frame_x,
             baseline,
           });
           baseline = baseline.try_add(leading).map_err(at)?;
@@ -202,24 +175,30 @@ fn frame_widths(
   ));
 }
 
-/// 寸法の決まった副図 `cells` を `geometry` で並べ、副図ごとの局所座標と並び全体の高さを返す
-fn arrange(geometry: &GridGeometry, cells: &[CellSize]) -> Result<(Vec<CellPlacement>, Length), LengthOverflow> {
-  let Ok(per_row) = usize::try_from(geometry.per_row.get()) else {
+/// 寸法の決まった副図 `cells` を、`grid` の個数・間隔・副キャプションの位置で利用幅 `usable` に幅 `frame` の枠で並べ、
+/// 副図ごとの局所座標と並び全体の高さを返す（`grid.cells` は読まない）
+fn arrange(
+  grid: &SubfiguresLayout,
+  usable: Length,
+  frame: Length,
+  cells: &[CellSize],
+) -> Result<(Vec<CellPlacement>, Length), LengthOverflow> {
+  let Ok(per_row) = usize::try_from(grid.per_row.get()) else {
     unreachable!("u32 は usize に収まる（対応するターゲットは 32 ビット以上）");
   };
-  let pitch = geometry.frame.try_add(geometry.column_gap)?;
+  let pitch = frame.try_add(grid.column_gap)?;
   let mut placements = Vec::with_capacity(cells.len());
   let mut bottom = Length::ZERO;
   for (index, row) in cells.chunks(per_row).enumerate() {
     let top = if index == 0 {
       Length::ZERO
     } else {
-      bottom.try_add(geometry.row_gap)?
+      bottom.try_add(grid.row_gap)?
     };
     // 枠の幅を変えずに、行全体を利用幅の中央へ寄せる（埋まった行は利用幅ちょうどなので動かない）
-    let row_width = Length::try_sum(iter::repeat_n(geometry.frame, row.len()))?
-      .try_add(Length::try_sum(iter::repeat_n(geometry.column_gap, row.len() - 1))?)?;
-    let left = geometry.usable.try_sub(row_width)?.try_div(2.0)?;
+    let row_width = Length::try_sum(iter::repeat_n(frame, row.len()))?
+      .try_add(Length::try_sum(iter::repeat_n(grid.column_gap, row.len() - 1))?)?;
+    let left = usable.try_sub(row_width)?.try_div(2.0)?;
     let image_height = row.iter().map(|cell| return cell.height).max().unwrap_or(Length::ZERO);
     let captions: Vec<CaptionExtent> = row.iter().filter_map(|cell| return cell.caption).collect();
     let ascent = captions.iter().map(|caption| return caption.ascent).max();
@@ -231,29 +210,29 @@ fn arrange(geometry: &GridGeometry, cells: &[CellSize]) -> Result<(Vec<CellPlace
       }
       return Ok(lowest);
     };
-    let (images_top, baseline, row_bottom) = match (geometry.caption_position, ascent) {
+    let (images_top, baseline, row_bottom) = match (grid.caption_position, ascent) {
       (_, None) => (top, Length::ZERO, top.try_add(image_height)?),
       (CaptionPosition::Bottom, Some(ascent)) => {
         let images_bottom = top.try_add(image_height)?;
-        let baseline = images_bottom.try_add(geometry.inner_margin)?.try_add(ascent)?;
+        let baseline = images_bottom.try_add(grid.inner_margin)?.try_add(ascent)?;
         (top, baseline, captions_bottom(baseline)?.max(images_bottom))
       },
       (CaptionPosition::Top, Some(ascent)) => {
         let baseline = top.try_add(ascent)?;
-        let images_top = captions_bottom(baseline)?.try_add(geometry.inner_margin)?;
+        let images_top = captions_bottom(baseline)?.try_add(grid.inner_margin)?;
         (images_top, baseline, images_top.try_add(image_height)?)
       },
     };
     let mut frame_x = left;
     for cell in row {
-      let image_y = match geometry.caption_position {
+      let image_y = match grid.caption_position {
         // 副キャプションが下なら画像は下端揃え
         CaptionPosition::Bottom => images_top.try_add(image_height.try_sub(cell.height)?)?,
         CaptionPosition::Top => images_top,
       };
       placements.push(CellPlacement {
         frame_x,
-        image_x: frame_x.try_add(geometry.frame.try_sub(cell.width)?.try_div(2.0)?)?,
+        image_x: frame_x.try_add(frame.try_sub(cell.width)?.try_div(2.0)?)?,
         image_y,
         caption_baseline: baseline,
       });
@@ -267,18 +246,25 @@ fn arrange(geometry: &GridGeometry, cells: &[CellSize]) -> Result<(Vec<CellPlace
 #[cfg(test)]
 mod tests {
   use super::*;
+  use crate::{document::NodeId, source::SourceId};
 
-  /// 段の幅 300pt・間隔 12pt・画像と副キャプションの間隔 6pt の並び
-  fn geometry(frame: f32, per_row: u32, caption_position: CaptionPosition) -> GridGeometry {
-    return GridGeometry {
-      usable: Length::pt(300.0),
-      frame: Length::pt(frame),
+  /// 利用幅 300pt・間隔 12pt・画像と副キャプションの間隔 6pt で、`per_row` 個ずつ幅 `frame` の枠に `cells` を並べる
+  fn arrange_in(
+    frame: f32,
+    per_row: u32,
+    caption_position: CaptionPosition,
+    cells: &[CellSize],
+  ) -> (Vec<CellPlacement>, Length) {
+    let grid = SubfiguresLayout {
+      origin: NodeId::for_test(SourceId::new(0), 0),
       per_row: NonZeroU32::new(per_row).unwrap(),
       column_gap: Length::pt(12.0),
       row_gap: Length::pt(12.0),
       inner_margin: Length::pt(6.0),
       caption_position,
+      cells: Vec::new(),
     };
+    return arrange(&grid, Length::pt(300.0), Length::pt(frame), cells).unwrap();
   }
 
   /// 副キャプションの無い副図
@@ -306,7 +292,7 @@ mod tests {
     let frames = frame_widths(Length::pt(300.0), Length::pt(300.0), NonZeroU32::new(3).unwrap(), Length::pt(12.0));
     let cells = [image(92.0, 46.0); 3];
 
-    let (placements, height) = arrange(&geometry(92.0, 3, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, height) = arrange_in(92.0, 3, CaptionPosition::Bottom, &cells);
 
     assert_eq!(frames.unwrap(), (Length::pt(92.0), Length::pt(92.0)));
     let xs: Vec<Length> = placements.iter().map(|p| return p.image_x).collect();
@@ -318,7 +304,7 @@ mod tests {
   fn short_last_row_is_centered_without_resizing_frames() {
     let cells = [image(144.0, 72.0); 3];
 
-    let (placements, _) = arrange(&geometry(144.0, 2, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, _) = arrange_in(144.0, 2, CaptionPosition::Bottom, &cells);
 
     assert_eq!(placements[2].frame_x, Length::pt(78.0));
     assert_eq!(placements[2].image_x, Length::pt(78.0));
@@ -329,7 +315,7 @@ mod tests {
   fn narrow_image_is_centered_in_its_frame() {
     let cells = [image(40.0, 20.0), image(144.0, 72.0)];
 
-    let (placements, _) = arrange(&geometry(144.0, 2, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, _) = arrange_in(144.0, 2, CaptionPosition::Bottom, &cells);
 
     assert_eq!(placements[0].frame_x, Length::pt(0.0));
     assert_eq!(placements[0].image_x, Length::pt(52.0));
@@ -342,7 +328,7 @@ mod tests {
       captioned(40.0, 20.0, 10.0, 14.0),
     ];
 
-    let (placements, height) = arrange(&geometry(92.0, 3, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, height) = arrange_in(92.0, 3, CaptionPosition::Bottom, &cells);
 
     assert_eq!(placements[0].image_y, Length::pt(0.0));
     assert_eq!(placements[1].image_y, Length::pt(26.0));
@@ -360,7 +346,7 @@ mod tests {
       captioned(92.0, 20.0, 8.0, 26.0),
     ];
 
-    let (placements, height) = arrange(&geometry(92.0, 3, CaptionPosition::Top), &cells).unwrap();
+    let (placements, height) = arrange_in(92.0, 3, CaptionPosition::Top, &cells);
 
     assert_eq!(placements[0].caption_baseline, Length::pt(8.0));
     assert_eq!(placements[1].caption_baseline, Length::pt(8.0));
@@ -374,7 +360,7 @@ mod tests {
   fn rows_are_separated_by_row_gap() {
     let cells = [image(144.0, 72.0); 4];
 
-    let (placements, height) = arrange(&geometry(144.0, 2, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, height) = arrange_in(144.0, 2, CaptionPosition::Bottom, &cells);
 
     assert_eq!(placements[2].image_y, Length::pt(84.0));
     assert_eq!(placements[3].image_y, Length::pt(84.0));
@@ -385,7 +371,7 @@ mod tests {
   fn per_row_larger_than_count_keeps_frame_width() {
     let cells = [image(92.0, 46.0); 2];
 
-    let (placements, _) = arrange(&geometry(92.0, 3, CaptionPosition::Bottom), &cells).unwrap();
+    let (placements, _) = arrange_in(92.0, 3, CaptionPosition::Bottom, &cells);
 
     assert_eq!(placements[0].frame_x, Length::pt(52.0));
     assert_eq!(placements[1].frame_x, Length::pt(156.0));

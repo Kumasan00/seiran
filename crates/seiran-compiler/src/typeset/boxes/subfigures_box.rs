@@ -45,8 +45,10 @@ pub(in crate::typeset) struct SubfigureImage {
 pub(in crate::typeset) struct SubfigureLine {
   /// 行のはみ出し警告が指す `subfigure` 環境
   pub origin: NodeId,
-  /// 枠の位置まで x をずらした行（利用幅の左端から）
+  /// 枠の左端を原点にした行（枠の幅で行分割し中央揃え済み）
   pub line: Line,
+  /// 行を置く枠の左端（利用幅の左端から）
+  pub frame_x: Length,
   /// ベースライン（並びの上端から）
   pub baseline: Length,
 }

@@ -263,7 +263,9 @@ TOML パース時に弾く。**キーの一覧と既定値はここへ複製せ�
   （`\chapter` の無い文書で `{chapter}.{n}` は `1`。規則の全文は `CounterTemplate::expand` の doc）
 - **副図の番号**: `[counters.subfigure].number_format`（既定 `{appendix}.{chapter}.{figure}{n}`）は他のカウンタと同じく
   参照用の全体番号で、副キャプションの `{number}` だけは副図カウンタ自身の値を `number_style` で表記したもの（`a`）。表示側
-  （`typeset::lowering`）はカウンタ値に載った自身の値を引くだけで、副キャプション用の番号書式は持たない
+  （`typeset::lowering`）はカウンタ値に載った自身の値を引くだけで、副キャプション用の番号書式は持たない。
+  副番号が図ごとに 1 から数え直されるのは `[counters.figure]` の既定の `resets` が `subfigure` を含むからで、`resets` を
+  書くと既定の列を丸ごと置き換えるので、図ごとに数え直すなら `subfigure` も書く
 - **付録の採番**: `appendix` は既定の `resets` に `chapter` を含み、章の深さの見出し（`HeadingLevel::depth` が章と同じ）。
   付録の下では章番号が 0 になるので、既定の番号書式 `{appendix}.{chapter}.{n}` は同じ 0 省略の規則だけで本文 `1.1`・付録 `A.1` を
   書き分ける（`{chapter}` を位置で読み替えない）。定理の `reset_by = "chapter"` は章と付録のどちらが進んでもリセットする

@@ -114,24 +114,18 @@ pub(super) fn figure(view: &EnvironmentView<'_>, ctx: &EvalContext<'_>, opts: &O
     )? {
       match item {
         BodyItem::Command(FigureCommand::Image, cmd_view, Bound { args: [arg], opts }) => {
-          if image.is_some() {
-            return Err(duplicate_command("figure", "image", &cmd_view));
-          }
-          if !subfigures.is_empty() {
+          if image.is_none() && !subfigures.is_empty() {
             return Err(EvalError::FigureImageWithSubfigures {
               span: cmd_view.span().into(),
             });
           }
-          image = Some(extract_image(&cmd_view, arg, &opts, ctx)?);
+          collect_image(&mut image, "figure", &cmd_view, arg, &opts, ctx)?;
         },
         BodyItem::Command(FigureCommand::Caption, cmd_view, Bound { args: [arg], .. }) => {
-          if caption.is_some() {
-            return Err(duplicate_command("figure", "caption", &cmd_view));
-          }
+          collect_caption(&mut caption, "figure", &cmd_view, arg, ctx)?;
           if image.is_none() && subfigures.is_empty() {
             caption_position = CaptionPosition::Top;
           }
-          caption = Some((caption::evaluate_caption(&cmd_view, arg, ctx)?, cmd_view.span().into()));
         },
         BodyItem::Environment(sub_view, sub_opts) => {
           if image.is_some() {
@@ -216,7 +210,9 @@ fn subfigure(
 ) -> Result<(HirSubfigure, Option<(CaptionPosition, SourceSpan)>), EvalError> {
   let id = ctx.alloc(view.span());
   let mut image: Option<HirImage> = None;
-  let mut caption: Option<(Vec<HirInline>, CaptionPosition, SourceSpan)> = None;
+  let mut caption: Option<(Vec<HirInline>, SourceSpan)> = None;
+  // `\caption` が `\image` より先に現れた場合のみ Top（`\caption` があるときだけ読まれる）
+  let mut position = CaptionPosition::Bottom;
 
   if let Some(body) = view.body() {
     for (command, cmd_view, Bound { args: [arg], opts }) in body_scan::collect_allowed_commands(
@@ -227,22 +223,12 @@ fn subfigure(
       "\\image と \\caption",
     )? {
       match command {
-        FigureCommand::Image => {
-          if image.is_some() {
-            return Err(duplicate_command("subfigure", "image", &cmd_view));
-          }
-          image = Some(extract_image(&cmd_view, arg, &opts, ctx)?);
-        },
+        FigureCommand::Image => collect_image(&mut image, "subfigure", &cmd_view, arg, &opts, ctx)?,
         FigureCommand::Caption => {
-          if caption.is_some() {
-            return Err(duplicate_command("subfigure", "caption", &cmd_view));
+          collect_caption(&mut caption, "subfigure", &cmd_view, arg, ctx)?;
+          if image.is_none() {
+            position = CaptionPosition::Top;
           }
-          let position = if image.is_none() {
-            CaptionPosition::Top
-          } else {
-            CaptionPosition::Bottom
-          };
-          caption = Some((caption::evaluate_caption(&cmd_view, arg, ctx)?, position, cmd_view.span().into()));
         },
       }
     }
@@ -256,7 +242,7 @@ fn subfigure(
     });
   };
   let (inlines, position) = match caption {
-    Some((inlines, position, span)) => (Some(inlines), Some((position, span))),
+    Some((inlines, span)) => (Some(inlines), Some((position, span))),
     None => (None, None),
   };
   return Ok((
@@ -268,6 +254,45 @@ fn subfigure(
     },
     position,
   ));
+}
+
+/// 環境 `env`（`figure` / `subfigure`）の本体の `\image` `view` を評価して `slot` に収める
+///
+/// # Errors
+///
+/// 2 回目の `\image` は重複の診断、引数の誤りは [`extract_image`] の診断。
+fn collect_image(
+  slot: &mut Option<HirImage>,
+  env: &str,
+  view: &CommandView<'_>,
+  path_arg: &CstNode<'_>,
+  opts: &OptArgs,
+  ctx: &EvalContext<'_>,
+) -> Result<(), EvalError> {
+  if slot.is_some() {
+    return Err(duplicate_command(env, "image", view));
+  }
+  *slot = Some(extract_image(view, path_arg, opts, ctx)?);
+  return Ok(());
+}
+
+/// 環境 `env`（`figure` / `subfigure`）の本体の `\caption` `view` を評価し、内容と `\caption` の位置を `slot` に収める
+///
+/// # Errors
+///
+/// 2 回目の `\caption` は重複の診断、本文の評価エラーはそのまま。
+fn collect_caption(
+  slot: &mut Option<(Vec<HirInline>, SourceSpan)>,
+  env: &str,
+  view: &CommandView<'_>,
+  arg: &CstNode<'_>,
+  ctx: &EvalContext<'_>,
+) -> Result<(), EvalError> {
+  if slot.is_some() {
+    return Err(duplicate_command(env, "caption", view));
+  }
+  *slot = Some((caption::evaluate_caption(view, arg, ctx)?, view.span().into()));
+  return Ok(());
 }
 
 /// 環境 `env` の本体で 1 回しか書けないコマンド `name` の 2 回目 `view` の診断

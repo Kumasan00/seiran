@@ -633,9 +633,9 @@ struct AtomicPlacement {
   cursor_after: RegionCursor,
 }
 
-/// 段落以外の内容ブロック（画像・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
+/// 段落以外の内容ブロック（画像・副図の並び・数式・合成行・表）をカーソル `cursor` から置くときの判定（純粋関数）。
 ///
-/// 表の脚注本体（行分割済みの `row.footnotes`）は判定に含める（`place_table` と同じ判定関数を通す）。
+/// 表と副図の並びの脚注本体（行分割済みの行の `footnotes`）は判定に含める（実配置と同じ判定関数を通す）。
 fn plan_atomic(block: &Block, cursor: RegionCursor, geom: &PageGeometry) -> Result<AtomicPlacement, ElementOverflow> {
   let at = |LengthOverflow| {
     return ElementOverflow {
@@ -1164,15 +1164,29 @@ fn place_subfigures(
   for SubfigureLine {
     origin: line_origin,
     mut line,
+    frame_x,
     baseline,
   } in lines
   {
     let baseline = top.try_add(baseline).map_err(at)?;
-    line.shift_x(indent).map_err(at)?;
+    // 副キャプションは枠の幅で組むので、横のはみ出しは画像と同じく枠に対して測る（段の幅に収まっても隣の副図に重なる）
     composer
-      .record_line_overflow(&line, baseline.try_add(line.depth).map_err(at)?, limit, Some(line_origin))
+      .record_extent_overflow(
+        line.width_without_hanging().map_err(at)?,
+        frame_width,
+        baseline.try_add(line.depth).map_err(at)?,
+        limit,
+        |axis, excess| {
+          return OverflowKind::Line {
+            origin: Some(line_origin),
+            excerpt: observe::summarize_line(&line),
+            axis,
+            excess,
+          };
+        },
+      )
       .map_err(at)?;
-    line.shift_x(col_off).map_err(at)?;
+    line.shift_x(left.try_add(frame_x).map_err(at)?).map_err(at)?;
     composer.draft.place_line(line, baseline, col_off).map_err(at)?;
   }
   for (footnote, placed) in bodies.into_iter().zip(splits) {
@@ -5527,11 +5541,12 @@ mod tests {
     };
   }
 
-  /// 局所ベースライン `baseline` に置く副キャプションの行
-  fn grid_line(line: Line, baseline: f32) -> SubfigureLine {
+  /// 枠の左端 `frame_x`・局所ベースライン `baseline` に置く副キャプションの行
+  fn grid_line(line: Line, frame_x: f32, baseline: f32) -> SubfigureLine {
     return SubfigureLine {
       origin: paragraph_origin(),
       line,
+      frame_x: pt(frame_x),
       baseline: pt(baseline),
     };
   }
@@ -5599,7 +5614,7 @@ mod tests {
         grid_image(0.0, 0.0, 40.0, 10.0),
         grid_image(50.0, 0.0, 40.0, 10.0),
       ],
-      vec![grid_line(body_line(), 24.0)],
+      vec![grid_line(body_line(), 0.0, 24.0)],
       26.0,
       45.0,
       5.0,
@@ -5626,6 +5641,88 @@ mod tests {
     let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
 
     assert_eq!(overflows, [image_overflow(0, OverflowAxis::Horizontal, 10.0)]);
+  }
+
+  #[test]
+  fn subcaption_line_wider_than_frame_is_recorded() {
+    // 枠 45pt の副キャプションに幅 60pt の分割できない行。段の幅 100pt には収まるが、枠からは 15pt はみ出して隣の副図に重なる
+    let blocks = vec![subfigures_block(
+      vec![grid_image(0.0, 0.0, 40.0, 10.0)],
+      vec![grid_line(box_line(60.0, 8.0, 2.0), 0.0, 24.0)],
+      26.0,
+      45.0,
+      0.0,
+    )];
+
+    let (_, overflows) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(
+      overflows,
+      [Overflow {
+        page_index: 0,
+        kind: OverflowKind::Line {
+          origin: Some(paragraph_origin()),
+          excerpt: String::new(),
+          axis: OverflowAxis::Horizontal,
+          excess: pt(15.0),
+        },
+      }]
+    );
+  }
+
+  #[test]
+  fn subcaption_lines_start_at_their_frame() {
+    let blocks = vec![subfigures_block(
+      vec![grid_image(0.0, 0.0, 40.0, 10.0)],
+      vec![grid_line(body_line(), 50.0, 24.0)],
+      26.0,
+      45.0,
+      5.0,
+    )];
+
+    let (pages, _) = break_pages_in_range(blocks, &test_geometry());
+
+    let line_x = pages[0].blocks.iter().find_map(|block| match block {
+      PlacedBlock::Line { line, .. } => return line.boxes.first().map(|placed| return placed.dx),
+      _ => return None,
+    });
+    assert_eq!(line_x, Some(pt(55.0)));
+  }
+
+  #[test]
+  fn heading_moves_with_subfigures_that_do_not_fit() {
+    // 1 行目（baseline 10）の後、見出し役の 1 行段落（baseline 22）→ 分割禁止 → 高さ 20pt の並び。並びは 34pt から 54pt で
+    // 下限 50pt を超えるので次ページへ送られ、見出し役の行も一緒に送られる
+    let blocks = vec![
+      single_line_paragraph(Vec::new()),
+      single_line_paragraph(Vec::new()),
+      Block::KeepWithNext,
+      subfigures_block(vec![grid_image(0.0, 0.0, 40.0, 20.0)], Vec::new(), 20.0, 45.0, 0.0),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(page_baselines(&pages[0]).len(), 1, "見出し役の行は並びと一緒に次ページへ");
+    assert_eq!(page_baselines(&pages[1]), [pt(10.0)]);
+    assert_eq!(image_positions(&pages[1]), [(pt(0.0), pt(22.0))]);
+  }
+
+  #[test]
+  fn subcaption_index_terms_belong_to_the_grid_page() {
+    let indexed = Line {
+      index_marks: vec![index_term("副図", None)],
+      ..body_line()
+    };
+    let blocks = vec![
+      paragraph_of_lines(2),
+      subfigures_block(vec![grid_image(0.0, 0.0, 40.0, 20.0)], vec![grid_line(indexed, 0.0, 28.0)], 30.0, 45.0, 0.0),
+    ];
+
+    let (pages, _) = break_pages_in_range(blocks, &test_geometry());
+
+    assert_eq!(pages.len(), 2);
+    assert_eq!(pages[0].index_entries, []);
+    assert_eq!(pages[1].index_entries, [index_term("副図", None)]);
   }
 
   #[test]
@@ -5665,7 +5762,7 @@ mod tests {
     };
     let blocks = vec![
       paragraph_of_lines(2),
-      subfigures_block(Vec::new(), vec![grid_line(footnoted, 3.0)], 5.0, 45.0, 0.0),
+      subfigures_block(Vec::new(), vec![grid_line(footnoted, 0.0, 3.0)], 5.0, 45.0, 0.0),
     ];
 
     let (pages, _) = break_pages_in_range(blocks, &test_geometry());
@@ -5686,7 +5783,7 @@ mod tests {
     };
     let blocks = vec![
       single_line_paragraph(vec![footnote_of_lines(1, 8)]),
-      subfigures_block(Vec::new(), vec![grid_line(footnoted, 3.0)], 5.0, 45.0, 0.0),
+      subfigures_block(Vec::new(), vec![grid_line(footnoted, 0.0, 3.0)], 5.0, 45.0, 0.0),
     ];
 
     let (pages, overflows) = break_pages_in_range(blocks, &test_geometry());

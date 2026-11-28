@@ -426,4 +426,45 @@ mod tests {
     let anchors: Vec<&LayoutNode> = before.iter().filter(|node| matches!(node, LayoutNode::Anchor(_))).collect();
     assert_eq!(anchors.len(), 2, "{before:?}");
   }
+
+  /// インライン列の脚注の表示番号と本体のテキストを出現順に集める
+  fn footnotes_of(nodes: &[InlineNode]) -> Vec<(u32, String)> {
+    return nodes
+      .iter()
+      .filter_map(|node| match node {
+        InlineNode::Footnote { number, body, .. } => return Some((*number, text_of(body))),
+        _ => return None,
+      })
+      .collect();
+  }
+
+  #[test]
+  fn subcaption_footnotes_links_and_index_terms_are_lowered() {
+    let source = "\\section[label=sec:a]{A}\n\n\\begin{figure}\n\\begin{subfigure}\n\\image{a.svg}\n\\caption{一\\footnote{注1}}\n\\end{subfigure}\n\\begin{subfigure}\n\\image{b.svg}\n\\caption{二\\footnote{注2}\\ref{sec:a}\\index{副図}}\n\\end{subfigure}\n\\caption{全体\\footnote{注3}}\n\\end{figure}\n";
+
+    let nodes = lower_source(&context(&ReadStyle::default()), source);
+
+    let (_, grid) = find_subfigures(&nodes).expect("副図の並びがあるはず");
+    let first = &grid.cells[0].caption.as_ref().expect("副キャプション").content;
+    let second = &grid.cells[1].caption.as_ref().expect("副キャプション").content;
+    // 通し番号は副図の順に副キャプションが先、図全体のキャプションが後
+    assert_eq!(footnotes_of(first).iter().map(|(n, _)| return *n).collect::<Vec<_>>(), [1]);
+    assert_eq!(footnotes_of(second).iter().map(|(n, _)| return *n).collect::<Vec<_>>(), [2]);
+    let overall: Vec<(u32, String)> = nodes
+      .iter()
+      .filter_map(|node| match node {
+        LayoutNode::VBox { children, .. } => return Some(children),
+        _ => return None,
+      })
+      .flatten()
+      .filter_map(|node| match node {
+        LayoutNode::Paragraph(paragraph) => return Some(footnotes_of(&paragraph.content)),
+        _ => return None,
+      })
+      .flatten()
+      .collect();
+    assert_eq!(overall.iter().map(|(n, _)| return *n).collect::<Vec<_>>(), [3]);
+    assert!(second.iter().any(|node| matches!(node, InlineNode::Link { .. })), "{second:?}");
+    assert!(second.iter().any(|node| matches!(node, InlineNode::IndexMark(_))), "{second:?}");
+  }
 }
