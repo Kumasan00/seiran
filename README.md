@@ -6,7 +6,7 @@
 
 ## 特徴
 
-- TeX ライクなコマンド構文（`\part`, `\chapter`, `\section` など）によるドキュメント構造化
+- TeX ライクなコマンド構文（`\part`, `\chapter`, `\section`, 付録の `\appendix` など）によるドキュメント構造化
 - 19 種類のフォント種別に対応（Serif / Sans-serif / Monospace × Regular / Bold / Italic / Bold Italic + Math + 日本語フォント）
 - バリアブルフォント対応（軸の指定によるウェイト・幅の調整）
 - OpenType フィーチャー（カーニング、リガチャなど）のサポート
@@ -71,6 +71,9 @@ cargo run -- build [-c <config_path>] [-v|-vv|-vvv] [-q] [--log-file <path>]
 ```
 
 コマンドの必須引数と数式の上付き・下付きには `{...}` を使います。
+付録は本文の章の後ろに `\appendix{題目}` で書き、中の区分は `\section` 以下をそのまま使います。付録は A, B, … と数え、
+配下の節・図・表・式は A.1・Figure A.1・(A.1) のように付録番号を先頭に持ちます（`\chapter` を使わない文書でも同じ）。
+最初の `\appendix` より後ろに `\chapter` / `\part` は置けません。
 「本当？　次の文」のように書いた全角空白（U+3000）は 1 字分のアキになり、行頭・行末では消えます（`[text].punctuation_spacing = false` のときは字として組みます）。
 機能別の例は [tests/text/](tests/text/)、構文の原則は [言語設計](docs/language-design.md)を参照してください。
 
@@ -230,8 +233,8 @@ line_height_factor = 1.05      # 行間係数（> 0）
 # open_bracket_paragraph_start = "none"  # 段落先頭の始め括弧の前アキ: "none"（既定） / "half"（二分を残す）
 # open_bracket_line_start = "none"       # 折返し後・明示改行後の行頭の始め括弧の前アキ: "none"（既定） / "half"
 
-[heading.part]                 # 見出しレベルは part / chapter / section /
-format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 6 種
+[heading.part]                 # 見出しレベルは part / chapter / appendix / section /
+format = "第{number}部 {title}" # subsection / paragraph / subparagraph の 7 種
 font_size = "40pt"             # 見出しフォントサイズ
 bottom_margin = "20pt"         # 見出し下余白
 
@@ -239,6 +242,14 @@ bottom_margin = "20pt"         # 見出し下余白
 format = "第{number}章 {title}"
 font_size = "25pt"
 bottom_margin = "15pt"
+
+[heading.appendix]             # 付録（既定の体裁は chapter と同じ、書式は "Appendix {number}: {title}"）
+format = "付録 {number} {title}"
+
+[counters.appendix]            # 付録の番号（既定は alpha_upper で A, B, …）
+display_name = "付録"
+# 番号書式を自分で書くときは付録番号も書く: [counters.section] number_format = "{appendix}.{chapter}.{n}"
+# （"{chapter}.{n}" だけでは付録の下の節が "1" になる）
 
 [heading.section]
 format = "{number} {title}"

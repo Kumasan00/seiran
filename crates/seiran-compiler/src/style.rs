@@ -78,7 +78,7 @@ pub(crate) struct Style {
   /// 背景色。`None` は背景描画なし
   #[garde(skip)]
   pub background_color: Option<Color>,
-  /// 見出し全 6 レベルのスタイル
+  /// 見出し全 7 種（6 段の深さと付録）のスタイル
   #[garde(dive)]
   pub heading: HeadingStyles,
   /// 本文段落のスタイル
