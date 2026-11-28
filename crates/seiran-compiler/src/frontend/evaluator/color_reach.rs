@@ -2,7 +2,9 @@
 //!
 //! 届くかは要素の種類だけで決め、style の値・色の値は見ない。引数のどれか 1 つに届けば受理する。
 
-use crate::document::{HirInline, HirInlineKind, HirMath, HirMathKind};
+use std::slice;
+
+use crate::document::{HirInline, HirInlineKind, HirMath, HirMathKind, MathDelimiter};
 
 /// 届かない要素が内側の `\color` を含むときのラベル
 const NESTED: &str = "内側の \\color が色を上書きするので、この色は届きません";
@@ -49,29 +51,36 @@ fn reaches(children: &[HirInline], nested: &mut bool) -> bool {
   return reached;
 }
 
-/// 数式の要素列が字・記号・構造を 1 つでも含むか
+/// 数式の要素列が字か、中身によらず描く記号を 1 つでも持つか
 ///
-/// ソースの空白・明示アキ・空のグループ・空白だけの数式内の文章は字を持たないので含まない扱い。
+/// 二項係数と伸縮括弧の括弧・根号・アクセント・場合分けの波括弧・区切り付きの行列の括弧は、中身が空でも字形を描くので
+/// 含む扱い。分数の線と上下線は中身の幅に合わせて引く（中身が空なら幅 0）ので、記号を持たない構造（グループ・上付き下付き・
+/// 区切りの無い行列・字形指定）と同じく中身で決める。ソースの空白・明示アキ・空白だけの数式内の文章は字を持たない。
 pub(in crate::frontend::evaluator) fn math_has_content(nodes: &[HirMath]) -> bool {
   return nodes.iter().any(|node| {
     return match &node.kind {
       HirMathKind::Text(text) | HirMathKind::Prose(text) => !text.trim().is_empty(),
-      HirMathKind::Group(children) => math_has_content(children),
+      HirMathKind::Group(children) | HirMathKind::Styled { children, .. } => math_has_content(children),
+      HirMathKind::Superscript(inner) | HirMathKind::Subscript(inner) | HirMathKind::Bar { body: inner, .. } => {
+        math_has_content(slice::from_ref(inner))
+      },
+      HirMathKind::Frac { numer, denom } => {
+        math_has_content(slice::from_ref(numer)) || math_has_content(slice::from_ref(denom))
+      },
+      HirMathKind::Matrix {
+        delimiter: MathDelimiter::None,
+        rows,
+      } => rows.iter().flatten().any(|cell| return math_has_content(cell)),
       HirMathKind::Space(_) => false,
       HirMathKind::Symbol { .. }
       | HirMathKind::OperatorName { .. }
       | HirMathKind::Number(_)
       | HirMathKind::Unit(_)
       | HirMathKind::Quantity { .. }
-      | HirMathKind::Superscript(_)
-      | HirMathKind::Subscript(_)
-      | HirMathKind::Frac { .. }
       | HirMathKind::Binom { .. }
       | HirMathKind::Sqrt { .. }
       | HirMathKind::Accent { .. }
       | HirMathKind::Fenced { .. }
-      | HirMathKind::Bar { .. }
-      | HirMathKind::Styled { .. }
       | HirMathKind::Matrix { .. }
       | HirMathKind::Cases { .. } => true,
     };
@@ -91,6 +100,12 @@ mod tests {
       (r"\color[color=#ff0000]{\\}", EMPTY),
       (r"\color[color=#ff0000]{\index{x}}", EMPTY),
       (r"\color[color=#ff0000]{$\thinspace$}", EMPTY),
+      (r"\color[color=#ff0000]{${}^{}$}", EMPTY),
+      (r"\color[color=#ff0000]{$^{}$}", EMPTY),
+      (r"\color[color=#ff0000]{$\begin{matrix}\end{matrix}$}", EMPTY),
+      (r"\color[color=#ff0000]{$\begin{matrix} & \\ & \end{matrix}$}", EMPTY),
+      (r"\color[color=#ff0000]{$\frac{}{}$}", EMPTY),
+      (r"\color[color=#ff0000]{$\overline{\quad}$}", EMPTY),
       (r"\color[color=#ff0000]{\color[color=#0000ff]{x}}", NESTED),
       (r"\color[color=#ff0000]{\color[color=#ff0000]{x}}", NESTED),
       (r"\color[color=#ff0000]{\bold{\color[color=#0000ff]{x}}}", NESTED),
@@ -130,6 +145,12 @@ mod tests {
       r"\color[color=#ff0000]{\unit{m}}",
       r"\color[color=#ff0000]{\qty{1}{m}}",
       r"\color[color=#ff0000]{$x$}",
+      r"\color[color=#ff0000]{${}^{2}$}",
+      r"\color[color=#ff0000]{$\frac{}{x}$}",
+      // 中身が空でも描く記号に色が届く
+      r"\color[color=#ff0000]{$\sqrt{}$}",
+      r"\color[color=#ff0000]{$\paren{}$}",
+      r"\color[color=#ff0000]{$\begin{matrix}[delimiter=paren]\end{matrix}$}",
       r"\color[color=#ff0000]{\code{x}}",
       r"\color[color=#ff0000]{\bold{x}}",
       r"\color[color=#ff0000]{\href{u}{x}}",
