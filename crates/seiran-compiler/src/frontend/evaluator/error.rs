@@ -737,6 +737,22 @@ pub(crate) enum EvalError {
     label: String,
   },
 
+  /// `\color` の引数に、その色が届く要素が 1 つも無い場合
+  ///
+  /// どの style でも `\color` を外した書き方と同じ出力になる、同じ結果への第 2 の書き方。
+  #[error("\\color の色が届く字が引数にありません")]
+  #[diagnostic(
+    code(frontend::eval::ineffective_color),
+    help("\\color を外してください。内側の \\color は外側の色を上書きします")
+  )]
+  IneffectiveColor {
+    /// `\color` 呼び出しのソース位置
+    #[label("{label}")]
+    span: SourceSpan,
+    /// ラベルの文言（届かない要素が内側の `\color` を含むか・字が無いかで変わる）
+    label: String,
+  },
+
   /// `\image` のパスの拡張子が対応形式のどれでもない場合
   #[error("画像ファイルの拡張子が未対応です: {path}")]
   #[diagnostic(

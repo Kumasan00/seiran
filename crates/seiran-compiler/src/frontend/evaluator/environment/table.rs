@@ -751,7 +751,6 @@ mod tests {
       "abc",
       r"$\num{1.5}$",
       r"\unit{m}",
-      r"\color[color=#cc0000]{\color[color=#00cc00]{\num{1}}}",
       r"\color[color=#cc0000]{\num{1}\footnote{注}}",
       r"\num{1} \footnote{注}",
       r"\num{1}x\footnote{注}",
