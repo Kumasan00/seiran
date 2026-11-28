@@ -1,6 +1,6 @@
 //! コマンドライン引数の定義と解析
 
-use std::path::PathBuf;
+use std::{fmt, path::PathBuf};
 
 use clap::{Parser, Subcommand};
 
@@ -16,7 +16,7 @@ pub(super) struct Cli {
   #[arg(short, long, global = true)]
   pub(super) quiet: bool,
 
-  /// ログをこのファイルへも書く（端末の出力は変わらない）。内容は先頭の実行記録（開始時刻・バージョン・サブコマンド・基準ディレクトリ・実効フィルタ）、-v / `RUST_LOG` に従うログ（-v で工程の開始・終了と件数、-vv で内部詳細、-vvv で行分割・シェーピングの本文抜粋）、warning・成功サマリ・致命的エラー診断、末尾の終了記録（終了時刻・終了状態）。実行ごとに新規作成し、既存パスはエラー。記録に失敗した実行は終了コード 1
+  /// 工程・診断・実行結果を新しいファイルへ記録する。-vv / -vvv で詳細を追加し、`RUST_LOG` で絞り込める。既存パスや記録失敗はエラー
   #[arg(long, global = true, value_name = "PATH")]
   pub(super) log_file: Option<PathBuf>,
 
@@ -60,14 +60,24 @@ pub(super) enum Command {
   },
 }
 
-impl Command {
-  /// 実行記録に書くサブコマンド名（コマンドラインで打つ綴り）。
-  pub(super) fn name(&self) -> &'static str {
+impl fmt::Display for Command {
+  /// 実行記録に、既定値を補った入力パスとフォントのインデックスを書く。
+  #[expect(
+    clippy::unnecessary_debug_formatting,
+    reason = "空白を含むパスの境界と改行や非 UTF-8 のバイトを実行記録の 1 行で識別するため"
+  )]
+  fn fmt(&self, f: &mut fmt::Formatter<'_>) -> fmt::Result {
     return match self {
-      Command::Build { .. } => "build",
-      Command::VariationAxes { .. } => "variation-axes",
-      Command::TtcNames { .. } => "ttc-names",
-      Command::ScriptLangs { .. } => "script-langs",
+      Command::Build { config_path } => write!(f, "build -c {config_path:?}"),
+      Command::VariationAxes {
+        font_path,
+        font_index,
+      } => write!(f, "variation-axes {font_path:?} -f {font_index}"),
+      Command::TtcNames { ttc_file_path } => write!(f, "ttc-names {ttc_file_path:?}"),
+      Command::ScriptLangs {
+        font_path,
+        font_index,
+      } => write!(f, "script-langs {font_path:?} -f {font_index}"),
     };
   }
 }
@@ -94,17 +104,16 @@ mod tests {
   }
 
   #[test]
-  fn command_names_match_the_clap_spelling() {
-    let cases: [&[&str]; 4] = [
-      &["seiran", "build"],
-      &["seiran", "variation-axes", "f.ttf"],
-      &["seiran", "ttc-names", "f.ttc"],
-      &["seiran", "script-langs", "f.ttf"],
+  fn recorded_commands_include_the_selected_input() {
+    let cases: &[(&[&str], &str)] = &[
+      (&["seiran", "build"], r#"build -c "./config/config.toml""#),
+      (&["seiran", "variation-axes", "f.ttf", "-f", "2"], r#"variation-axes "f.ttf" -f 2"#),
+      (&["seiran", "ttc-names", "my fonts.ttc"], r#"ttc-names "my fonts.ttc""#),
+      (&["seiran", "script-langs", "f.ttf"], r#"script-langs "f.ttf" -f 0"#),
     ];
-    for args in cases {
+    for &(args, expected) in cases {
       let cli = Cli::try_parse_from(args).expect("有効な引数");
-
-      assert_eq!(cli.command.name(), args[1], "実行記録の綴りはコマンドラインの綴り");
+      assert_eq!(cli.command.to_string(), expected);
     }
   }
 }

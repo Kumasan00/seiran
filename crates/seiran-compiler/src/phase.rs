@@ -33,9 +33,10 @@ pub(crate) struct Phase {
 }
 
 impl Phase {
-  /// `span` に入り、工程の開始を記録する。
-  ///
-  /// span は呼び出し側の `info_span!("input")` 等で作る（span の名前と target は callsite で決まる）。
+  /// 工程名を持つ span と、開始・終了 event をひと組で絞り込むための target。
+  pub(crate) const TARGET: &'static str = module_path!();
+
+  /// 工程の span に入り、開始を記録する。
   pub(crate) fn enter(span: Span) -> Self {
     let span = span.entered();
     info!("工程を開始");
@@ -143,7 +144,7 @@ mod tests {
       .expect("subscriber の無いスレッドで工程を開始・終了しても panic しないはず");
 
       let unwound = panic::catch_unwind(AssertUnwindSafe(|| {
-        let _phase = Phase::enter(info_span!("probe"));
+        let _phase = Phase::enter(info_span!(target: Phase::TARGET, "probe"));
         panic!("わざと落として Phase の Drop 経路を確かめる");
       }));
       assert!(unwound.is_err(), "panic が起きるはず");

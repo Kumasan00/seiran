@@ -29,7 +29,7 @@ pub use compile_failure::CompileFailure;
 pub use dependency_manifest::DependencyManifest;
 use input::CompilationInputs;
 use source_diagnostic::SourceDiagnostic;
-use tracing::{info, info_span};
+use tracing::{debug, info_span};
 pub use warnings::Warnings;
 
 use crate::{
@@ -79,7 +79,7 @@ pub fn compile<S: ProjectSource>(
   config_path: &ProjectPath,
   base_dir: &Path,
 ) -> Result<Compilation, CompileFailure> {
-  let phase = Phase::enter(info_span!("compile"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "compile"));
 
   let mut warnings = Warnings::default();
   let (publication, dependencies, pdf_path) = match run_phases(source, config_path, base_dir, &mut warnings) {
@@ -87,7 +87,7 @@ pub fn compile<S: ProjectSource>(
     Err(failure) => return Err(failure.with_warnings(warnings)),
   };
 
-  info!(page_count = publication.pages().len(), warning_count = warnings.iter().count(), "文書をコンパイル");
+  debug!(page_count = publication.pages().len(), warning_count = warnings.iter().count(), "文書をコンパイル");
   phase.succeed();
 
   return Ok(Compilation {
@@ -165,10 +165,10 @@ fn load_inputs(
   config_path: &ProjectPath,
   resolver: &PathResolver,
 ) -> (Result<CompilationInputs, CompileFailure>, Vec<ConfigWarning>) {
-  let phase = Phase::enter(info_span!("input"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "input"));
   let (inputs, config_warnings) = input::load(source, config_path, resolver);
   if inputs.is_ok() {
-    info!(config_path = %config_path, "入力を読込");
+    debug!(config_path = %config_path, "入力を読込");
     phase.succeed();
   }
   return (inputs.map_err(CompileFailure::from), config_warnings);
@@ -185,9 +185,9 @@ fn analyze_document(
   resolver: &PathResolver,
 ) -> Result<SemanticDocument, CompileFailure> {
   let document = {
-    let phase = Phase::enter(info_span!("frontend"));
+    let phase = Phase::enter(info_span!(target: Phase::TARGET, "frontend"));
     let document = parse_project(inputs, resolver)?;
-    info!(
+    debug!(
       source_count = document.source_nodes().len(),
       node_count = document.source_nodes().iter().map(Vec::len).sum::<usize>(),
       "ソースを構文解析"
@@ -197,10 +197,10 @@ fn analyze_document(
   };
 
   let semantic_document = {
-    let phase = Phase::enter(info_span!("semantics"));
+    let phase = Phase::enter(info_span!(target: Phase::TARGET, "semantics"));
     let semantic_document = semantics::analyze(source, document, inputs.references(), inputs.style())
       .map_err(|error| return attribute_analyze_error(error, inputs.sources()))?;
-    info!(heading_count = semantic_document.heading_count(), "文書を意味解析");
+    debug!(heading_count = semantic_document.heading_count(), "文書を意味解析");
     phase.succeed();
     semantic_document
   };

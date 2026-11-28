@@ -83,10 +83,8 @@ module・出口・構築子は明示したものだけが対象である。
 （`compile` / `input` / `frontend` / `semantics`）と `typeset::compose`（`font` / `typeset`）が共用する —
 `typeset` は `compiler` に依存できないので facade 側には置かない。
 
-- 開始・終了 event の target は工程が属する module ではなく `seiran_compiler::phase` 自身。module 単位で
-  絞った `RUST_LOG` はこの event を通さないので、開始・終了も見たいときは `seiran_compiler::phase=info` を
-  directive へ足す。型を facade へ載せないのは event の target を各 crate に保つため（CLI は同名 module を
-  自前で持つ）
+- 工程の span と開始・終了 event は同じ target に属する。CLI も自分の crate の target で工程を開くため、
+  この型は facade へ載せず、CLI が同名 module を持つ。
 
 ### `source`
 
@@ -945,14 +943,9 @@ resolve_config_path（PathResolver を 1 回構築・config_path を解決）
 #### tracing の phase 構造
 
 `compile` span と `input` / `frontend` / `semantics` の 3 段をこの facade が持ち、`font` / `typeset` の
-2 段は `typeset::compose` が持つ。各段は `Phase::enter(info_span!(…))` を持つブロック 1 つで、span の名前が
-phase 名（`resolve_config_path` は span を持たない前処理）。段の完了 event（件数などの事実）は成功したときだけ、
-その span を開いた側（facade / `compose`）が出し（この crate の規約。CLI 側は `seiran` 節）、各 module が
-知る内部手順（設定・style・文献の個別読込、lowering、boxing、区画ごとの
-改ページ等）は DEBUG として callee 側が出す — 内部構成を変えても `-v` の工程一覧が不用意に変わらないように
-する。所要時間は終了 event の `elapsed = ?Duration` の 1 形式。描画と保存の工程（`render` / `write`）は CLI が
-開く。成功した実行の `-v` に出る compiler の INFO は 6 工程 × 開始・完了・終了の 18 行（`tests/trace_events.rs` が
-固定する）。
+2 段は `typeset::compose` が持つ。span の名前が工程名で、`resolve_config_path` は span を持たない前処理。
+工程の開始と結果付き終了を INFO、成功時の件数や内部手順を DEBUG とする。段全体の集計はその段を開いた側が、
+個別読込・lowering・boxing・改ページ等の内部手順は callee が報告する。描画と保存の工程（`render` / `write`）は CLI が開く。
 
 #### 入力・失敗・警告の型
 
@@ -1075,13 +1068,13 @@ CLI エントリーポイント（package 名・binary 名とも `seiran`）。`
 - **構造は span、事実は event、工程の lifecycle は `Phase`、1 事象 1 オーナー**（3 crate 共通）。工程の入れ子は
   span が表し、event は件数などの事実だけを運ぶ。phase は INFO の span で、段の内部で同じ処理を複数回呼ぶ箇所は
   DEBUG の span で区別する（区画ごとの改ページ等）。span のレベルはその中の event の最上位レベルと同じに
-  し、既定（`warn`）では span も無効になる。工程の開始と結果付きの終了は `Phase` が INFO event として出す。
-  `render` / `write` の件数を持つ完了 event は callee（`seiran_pdf::render` / `pdf_output`）が
+  する。工程の開始と結果付きの終了は `Phase` が INFO event として出す。工程の span と両 event は同じ
+  `seiran_compiler::phase` または `seiran::phase` を target とし、target を絞っても工程名を読めるようにする。
+  `render` / `write` の件数を持つ DEBUG event は callee（`seiran_pdf::render` / `pdf_output`）が
   出し、CLI は同じ工程の完了 event を重ねない（1 事象 1 行。compiler 側は span を開いた側が出す — `compiler`
   節）。所要時間を持つのは工程の終了 event と DEBUG の集計 event だけ。
   tracing に載る失敗情報は工程の状態と所要時間だけで、診断本文は複製しない。ERROR レベルは使わない
-- **レベルの判定テストは「イベント数が文書の中身に比例するか」**。新しいログを足すときはこの表で決め、
-  既存イベントのレベルは動かさない。
+- **レベルの判定テストは「イベント数が文書の中身に比例するか」**。新しいログを足すときはこの表で決める。
 
   | 発行の条件 | レベル |
   | --- | --- |

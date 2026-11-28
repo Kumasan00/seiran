@@ -46,7 +46,7 @@ use glyph_issues::{TextGlyphError, VariationSequenceFallback};
 pub(crate) use pagination::LaidOutDocument;
 #[cfg(test)]
 pub(crate) use test_support::layout_for_test;
-use tracing::{info, info_span};
+use tracing::{debug, info_span};
 use warning::TypesetWarning;
 
 use crate::{
@@ -101,24 +101,29 @@ pub(crate) fn compose(
     Err(failures) => return (Err(ComposeError::Typeset(failures)), warnings),
   };
 
-  let phase = Phase::enter(info_span!("typeset"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "typeset"));
   let fonts = emit::publication_fonts(font_data, &font_resources);
-  let (laid_out, variation_warnings) = lay_out(source, config, style, geometry, &font_resources, &fonts, document);
-  warnings.extend(variation_warnings);
+  let font_warning_count = warnings.len();
+  let (laid_out, content_warnings) = lay_out(source, config, style, geometry, &font_resources, &fonts, document);
+  warnings.extend(content_warnings);
   let (mut laid_out, layout_warnings) = match laid_out {
     Ok(laid_out) => laid_out,
     Err(error) => return (Err(error), warnings),
   };
+  warnings.extend(layout_warnings);
   let image_paths = mem::take(&mut laid_out.image_paths);
   // 確定座標には起源の要素が無いので、溢れは位置のない診断にする
   let publication = match emit::emit(config, fonts, laid_out) {
     Ok(publication) => publication,
     Err(LengthOverflow) => return (Err(ComposeError::Dimension(DimensionOverflow::new(None))), warnings),
   };
-  info!(page_count = publication.pages().len(), warning_count = layout_warnings.len(), "文書を組版");
+  debug!(
+    page_count = publication.pages().len(),
+    warning_count = warnings.len() - font_warning_count,
+    "文書を組版"
+  );
   phase.succeed();
 
-  warnings.extend(layout_warnings);
   return (
     Ok(TypesetOutput {
       publication,
@@ -140,11 +145,11 @@ fn load_fonts(
   config: &ProjectConfig,
   font_data: &FontData,
 ) -> (Result<FontSystem, Failures<TypesetError>>, Vec<FontWarning>) {
-  let phase = Phase::enter(info_span!("font"));
+  let phase = Phase::enter(info_span!(target: Phase::TARGET, "font"));
   let (font_resources, font_warnings) = FontSystem::load(&config.font_configs, font_data);
   let font_resources = font_resources.map_err(|failures| return failures.map(TypesetError::from));
   if font_resources.is_ok() {
-    info!(warning_count = font_warnings.len(), "フォント資源を構築");
+    debug!(warning_count = font_warnings.len(), "フォント資源を構築");
     phase.succeed();
   }
   return (font_resources, font_warnings);

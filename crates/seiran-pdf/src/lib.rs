@@ -12,7 +12,7 @@ mod render;
 
 use krilla::Document;
 use seiran_compiler::Publication;
-use tracing::info;
+use tracing::debug;
 
 pub use crate::error::PdfRenderError;
 use crate::{font::build_krilla_fonts, metadata::build_metadata, render::render_pages};
@@ -31,6 +31,6 @@ pub fn render(publication: &Publication) -> Result<Vec<u8>, PdfRenderError> {
   document.set_metadata(build_metadata(publication.metadata()));
   render_pages(&mut document, publication, &fonts)?;
   let pdf_bytes = document.finish().map_err(|source| return PdfRenderError::FinalizeDocument { source })?;
-  info!(page_count = publication.pages().len(), byte_count = pdf_bytes.len(), "PDF を描画");
+  debug!(page_count = publication.pages().len(), byte_count = pdf_bytes.len(), "PDF を描画");
   return Ok(pdf_bytes);
 }

@@ -52,7 +52,7 @@ pub(super) fn write_pdf_atomically(pdf_path: &Path, bytes: &[u8], log_path: Opti
       source: error.error,
     };
   })?;
-  tracing::info!(output_path = %pdf_path.display(), byte_count = bytes.len(), "PDF を保存");
+  tracing::debug!(output_path = %pdf_path.display(), byte_count = bytes.len(), "PDF を保存");
   return Ok(());
 }
 
