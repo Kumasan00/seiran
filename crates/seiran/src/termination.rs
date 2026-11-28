@@ -2,10 +2,10 @@
 
 use std::{io::Write, process::ExitCode};
 
-use miette::Diagnostic;
+use miette::{Diagnostic, MietteHandler};
 use thiserror::Error;
 
-use crate::reporting::LogFailure;
+use crate::reporting::{self, LogFailure};
 
 /// 1 回の実行の終わり方。
 pub(super) enum Outcome {
@@ -81,21 +81,23 @@ pub(super) fn decide(run: Result<(), miette::Report>, log: Result<(), LogFailure
 impl Outcome {
   /// 端末へ報告し、終了コードを返す。
   ///
-  /// 主診断の体裁は miette のグローバル handler（`Report` の `Debug` 表示）に任せ、`Termination` と同じ
-  /// `Error: ` 前置きで出す。ログの失敗はログへは書かない。
+  /// 主診断は miette の既定 handler（`set_hook` を呼ばないので `Report` の `Debug` 表示と同じ）で描き、
+  /// `Termination` と同じ `Error: ` 前置きで出す。ログの失敗はログへは書かない。
   ///
-  /// `stderr` への書き込み失敗は捨て、終了コードは報告を書けたかに依らず本来のものを返す。
+  /// 描けない診断は [`reporting::render_diagnostic`] の簡略表示（本文と code）に置き換わる。`stderr` への
+  /// 書き込み失敗は捨てる。どちらの場合も、終了コードは報告を描けたか・書けたかに依らず本来のものを返す。
   pub(super) fn report(self, stderr: &mut impl Write) -> ExitCode {
     return match self {
       Outcome::Success => ExitCode::SUCCESS,
       Outcome::LogOnlyFailure(error) => {
-        let _ = writeln!(stderr, "Error: {:?}", miette::Report::new(error));
+        let _ = writeln!(stderr, "Error: {}", reporting::render_diagnostic(&MietteHandler::new(), &error));
         ExitCode::FAILURE
       },
       Outcome::Failure { report, log } => {
-        let _ = writeln!(stderr, "Error: {report:?}");
+        let handler = MietteHandler::new();
+        let _ = writeln!(stderr, "Error: {}", reporting::render_diagnostic(&handler, report.as_ref()));
         if let Some(error) = log {
-          let _ = writeln!(stderr, "{:?}", miette::Report::new(error));
+          let _ = writeln!(stderr, "{}", reporting::render_diagnostic(&handler, &error));
         }
         ExitCode::FAILURE
       },
@@ -110,7 +112,7 @@ mod tests {
     process::ExitCode,
   };
 
-  use miette::Diagnostic;
+  use miette::{Diagnostic, MietteError, SourceCode, SourceSpan, SpanContents};
   use thiserror::Error;
 
   use super::{LogWriteError, Outcome, decide};
@@ -121,6 +123,40 @@ mod tests {
   #[error("本処理が失敗しました")]
   #[diagnostic(code(cli::test_primary))]
   struct TestPrimary;
+
+  /// 前後の文脈付きの読み出しにだけ応じるソース。
+  ///
+  /// 既定の graphical handler は文脈付きで読めたラベルを文脈なしで読み直すので、そこで拒むと見出しを書いた後で
+  /// `fmt::Error` を返す。
+  #[derive(Debug)]
+  struct ContextOnlySource(String);
+
+  impl SourceCode for ContextOnlySource {
+    fn read_span<'a>(
+      &'a self,
+      span: &SourceSpan,
+      context_lines_before: usize,
+      context_lines_after: usize,
+    ) -> Result<Box<dyn SpanContents<'a> + 'a>, MietteError> {
+      if context_lines_before == 0 {
+        return Err(MietteError::OutOfBounds);
+      }
+      return self.0.read_span(span, context_lines_before, context_lines_after);
+    }
+  }
+
+  /// 描画の途中で失敗する主診断。
+  #[derive(Debug, Error, Diagnostic)]
+  #[error("読み直せないソースを持つ診断です")]
+  #[diagnostic(code(cli::test_context_only))]
+  struct UnrenderablePrimary {
+    /// 文脈なしの読み出しを拒むソース
+    #[source_code]
+    text: ContextOnlySource,
+    /// ソースの範囲内を指すラベル
+    #[label("ここ")]
+    span: SourceSpan,
+  }
 
   /// ログ記録の失敗を作る。
   fn log_failure() -> LogFailure {
@@ -194,5 +230,25 @@ mod tests {
     let code = outcome.report(&mut ClosedPipe);
 
     assert_eq!(code, ExitCode::FAILURE, "報告を書けなくてもログの失敗は終了 1（panic しない）");
+  }
+
+  #[test]
+  fn unrenderable_primary_diagnostic_keeps_the_failure_exit_code() {
+    let mut stderr = Vec::new();
+    let primary = UnrenderablePrimary {
+      text: ContextOnlySource(String::from("abc")),
+      span: SourceSpan::from((0, 1)),
+    };
+
+    let code = Outcome::Failure {
+      report: miette::Report::new(primary),
+      log: None,
+    }
+    .report(&mut stderr);
+
+    assert_eq!(code, ExitCode::FAILURE);
+    let text = String::from_utf8(stderr).expect("UTF-8 のはず");
+    assert!(text.starts_with("Error: 診断を描けなかったため、本文と code だけを示します"), "{text}");
+    assert!(text.contains("[cli::test_context_only] 読み直せないソースを持つ診断です"), "{text}");
   }
 }
