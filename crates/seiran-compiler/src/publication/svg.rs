@@ -12,9 +12,9 @@
 //!   400 以外の `font-weight` から積む（400 では積まず、fvar の既定値で組む）。config の `variation_axes` は効かない
 //! - 代替: 選んだフェースの系統（[`family_class`]）の枠を、宣言順 → 候補順に探す。usvg は代替が区切りの全字を
 //!   組めると区切り全体をそのフェースに置き換えるので、1 字ごとの代替にはならない
-//! - 外部参照: data URI でない画像の参照は読まずに記録して捨てる（usvg の既定はファイルを直接開く）。data URI は
-//!   usvg の既定で読み、埋め込んだ SVG だけは同じ設定で読み直す — usvg の既定は中の外部参照を黙って捨てる設定で
-//!   読むので、記録が漏れる
+//! - 外部参照: data URI でない画像の参照は読まずに記録して捨てる（usvg の既定はファイルを直接開く）。data URI の
+//!   ラスタは usvg の既定で読み、埋め込んだ SVG は同じ設定で読む — usvg の既定は中の外部参照を黙って捨て、
+//!   文字も既定のファミリで照合する設定で読むので、記録が漏れる・食い違う
 
 use std::{
   fmt,
@@ -180,12 +180,19 @@ impl SvgParser {
         select_fallback: Box::new(|ch, used, db| return self.select_fallback(ch, used, db)),
       },
       image_href_resolver: ImageHrefResolver {
-        // usvg の既定は埋め込んだ SVG を中の外部参照を黙って捨てる設定で読むので、SVG だけこの設定で読み直す
+        // SVG は既定へ渡さずこの設定で 1 回だけ読む — 既定の入れ子パースは `resolve_data` をここへ転送するので、
+        // 渡すと深さごとに 2 回読み（入れ子で指数的に増える）、既定のファミリ（Times New Roman）の未解決も記録される。
+        // 読めない SVG は既定と同じく描かない。`text/plain` は SVG として読めなければラスタの判定を既定に任せる
         resolve_data: Box::new(move |mime, data, options| {
-          return match default_data(mime, Arc::clone(&data), options) {
-            Some(ImageKind::SVG(_)) => Tree::from_data(&data, &self.options(record)).ok().map(ImageKind::SVG),
-            other => other,
-          };
+          if matches!(mime, "image/svg+xml" | "text/plain") {
+            if let Ok(tree) = Tree::from_data(&data, &self.options(record)) {
+              return Some(ImageKind::SVG(tree));
+            }
+            if mime == "image/svg+xml" {
+              return None;
+            }
+          }
+          return default_data(mime, data, options);
         }),
         resolve_string: Box::new(|href, _| {
           push_unique(&record.external_references, href.to_owned());

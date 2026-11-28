@@ -49,6 +49,14 @@ fn svg_with_text(attrs: &str, text: &str) -> Vec<u8> {
   .into_bytes();
 }
 
+/// `href`（data URI）の `<image>` 1 つだけの SVG を組み立てる。
+fn svg_with_embedded(href: &str) -> Vec<u8> {
+  return format!(
+    r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="20"><image href="{href}" width="20" height="20"/></svg>"#
+  )
+  .into_bytes();
+}
+
 /// 木の中の `<text>` を文書順に集める（グループの中も辿る）。
 fn texts(tree: &Tree) -> Vec<&usvg::Text> {
   fn walk<'tree>(group: &'tree usvg::Group, out: &mut Vec<&'tree usvg::Text>) {
@@ -297,4 +305,29 @@ fn explicit_wght_variation_sets_the_regular_weight() {
     .map(|v| return v.value)
     .collect();
   assert_eq!(wght, [400.0]);
+}
+
+#[test]
+fn embedded_svg_text_without_family_uses_configured_serif() {
+  // `<text>A</text>`（font-family 省略）だけの SVG を data URI で埋め込む。省略は最上位と同じく serif の先頭候補で組み、
+  // 未解決のファミリは出さない
+  let svg = svg_with_embedded(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIyMCIgaGVpZ2h0PSIyMCI+PHRleHQgeD0iMSIgeT0iMTUiIGZvbnQtc2l6ZT0iMTIiPkE8L3RleHQ+PC9zdmc+",
+  );
+
+  let parsed = svg_parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+  assert!(parsed.unresolved_families.is_empty(), "省略は serif と同じはず: {:?}", parsed.unresolved_families);
+}
+
+#[test]
+fn reference_two_levels_deep_in_embedded_svg_is_recorded() {
+  // 埋め込んだ SVG がさらに埋め込んだ SVG の中の `<image href="c.png">`
+  let svg = svg_with_embedded(
+    "data:image/svg+xml;base64,PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PGltYWdlIGhyZWY9ImRhdGE6aW1hZ2Uvc3ZnK3htbDtiYXNlNjQsUEhOMlp5QjRiV3h1Y3owaWFIUjBjRG92TDNkM2R5NTNNeTV2Y21jdk1qQXdNQzl6ZG1jaUlIZHBaSFJvUFNJeE1DSWdhR1ZwWjJoMFBTSXhNQ0krUEdsdFlXZGxJR2h5WldZOUltTXVjRzVuSWlCM2FXUjBhRDBpTVRBaUlHaGxhV2RvZEQwaU1UQWlMejQ4TDNOMlp6ND0iIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCIvPjwvc3ZnPg==",
+  );
+
+  let parsed = svg_parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+  assert_eq!(parsed.external_references, ["c.png"]);
 }
