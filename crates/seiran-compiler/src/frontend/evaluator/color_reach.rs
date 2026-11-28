@@ -65,7 +65,7 @@ pub(in crate::frontend::evaluator) fn math_has_content(nodes: &[HirMath]) -> boo
         math_has_content(slice::from_ref(inner))
       },
       HirMathKind::Frac { numer, denom } => {
-        [numer, denom].into_iter().any(|part| return math_has_content(slice::from_ref(part.as_ref())))
+        math_has_content(slice::from_ref(numer)) || math_has_content(slice::from_ref(denom))
       },
       HirMathKind::Matrix {
         delimiter: MathDelimiter::None,
