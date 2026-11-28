@@ -872,6 +872,17 @@ fn diagnostic_svg_font_not_found() {
 }
 
 #[test]
+fn diagnostic_svg_external_reference() {
+  let failure = TestProject::builder()
+    .sources(&["tests/text/diagnostics/svg_external_reference.sei"])
+    .asset("./tests/image/svg_external_reference.svg")
+    .build()
+    .compile_err();
+
+  assert_matches_golden("svg_external_reference", &render_failure(failure));
+}
+
+#[test]
 fn diagnostic_svg_missing_glyph() {
   let failure = TestProject::builder()
     .sources(&["tests/text/diagnostics/svg_missing_glyph.sei"])

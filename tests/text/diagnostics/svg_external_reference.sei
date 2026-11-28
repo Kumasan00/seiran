@@ -1,0 +1,7 @@
+\section{SVG の外部参照のサンプル}
+
+// 相対パス・絶対パスの参照と、data URI で埋め込んだ SVG の中の参照（c.png）を 1 枚に持つ
+\begin{figure}[label=fig:svg-external-reference]
+\image[width=80mm]{./tests/image/svg_external_reference.svg}
+\caption{外部のファイルを参照する SVG}
+\end{figure}

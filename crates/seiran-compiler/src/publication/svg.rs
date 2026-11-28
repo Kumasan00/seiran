@@ -12,6 +12,9 @@
 //!   400 以外の `font-weight` から積む（400 では積まず、fvar の既定値で組む）。config の `variation_axes` は効かない
 //! - 代替: 選んだフェースの系統（[`family_class`]）の枠を、宣言順 → 候補順に探す。usvg は代替が区切りの全字を
 //!   組めると区切り全体をそのフェースに置き換えるので、1 字ごとの代替にはならない
+//! - 外部参照: data URI でない画像の参照は読まずに記録して捨てる（usvg の既定はファイルを直接開く）。data URI は
+//!   usvg の既定で読み、埋め込んだ SVG だけは同じ設定で読み直す — usvg の既定は中の外部参照を黙って捨てる設定で
+//!   読むので、記録が漏れる
 
 use std::{
   fmt,
@@ -21,7 +24,7 @@ use std::{
 use itertools::Itertools;
 use read_fonts::{FontRef, TableProvider, types::GlyphId};
 use usvg::{
-  FontFamily, FontResolver, FontStretch, FontStyle, Options, Tree,
+  FontFamily, FontResolver, FontStretch, FontStyle, ImageHrefResolver, ImageKind, Options, Tree,
   fontdb::{self, Database, FaceInfo, Family, ID, Language, Query, Source},
 };
 
@@ -125,17 +128,20 @@ impl SvgParser {
 
   /// SVG をパースする。文字は設定済みフォントだけで組み、解決できなかった `font-family` は捨てる。
   ///
+  /// 外部参照（data URI でない画像の参照）は読まずに捨てる — compile がその記録から SVG を拒否するので、
+  /// compile を通った SVG に外部参照は無く、描画側の読み直しもファイルシステムに触れない。
+  ///
   /// # Errors
   ///
   /// SVG として読めない場合に usvg のエラーを返す。
   pub fn parse(&self, bytes: &[u8]) -> Result<Tree, usvg::Error> {
-    return self.parse_reporting(bytes).map(|(tree, _)| return tree);
+    return self.parse_reporting(bytes).map(|parsed| return parsed.tree);
   }
 
-  /// SVG をパースし、解決できなかった `font-family` のリスト（各項目を CSS の綴りで `", "` 連結。出現順・重複除去）を
-  /// 添えて返す。
+  /// SVG をパースし、解決できなかった `font-family` と、読まずに捨てた外部参照を添えて返す。
   ///
-  /// 未解決のファミリを使う文字は usvg が組まずに捨てるので、木からは検出できない — 照合の時点で記録する。
+  /// 未解決のファミリを使う文字と外部参照の画像は usvg が木に残さないので、木からは検出できない — 照合と参照の
+  /// 解決の時点で記録する。
   ///
   /// # Errors
   ///
@@ -144,31 +150,51 @@ impl SvgParser {
     clippy::unwrap_in_result,
     reason = "Mutex が毒化するのは記録中の panic だけで、その panic は Tree::from_data を貫いてここへは戻らない"
   )]
-  pub(crate) fn parse_reporting(&self, bytes: &[u8]) -> Result<(Tree, Vec<String>), usvg::Error> {
-    let unresolved: Mutex<Vec<String>> = Mutex::new(Vec::new());
-    let options = Options {
+  pub(crate) fn parse_reporting(&self, bytes: &[u8]) -> Result<SvgParse, usvg::Error> {
+    let record = ParseRecord::default();
+    let tree = Tree::from_data(bytes, &self.options(&record))?;
+    let ParseRecord {
+      unresolved_families,
+      external_references,
+    } = record;
+    return Ok(SvgParse {
+      tree,
+      unresolved_families: unresolved_families.into_inner().expect(RECORD_NOT_POISONED),
+      external_references: external_references.into_inner().expect(RECORD_NOT_POISONED),
+    });
+  }
+
+  /// 照合と参照の解決を `record` へ記録する usvg の設定。最上位と、data URI で埋め込んだ SVG の読み直しが共用する。
+  fn options<'parse>(&'parse self, record: &'parse ParseRecord) -> Options<'parse> {
+    let default_data = ImageHrefResolver::default_data_resolver();
+    return Options {
       font_family: self.primary_family(FontType::Serif).unwrap_or_default(),
       font_resolver: FontResolver {
         select_font: Box::new(|font, db| {
           let id = self.select(font, db);
           if id.is_none() {
-            let families = font.families().iter().join(", ");
-            let mut unresolved = unresolved.lock().expect("記録はこの照合の中だけで行い、照合は panic しない");
-            if !unresolved.contains(&families) {
-              unresolved.push(families);
-            }
+            push_unique(&record.unresolved_families, font.families().iter().join(", "));
           }
           return id;
         }),
         select_fallback: Box::new(|ch, used, db| return self.select_fallback(ch, used, db)),
       },
+      image_href_resolver: ImageHrefResolver {
+        // usvg の既定は埋め込んだ SVG を中の外部参照を黙って捨てる設定で読むので、SVG だけこの設定で読み直す
+        resolve_data: Box::new(move |mime, data, options| {
+          return match default_data(mime, Arc::clone(&data), options) {
+            Some(ImageKind::SVG(_)) => Tree::from_data(&data, &self.options(record)).ok().map(ImageKind::SVG),
+            other => other,
+          };
+        }),
+        resolve_string: Box::new(|href, _| {
+          push_unique(&record.external_references, href.to_owned());
+          return None;
+        }),
+      },
       fontdb: Arc::clone(&self.db),
       ..Options::default()
     };
-    let tree = Tree::from_data(bytes, &options)?;
-    drop(options);
-    let unresolved = unresolved.into_inner().expect("記録はこの照合の中だけで行い、照合は panic しない");
-    return Ok((tree, unresolved));
   }
 
   /// 照合できるファミリ名（実体の宣言順・重複除去）。
@@ -259,6 +285,36 @@ impl SvgParser {
   }
 }
 
+/// [`SvgParser::parse_reporting`] の結果。
+pub(crate) struct SvgParse {
+  /// パースした木（未解決のファミリの文字と外部参照の画像は含まない）
+  pub(crate) tree: Tree,
+  /// 解決できなかった `font-family` のリスト（各項目を CSS の綴りで `", "` 連結。出現順・重複除去）
+  pub(crate) unresolved_families: Vec<String>,
+  /// 読まずに捨てた外部参照（data URI でない画像の参照の字面。data URI で埋め込んだ SVG の中も含む。出現順・重複除去）
+  pub(crate) external_references: Vec<String>,
+}
+
+/// 1 回のパースの間に照合と参照の解決が残す記録（usvg の resolver は `Send + Sync` を要求するので `Mutex`）。
+#[derive(Default)]
+struct ParseRecord {
+  /// [`SvgParse::unresolved_families`] になる記録
+  unresolved_families: Mutex<Vec<String>>,
+  /// [`SvgParse::external_references`] になる記録
+  external_references: Mutex<Vec<String>>,
+}
+
+/// 記録の `Mutex` の `expect` の根拠。
+const RECORD_NOT_POISONED: &str = "記録はこのパースの照合と参照の解決の中だけで行い、どちらも panic しない";
+
+/// `list` に `item` が無ければ末尾へ足す。
+fn push_unique(list: &Mutex<Vec<String>>, item: String) {
+  let mut list = list.lock().expect(RECORD_NOT_POISONED);
+  if !list.contains(&item) {
+    list.push(item);
+  }
+}
+
 /// フェースのファミリ名（英語（米国）の名前、無ければ先頭の名前）。
 fn family_name(info: &FaceInfo) -> Option<String> {
   return info
@@ -303,4 +359,110 @@ fn family_class(font_type: FontType) -> &'static [FontType] {
     | FontType::JapaneseMonospaceBold => MONOSPACE_CLASS,
     FontType::Math => MATH_CLASS,
   };
+}
+
+#[cfg(test)]
+mod tests {
+  use std::path::Path;
+
+  use usvg::{Group, Node, Tree};
+
+  use super::SvgParser;
+  use crate::publication::test_support;
+
+  /// 1x1 の PNG（base64）。
+  const PNG_BASE64: &str =
+    "iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVR42mNkYPhfDwAChwGA60e6kgAAAABJRU5ErkJggg==";
+
+  /// `<image href="c.png" width="10" height="10"/>` 1 つの 10x10 の SVG（base64）。
+  const SVG_WITH_EXTERNAL_BASE64: &str = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PGltYWdlIGhyZWY9ImMucG5nIiB3aWR0aD0iMTAiIGhlaWdodD0iMTAiLz48L3N2Zz4=";
+
+  /// `font-family="Arial"` の `<text>` 1 つの 10x10 の SVG（base64）。
+  const SVG_WITH_ARIAL_TEXT_BASE64: &str = "PHN2ZyB4bWxucz0iaHR0cDovL3d3dy53My5vcmcvMjAwMC9zdmciIHdpZHRoPSIxMCIgaGVpZ2h0PSIxMCI+PHRleHQgeD0iMSIgeT0iOCIgZm9udC1mYW1pbHk9IkFyaWFsIj5BPC90ZXh0Pjwvc3ZnPg==";
+
+  /// フォントを 1 つも持たないパーサ（文字を組まない SVG の検査には足りる）。
+  fn parser() -> SvgParser { return test_support::resources(Vec::new()).svg_parser(); }
+
+  /// 指定した参照の `<image>` を 1 つずつ並べた SVG。
+  fn svg_with_images(hrefs: &[&str]) -> Vec<u8> {
+    let images: String = hrefs
+      .iter()
+      .map(|href| return format!(r#"<image href="{href}" width="10" height="10"/>"#))
+      .collect();
+    return format!(r#"<svg xmlns="http://www.w3.org/2000/svg" width="20" height="10">{images}</svg>"#).into_bytes();
+  }
+
+  /// 木の中の `<image>` の数（clipPath・mask・入れ子の画像の中も数える）。
+  fn image_count(tree: &Tree) -> usize {
+    fn walk(group: &Group, count: &mut usize) {
+      for node in group.children() {
+        node.subroots(|subroot| walk(subroot, count));
+        match node {
+          Node::Group(child) => walk(child, count),
+          Node::Image(_) => *count += 1,
+          Node::Path(_) | Node::Text(_) => {},
+        }
+      }
+    }
+    let mut count = 0;
+    walk(tree.root(), &mut count);
+    return count;
+  }
+
+  #[test]
+  fn string_references_are_recorded_and_not_loaded() {
+    let svg = svg_with_images(&["a.png", "a.png", "https://example.com/b.png"]);
+
+    let parsed = parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+    assert_eq!(parsed.external_references, ["a.png", "https://example.com/b.png"]);
+    assert_eq!(image_count(&parsed.tree), 0);
+  }
+
+  #[test]
+  fn parse_does_not_read_an_existing_external_file() {
+    let existing = Path::new(env!("CARGO_MANIFEST_DIR")).join("../../tests/image/testimage4.png");
+    assert!(existing.is_file(), "fixture の PNG は実在するはず: {}", existing.display());
+    let svg = svg_with_images(&[existing.to_str().expect("fixture のパスは UTF-8 のはず")]);
+
+    let tree = parser().parse(&svg).expect("SVG はパースできるはず");
+
+    assert_eq!(image_count(&tree), 0, "実在するファイルでも読まないはず");
+  }
+
+  #[test]
+  fn data_uri_png_is_kept() {
+    let svg = svg_with_images(&[&format!("data:image/png;base64,{PNG_BASE64}")]);
+
+    let parsed = parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+    assert_eq!(image_count(&parsed.tree), 1);
+    assert!(
+      parsed.external_references.is_empty(),
+      "data URI は外部参照ではない: {:?}",
+      parsed.external_references
+    );
+  }
+
+  #[test]
+  fn data_uri_svg_records_its_external_reference() {
+    let svg = svg_with_images(&[&format!(
+      "data:image/svg+xml;base64,{SVG_WITH_EXTERNAL_BASE64}"
+    )]);
+
+    let parsed = parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+    assert_eq!(parsed.external_references, ["c.png"], "埋め込んだ SVG の中の外部参照も記録するはず");
+  }
+
+  #[test]
+  fn data_uri_svg_text_uses_configured_fonts() {
+    let svg = svg_with_images(&[&format!(
+      "data:image/svg+xml;base64,{SVG_WITH_ARIAL_TEXT_BASE64}"
+    )]);
+
+    let parsed = parser().parse_reporting(&svg).expect("SVG はパースできるはず");
+
+    assert_eq!(parsed.unresolved_families, [r#""Arial""#], "埋め込んだ SVG の文字も設定済みフォントで照合するはず");
+  }
 }

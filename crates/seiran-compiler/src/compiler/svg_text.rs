@@ -200,12 +200,12 @@ fn text_keeps_position_size_and_color() {
 fn unresolved_family_list_is_reported_without_falling_back() {
   let parser = svg_parser();
 
-  let (tree, unresolved) = parser
+  let parsed = parser
     .parse_reporting(&svg_with_text(r#"font-family="Arial, cursive""#, "A"))
     .expect("SVG はパースできるはず");
 
-  assert_eq!(unresolved, [r#""Arial", cursive"#]);
-  assert!(glyph_faces(&tree).is_empty(), "どのフォントでも組まないはず");
+  assert_eq!(parsed.unresolved_families, [r#""Arial", cursive"#]);
+  assert!(glyph_faces(&parsed.tree).is_empty(), "どのフォントでも組まないはず");
 }
 
 #[test]
